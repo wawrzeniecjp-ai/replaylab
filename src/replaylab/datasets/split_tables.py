@@ -28,9 +28,15 @@ NIPAH = "nipah-glycoprotein-g"
 DEFAULT_MIN_DESIGNS = 300
 HELDOUT_FOLD = 2
 
-# From the exploratory analysis (3-mer cosine, distance at most 0.4, Nipah-G pool).
+# From the exploratory analysis (3-mer cosine, distance at most 0.4, Nipah-G pool),
+# corrected 2026-10-12: the exploratory run reported 632, which was a float artifact.
+# The pair (green-lynx-leaf, strong-lion-marble) has sim = 138/230 = 0.6 exactly, i.e.
+# distance exactly at the 0.4 threshold, and "at most 0.4" connects it. Strict float
+# arithmetic rounds it just below 0.6, drops that edge and splits one extra component.
+# Checked exhaustively: the tolerance-based clustering agrees with exact integer
+# arithmetic on all 1030x1030 pairs, giving 631 clusters (largest 125, 570 singletons).
 EXPECTED_CLUSTER_SUMMARY: dict[str, dict[str, int]] = {
-    NIPAH: {"n_clusters": 632, "largest_cluster": 125},
+    NIPAH: {"n_clusters": 631, "largest_cluster": 125},
 }
 
 CLUSTER_COLUMNS = ["design_id", "target", "cluster_id", "cluster_size"]

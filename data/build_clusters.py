@@ -8,7 +8,8 @@ Usage (from the repository root, after data/build_tables.py):
 Writes data/splits/clusters.csv with design_id, target, cluster_id, cluster_size.
 Designs are compared by cosine similarity of binary 3-mer vectors; clusters are the
 connected components at cosine distance <= 0.4. --check compares the Nipah-G summary
-with the exploratory numbers (632 clusters, largest 125).
+with the expected numbers (631 clusters, largest 125; see EXPECTED_CLUSTER_SUMMARY
+for why the exploratory analysis' 632 was a float artifact).
 """
 
 from __future__ import annotations
