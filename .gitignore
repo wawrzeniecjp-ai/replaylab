@@ -1,0 +1,21 @@
+# data: never commit the Proteinbase CSV or derived tables
+data/raw/
+data/processed/
+
+# secrets and local notes
+.env
+notes/week0/
+
+# python
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# WSL
+*:Zone.Identifier
+
+# Task pack
+.task-pack/

@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "replaylab"
+version = "0.1.0"
+description = "A decision engine for protein design selection, validated by replaying real outcomes."
+requires-python = ">=3.11"
+dependencies = [
+    "pandas>=2.1",
+    "numpy>=1.26",
+    "pyarrow>=14",
+    "scipy>=1.11",
+    "scikit-learn>=1.3",
+    "pyyaml>=6",
+]
+
+[project.optional-dependencies]
+eval = ["openai>=1.30"]
+dev = ["pytest>=8", "ruff>=0.5"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "--strict-markers"
+markers = [
+    "data: needs data/processed built from the real Proteinbase CSV (local only)",
+    "integration: spawns a subprocess or an MCP server",
+    "llm: needs network and an API key, and spends money (never in CI)",
+    "slow: takes more than 10 seconds",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]

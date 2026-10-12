@@ -1,0 +1,22 @@
+# Visible computational features per target, and the pre-registered first column.
+# Sequence length and design_class are always visible and are not listed here.
+# DRAFT: finalized after the feature review (task T02). The nipah first_column
+# (ipSAE) was chosen AFTER seeing outcomes; the egfr first_column was chosen by
+# reasoning only. Record this in docs/design-notes.md.
+version: 1
+targets:
+  nipah-glycoprotein-g:
+    first_column: boltz2_ipsae
+    features:
+      - {name: boltz2_iptm}
+      - {name: boltz2_ipsae}
+      - {name: boltz2_min_ipsae}
+      - {name: boltz2_plddt}
+      - {name: shape_complimentarity_boltz2_binder_ss}
+      - {name: esmfold_plddt}
+      - {name: proteinmpnn_score, higher_is_better: false}
+  egfr:
+    first_column: esmfold_plddt
+    features:
+      - {name: esmfold_plddt}
+      - {name: proteinmpnn_score, higher_is_better: false}
