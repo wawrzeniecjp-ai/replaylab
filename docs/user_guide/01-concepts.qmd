@@ -1,0 +1,102 @@
+---
+title: "Core concepts"
+guide-section: "Understanding replaylab"
+---
+
+The vocabulary used everywhere else in the code and tests. Every term below
+is explained on its own; the API Reference has the exact signatures.
+
+# The game
+
+**pool**
+: The designs of one game — one target, one split. What an agent may buy from.
+
+**game / campaign**
+: A *game* is the static configuration (target, split, rounds, batch size,
+  budget, delay — [`GameConfig`](../reference/config.GameConfig.qmd)); a
+  *campaign* is one play of it against the
+  [`CampaignStore`](../reference/store.CampaignStore.qmd).
+
+**alias**
+: Agents never see real design ids, only `d0001`-style aliases. The mapping is
+  built by sorting real ids on `sha256(f"{seed}|{id}")` — identical on every
+  machine, and **reshuffled by every seed** (a subtlety that has already bitten
+  once: a similarity index keyed by the wrong seed's aliases silently scores
+  the wrong sequences).
+
+**round, tick, clock**
+: Rounds are *batch slots*. `state.clock` counts elapsed rounds. `submit`
+  creates a batch, hands it to the backend, ingests what is ready, then ticks
+  once. A batch submitted at clock *t* with delay *d* delivers at *t + d* — so
+  a delay of 1 looks identical to 0 to the agent, and `wait` (tick without
+  buying) is allowed only while something is pending.
+
+**batch**
+: Designs proposed or submitted together, moving only forward through
+  `proposed → submitted → partial → complete`.
+
+# Status of a design
+
+| Term | Meaning |
+| --- | --- |
+| **purchased** | in a batch that left `proposed` (delivered *or* pending); purchase order = batch order, then position inside the batch |
+| **delivered** | its outcome has arrived and is in the store |
+| **pending** | purchased but the outcome has not arrived yet |
+| **unpurchased** | still available to buy |
+
+# Outcomes
+
+**hit**
+: any binding record for the (design, target) pair is True. An *inconclusive*
+  result (`hit is None`) is a purchase but **not** a hit, and is excluded from
+  model fitting.
+
+**conflict / strength / kd_molar**
+: conflicting binding records; the strongest label (Strong/Medium/Weak); the
+  smallest KD converted to molar units.
+
+**budget**
+: `rounds × batch_size` — every game spends at most its budget, and at most
+  one round slot per submit.
+
+# The agent side
+
+**snapshot** ([`CampaignState`](../reference/domain.CampaignState.qmd))
+: The immutable view a policy or advisor function receives: designs, batches,
+  delivered outcomes, clock, and derived views (`unpurchased_ids`,
+  `budget_remaining`, …). Everything the agent knows comes through this object.
+
+**feature orientation**
+: Feature values stay *raw* in the pool (a lower-is-better ProteinMPNN score
+  looks lower); the ±1 orientation is applied once inside
+  [`Preprocessor`](../reference/advisor.preprocess.Preprocessor.qmd), so every
+  covariate points the same way before the model sees it.
+
+**policy**
+: `choose(state, k, rng) -> ids`. Returns `[]` to mean *stop*. The scripted
+  ladder: `random`, `fixed:<metric>`, `learner`, `learner_sim`, each optionally
+  wrapped in `WithStop`.
+
+**stop rules**
+: Advice evaluated at round boundaries on delivered purchases only.
+  `low_yield` (the default): fires from 20 purchases when the cumulative hit
+  rate is below 0.03. `decay` exists but was dropped from the default after it
+  false-stopped 77–98% of runs; treat it as experimental.
+
+**frozen configuration**
+: `config/frozen_v1.yaml` pins the model hyper-parameters chosen on `N-dev`
+  only. It changes only deliberately, never as a side effect of other work.
+
+# Splits and evaluation
+
+**dev / held-out split**
+: Nipah-G designs are grouped into folds by sequence cluster (fold 2 is
+  held out). The held-out outcomes can only be read with `final_run=True`, and
+  the ladder refuses held-out games entirely — that split is run **once, at
+  the end**.
+
+**replay vs live**
+: `mode="replay"` plays recorded outcomes through the
+  [`ReplayBackend`](../reference/backends.ReplayBackend.qmd); `mode="live"`
+  will drive a real campaign through the pinned OpenAPI spec.
+  Both implement the same three-method `LabBackend` interface.

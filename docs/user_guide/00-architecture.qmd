@@ -1,0 +1,102 @@
+---
+title: "Architecture"
+guide-section: "Understanding replaylab"
+---
+
+# The one-paragraph version
+
+replaylab decides **which designed proteins to test in a wet lab**. A pool of
+designs has predicted metrics; an agent buys batches under a budget, results
+come back (immediately or after a delay), and the agent decides what to buy
+next and when to stop. Every strategy is validated offline by **replaying**
+recorded real outcomes (Adaptyv's Proteinbase data); the same code is meant to
+drive a live campaign later.
+
+# Data flow
+
+```{mermaid}
+flowchart LR
+    CSV["proteinbase.csv"] -->|build_tables| TABLES["designs / outcomes / targets<br/>(parquet)"]
+    TABLES -->|build_clusters| CLUSTERS["clusters.csv"]
+    TABLES -->|build_folds| FOLDS["folds.csv"]
+    TABLES --> POOL["Pool<br/>visible features only"]
+    TABLES --> HIDDEN["hidden outcomes"]
+    POOL --> ENV["build_replay_campaign<br/>(aliases by seed)"]
+    CLUSTERS --> ENV
+    FOLDS --> ENV
+    HIDDEN --> ENV
+    ENV --> STATE["CampaignState<br/>snapshot"]
+    STATE -->|policy.choose(state, k, rng)| IDS["batch of design ids"]
+    IDS --> SUBMIT["Campaign.submit<br/>ticks the clock, stores events"]
+    SUBMIT --> BACKEND["Backend.poll<br/>outcomes arrive"]
+    BACKEND --> STATE
+    SUBMIT --> SCORE["settle + score"]
+    SCORE --> CARD["ScoreCard"]
+```
+
+# The layers
+
+```{mermaid}
+flowchart TB
+    subgraph world["The world"]
+        engine["engine<br/>the rules of the game"] --> store["store<br/>SQLite persistence"]
+        engine --> backends["backends<br/>where outcomes come from"]
+        engine --> datasets["datasets<br/>tables, clustering, the pool"]
+        engine --> config["config<br/>YAML loading"]
+        store --> domain["domain<br/>core types, stdlib only"]
+        backends --> domain
+        datasets --> domain
+        datasets --> config
+        config --> domain
+    end
+    subgraph agent["The agent"]
+        policies["policies<br/>scripted strategies"] --> advisor["advisor<br/>pure functions over a snapshot"]
+        advisor --> domain
+        advisor --> datasets
+        policies --> domain
+    end
+    eval["eval<br/>offline evaluation"] -.-> engine
+    eval -.-> policies
+The split is not cosmetic: `tests/test_import_boundaries.py` fails the build
+if a package imports outside its lane.
+
+::: {.callout-note}
+**The rule that matters:** `advisor` and `policies` never import `store`,
+`backends` or `engine`. They receive a
+[`CampaignState`](../reference/domain.CampaignState.qmd) snapshot and nothing
+else, so they *cannot* write and *cannot* see outcomes the campaign has not
+bought. That is the architectural half of the leak protection; the rest is
+below.
+:::
+
+# Persistence and kill-and-resume
+
+The [`CampaignStore`](../reference/store.CampaignStore.qmd) (SQLite) records
+every mutation as one transaction, and batches only ever move forward:
+`proposed → submitted → partial → complete`. Alongside the tables there is an
+**append-only event log**. `build_replay_campaign` replays that log to
+reconstruct the replay backend's exact state, so a process that is killed mid
+campaign picks up where it stopped and ends in *exactly* the same state as an
+uninterrupted run (tested for delay 0 and delay 2).
+
+# The leak rules
+
+Hidden outcomes must never reach a strategy before it buys the design. Three
+independent layers enforce this:
+
+1. **Architecture** — the import boundaries above; policies only see snapshots.
+2. **API shape** — the [`ReplayBackend`](../reference/backends.ReplayBackend.qmd)
+   serves an outcome only via `submit` + `poll` after its delay; there is no
+   bulk accessor to leak through.
+3. **Guards** — `load_outcomes` refuses to read the held-out split outside the
+   final run (`HeldOutAccessError`), and the ladder refuses held-out games with
+   `ValueError`. Real ids never appear in state or in any file the store
+   writes: agents see `d0001`-style aliases.
+
+# Determinism
+
+No global random state, no `hash()` of strings, no dependence on dict or set
+ordering for output. Randomness comes only from a seeded
+`numpy.random.Generator` that is passed in (`make_rng(seed, round)`), so the
+same state and the same seed always produce the same batch — which is what
+makes 100-seed ladder tables reproducible.
