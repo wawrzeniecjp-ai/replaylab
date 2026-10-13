@@ -92,8 +92,8 @@ is explained on its own; the API Reference has the exact signatures.
 **dev / held-out split**
 : Nipah-G designs are grouped into folds by sequence cluster (fold 2 is
   held out). The held-out outcomes can only be read with `final_run=True`, and
-  the ladder refuses held-out games entirely — that split is run **once, at
-  the end**.
+  the evaluation runner refuses held-out games entirely — that split is run
+  **once, at the end**.
 
 **replay vs live**
 : `mode="replay"` plays recorded outcomes through the

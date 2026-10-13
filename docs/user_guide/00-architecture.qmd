@@ -14,49 +14,78 @@ drive a live campaign later.
 
 # Data flow
 
-```{mermaid}
-flowchart LR
-    CSV["proteinbase.csv"] -->|build_tables| TABLES["designs / outcomes / targets<br/>(parquet)"]
-    TABLES -->|build_clusters| CLUSTERS["clusters.csv"]
-    TABLES -->|build_folds| FOLDS["folds.csv"]
-    TABLES --> POOL["Pool<br/>visible features only"]
-    TABLES --> HIDDEN["hidden outcomes"]
-    POOL --> ENV["build_replay_campaign<br/>(aliases by seed)"]
-    CLUSTERS --> ENV
-    FOLDS --> ENV
-    HIDDEN --> ENV
-    ENV --> STATE["CampaignState<br/>snapshot"]
-    STATE -->|policy.choose(state, k, rng)| IDS["batch of design ids"]
-    IDS --> SUBMIT["Campaign.submit<br/>ticks the clock, stores events"]
-    SUBMIT --> BACKEND["Backend.poll<br/>outcomes arrive"]
-    BACKEND --> STATE
-    SUBMIT --> SCORE["settle + score"]
-    SCORE --> CARD["ScoreCard"]
+```{d2}
+direction: right
+csv: "proteinbase.csv"
+tables: "designs / outcomes / targets (parquet)"
+clusters: "clusters.csv"
+folds: "folds.csv"
+pool: "Pool (visible features only)"
+hidden: "hidden outcomes"
+env: "build_replay_campaign (aliases by seed)"
+state: "CampaignState snapshot"
+batch: "batch of design ids"
+submit: "Campaign.submit (ticks the clock, stores events)"
+backend: "Backend.poll (outcomes arrive)"
+score: "settle + score"
+card: "ScoreCard"
+
+csv -> tables: build_tables
+tables -> clusters: build_clusters
+tables -> folds: build_folds
+tables -> pool
+tables -> hidden
+pool -> env
+clusters -> env
+folds -> env
+hidden -> env
+env -> state
+state -> batch: policy chooses a batch
+batch -> submit
+submit -> backend
+backend -> state
+submit -> score
+score -> card
 ```
 
 # The layers
 
-```{mermaid}
-flowchart TB
-    subgraph world["The world"]
-        engine["engine<br/>the rules of the game"] --> store["store<br/>SQLite persistence"]
-        engine --> backends["backends<br/>where outcomes come from"]
-        engine --> datasets["datasets<br/>tables, clustering, the pool"]
-        engine --> config["config<br/>YAML loading"]
-        store --> domain["domain<br/>core types, stdlib only"]
-        backends --> domain
-        datasets --> domain
-        datasets --> config
-        config --> domain
-    end
-    subgraph agent["The agent"]
-        policies["policies<br/>scripted strategies"] --> advisor["advisor<br/>pure functions over a snapshot"]
-        advisor --> domain
-        advisor --> datasets
-        policies --> domain
-    end
-    eval["eval<br/>offline evaluation"] -.-> engine
-    eval -.-> policies
+```{d2}
+world: "The world" {
+  engine: "engine (the rules of the game)"
+  store: "store (SQLite persistence)"
+  backends: "backends (where outcomes come from)"
+  datasets: "datasets (tables, clustering, the pool)"
+  config: "config (YAML loading)"
+  domain: "domain (core types, stdlib only)"
+
+  engine -> store
+  engine -> backends
+  engine -> datasets
+  engine -> config
+  store -> domain
+  backends -> domain
+  datasets -> domain
+  datasets -> config
+  config -> domain
+}
+
+agent: "The agent" {
+  policies: "policies (scripted strategies)"
+  advisor: "advisor (pure functions over a snapshot)"
+
+  policies -> advisor
+}
+
+eval: "eval (offline evaluation)"
+
+agent.policies -> world.domain
+agent.advisor -> world.domain
+agent.advisor -> world.datasets
+eval -> world.engine { style.stroke-dash: 4 }
+eval -> agent.policies { style.stroke-dash: 4 }
+```
+
 The split is not cosmetic: `tests/test_import_boundaries.py` fails the build
 if a package imports outside its lane.
 
@@ -77,7 +106,7 @@ every mutation as one transaction, and batches only ever move forward:
 **append-only event log**. `build_replay_campaign` replays that log to
 reconstruct the replay backend's exact state, so a process that is killed mid
 campaign picks up where it stopped and ends in *exactly* the same state as an
-uninterrupted run (tested for delay 0 and delay 2).
+uninterrupted run (verified for delay 0 and delay 2).
 
 # The leak rules
 
@@ -89,9 +118,9 @@ independent layers enforce this:
    serves an outcome only via `submit` + `poll` after its delay; there is no
    bulk accessor to leak through.
 3. **Guards** — `load_outcomes` refuses to read the held-out split outside the
-   final run (`HeldOutAccessError`), and the ladder refuses held-out games with
-   `ValueError`. Real ids never appear in state or in any file the store
-   writes: agents see `d0001`-style aliases.
+   final run (`HeldOutAccessError`), and the evaluation runner refuses
+   held-out games with `ValueError`. Real ids never appear in state or in any
+   file the store writes: agents see `d0001`-style aliases.
 
 # Determinism
 
@@ -99,4 +128,4 @@ No global random state, no `hash()` of strings, no dependence on dict or set
 ordering for output. Randomness comes only from a seeded
 `numpy.random.Generator` that is passed in (`make_rng(seed, round)`), so the
 same state and the same seed always produce the same batch — which is what
-makes 100-seed ladder tables reproducible.
+makes 100-seed evaluation tables reproducible.

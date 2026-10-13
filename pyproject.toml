@@ -20,8 +20,11 @@ dependencies = [
 eval = ["openai>=1.30"]
 dev = ["pytest>=8", "ruff>=0.5"]
 # documentation site: `uv sync --extra docs`, then `great-docs init` / `great-docs build`
-# (great-docs also needs Quarto installed system-wide: https://quarto.org)
-docs = ["great-docs>=0.17"]
+# (great-docs also needs Quarto installed system-wide: https://quarto.org,
+#  and the `d2` binary for diagrams: https://d2lang.com)
+# Pinned to git main: D2 diagram support is documented but not yet in a PyPI
+# release (0.17.0 lacks it). Switch back to "great-docs>=0.18" once released.
+docs = ["great-docs @ git+https://github.com/posit-dev/great-docs"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
