@@ -259,11 +259,15 @@ rules evaluated at every round boundary regardless of the wrapper):
 
 **Still open:**
 
-* Replace the table in section 2.4 of the spec (project document, outside this
-  repo) with the new ladder, and section 3.5 with the `low_yield`-only default.
-* Send the pack author: `make test`, `reports/ladder.md`, the `reproduce_legacy`
-  table, `config/features.yaml`, `notes/week0/llm_smoke.txt` — that triggers the
-  phase-6 pack (MCP server + CLI).
-* `spec/openapi.prod.json` is still not pinned (T04 skip; needs the published
-  Adaptyv API spec), a prerequisite for the phase-10 live backend.
+* ~~Replace the table in section 2.4 of the spec~~ — paste-ready replacement
+  written: `docs/spec-updates.md` (sections 2.4 and 3.5; the project document
+  itself lives outside this repo and still needs the paste).
+* ~~Send the pack author the T20 outputs~~ — the bundle is assembled in
+  `docs/phase6-handoff.md` (make test, ladder tables, legacy table,
+  features.yaml, llm_smoke.txt); sending it triggers the phase-6 pack
+  (MCP server + CLI).
+* ~~Pin `spec/openapi.prod.json`~~ — done 2026-10-13: fetched from
+  `https://devs.adaptyvbio.com/api/v1/openapi.json` (openapi 3.1.0,
+  info.version 0.0.2), pinned in `spec/openapi.sha256`, the T04 test
+  un-skipped (484 passed, 0 skipped); phase 10 unblocked.
 * Whether to add the extra reviewed features (section 1) as a second experiment.
