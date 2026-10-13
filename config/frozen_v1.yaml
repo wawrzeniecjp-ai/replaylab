@@ -1,0 +1,20 @@
+# The configuration frozen for the final evaluation (task T20, step 3).
+#
+# Chosen on N-dev only, 100 seeds, mean hits (docs/design-notes.md section 4):
+#   solver:        lbfgs 18.18 vs liblinear 15.67 (learner); lbfgs wins by 2.5
+#                  hits (> 2) and is the simpler default. For learner_sim the
+#                  difference was 0.8 (< 2), also favouring the simpler lbfgs.
+#   class_weight:  None 18.18 vs balanced 18.02 (learner, diff 0.16 < 2), and
+#                  None 14.52 vs balanced 15.21 (learner_sim, diff 0.69 < 2);
+#                  the rule is to prefer the simpler setting, so None.
+# Both winners are the library defaults, so frozen_v1 == the defaults today.
+#
+# stop_rules below equal advisor/stop.py's constants; load_frozen refuses any
+# other value, because the stop rules are not configurable in the library yet.
+version: 1
+policies:
+  learner: {C: 0.1, solver: lbfgs, class_weight: null, eps: 0.2, min_hits: 2, min_purchases: 8}
+  learner_sim: {w: 0.5}
+stop_rules:
+  low_yield: {min_purchases: 20, floor: 0.03}
+  decay: {window: 15, drop: 0.05}

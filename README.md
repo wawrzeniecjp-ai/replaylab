@@ -20,11 +20,12 @@ src/replaylab/
   engine/     campaign rules (clock, submit/settle/wait), scoring, replay wiring
   advisor/    preprocessing, logistic model, similarity index, rate/stop rules
   policies/   scripted ladder: random, fixed metric, learner, learner_sim (+stop)
-  eval/       LLM smoke test
+  eval/       LLM smoke test, and the ladder runner (run every scripted policy
+              on every game for many seeds)
   spec_pin.py OpenAPI spec pin
 data/         thin CLIs: build_tables, build_clusters, build_folds, feature_review,
               author_checks
-scripts/      pin_spec.py, smoke_llm.py
+scripts/      pin_spec.py, smoke_llm.py, run_ladder.py, reproduce_legacy.py
 tests/        one test file per module + import-boundary guard
 ```
 
@@ -45,6 +46,11 @@ python data/build_tables.py --csv data/raw/proteinbase.csv --check   # expect 15
 python data/build_clusters.py --check                                # cluster summary check
 python data/build_folds.py                                           # writes the frozen split
 pytest -m data -q                                                    # real-data checks
+
+# the evaluation harness (task T20):
+python scripts/run_ladder.py                                         # reports/ladder.{csv,md}
+python scripts/reproduce_legacy.py                                    # checks the exploratory numbers
+cat docs/design-notes.md                                             # why every number is what it is
 ```
 
 `--check` prints `OK` or `DIFF` per line; add `--strict` to exit non-zero on any difference.
