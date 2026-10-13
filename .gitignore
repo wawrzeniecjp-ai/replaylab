@@ -22,3 +22,5 @@ __pycache__/
 
 # great-docs build output (ephemeral; great-docs.yml is committed)
 great-docs/
+.great-docs-cache/
+_freeze/
