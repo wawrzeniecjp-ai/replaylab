@@ -96,6 +96,7 @@ def parse_feature_config(data: Any) -> dict[str, FeatureConfig]:
 
 
 def load_feature_config(path: Path | str) -> dict[str, FeatureConfig]:
+    """Read ``config/features.yaml`` and return one FeatureConfig per target."""
     return parse_feature_config(_read_yaml(path))
 
 
@@ -144,6 +145,13 @@ class GameConfig:
     def to_campaign_config(
         self, features: Iterable[str] = (), seed: int = 0, mode: str = "replay"
     ) -> CampaignConfig:
+        """Turn this game into the CampaignConfig the engine consumes.
+
+        Args:
+            features: the visible feature names (from the feature config).
+            seed: the episode seed; it also decides the aliases (D4).
+            mode: ``replay`` against recorded outcomes, or ``live``.
+        """
         return CampaignConfig(
             name=self.id,
             target=self.target,
@@ -158,6 +166,8 @@ class GameConfig:
 
 
 def parse_games(data: Any) -> dict[str, GameConfig]:
+    """Validate the parsed contents of ``config/games.yaml`` (see
+    :class:`GameConfig` for the rules each entry must satisfy)."""
     _check_keys(data, {"version", "games"}, set(), "games config")
     _check_version(data, "games config")
     games = data["games"]
@@ -186,4 +196,5 @@ def parse_games(data: Any) -> dict[str, GameConfig]:
 
 
 def load_games(path: Path | str) -> dict[str, GameConfig]:
+    """Read ``config/games.yaml`` and return one GameConfig per game id."""
     return parse_games(_read_yaml(path))

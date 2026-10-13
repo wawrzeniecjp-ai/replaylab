@@ -29,19 +29,36 @@ class DuplicateSubmissionError(BackendError):
 
 @dataclass(frozen=True)
 class SubmissionHandle:
+    """The backend's receipt for one submission: its reference and the batch."""
+
     backend_ref: str
     batch_id: str
 
 
 @dataclass(frozen=True)
 class PollResult:
+    """What one ``poll`` returns: the batch's status and every outcome that
+    has arrived for it so far (cumulative, in batch order -- decision D3)."""
+
     status: BatchStatus  # submitted, partial or complete
     delivered: tuple[Outcome, ...]  # cumulative, in batch order
 
 
 class LabBackend(Protocol):
-    def submit(self, batch: Batch) -> SubmissionHandle: ...
+    """What any lab (or the replay harness) must implement to serve outcomes.
 
-    def poll(self, handle: SubmissionHandle) -> PollResult: ...
+    Deliberately tiny: there is no bulk accessor, so the only way to learn an
+    outcome is to submit its design and poll afterwards.
+    """
 
-    def advance(self) -> None: ...
+    def submit(self, batch: Batch) -> SubmissionHandle:
+        """Accept a batch for measurement; returns its handle."""
+        ...
+
+    def poll(self, handle: SubmissionHandle) -> PollResult:
+        """Everything delivered so far for this submission (cumulative)."""
+        ...
+
+    def advance(self) -> None:
+        """Move simulated time forward one round; a no-op for a live backend."""
+        ...

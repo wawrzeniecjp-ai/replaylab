@@ -22,6 +22,12 @@ from replaylab.domain.types import CampaignState, Design
 
 @dataclass(frozen=True)
 class ModelConfig:
+    """Logistic-regression hyper-parameters and the data that gates fitting.
+
+    The defaults are the ones frozen in ``config/frozen_v1.yaml`` (chosen on
+    N-dev only; see docs/design-notes.md section 4).
+    """
+
     C: float = 0.1
     solver: str = "lbfgs"
     class_weight: str | None = None
@@ -32,12 +38,23 @@ class ModelConfig:
 
 @dataclass(frozen=True)
 class InsufficientData:
+    """Returned instead of a model when the delivered data cannot support a fit
+    (below ``min_hits`` or ``min_purchases``, or only one class present).
+    Callers fall back to a fixed metric."""
+
     n_purchases: int
     n_hits: int
 
 
 @dataclass(frozen=True)
 class FittedModel:
+    """A fitted logistic model over the preprocessor's columns.
+
+    ``score`` gives P(hit) per design, ``log_odds`` the raw decision function,
+    and ``top_weights`` which columns drive the prediction -- useful for
+    understanding *why* the learner bought something.
+    """
+
     columns: tuple[str, ...]
     coef: tuple[float, ...]
     intercept: float
@@ -53,6 +70,7 @@ class FittedModel:
         return self._estimator.predict_proba(matrix)[:, 1]
 
     def log_odds(self, designs: Iterable[Design]) -> np.ndarray:
+        """Decision-function value (log-odds of a hit) per design, in order."""
         return self._estimator.decision_function(self.preprocessor.transform(designs))
 
     def top_weights(self, n: int = 5) -> list[tuple[str, float]]:
@@ -66,6 +84,21 @@ def fit_model(
     preprocessor: Preprocessor,
     config: ModelConfig = ModelConfig(),  # noqa: B008 - frozen dataclass
 ) -> FittedModel | InsufficientData:
+    """Fit the logistic model on the *delivered* purchases of a campaign.
+
+    Pending designs are never fitted on (their outcomes are not known), and
+    inconclusive results (``hit is None``) are excluded from the labels (D6).
+
+    Args:
+        state: the campaign snapshot; only ``state.outcomes`` is used.
+        preprocessor: fitted on the pool, applied to the delivered rows.
+        config: hyper-parameters and the ``min_hits``/``min_purchases`` gate.
+
+    Returns:
+        The fitted model, or :class:`InsufficientData` when the gate fails --
+        a return value rather than an exception, because callers are expected
+        to fall back rather than crash.
+    """
     n_purchases, n_hits = len(state.outcomes), state.n_hits
     conclusive = [(d, o.hit) for d, o in state.outcomes.items() if o.hit is not None]
     labels = {hit for _, hit in conclusive}

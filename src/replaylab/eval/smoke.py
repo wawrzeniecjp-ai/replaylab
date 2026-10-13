@@ -39,12 +39,19 @@ REASONING_FIELDS = ("reasoning_content", "reasoning")
 
 @dataclass(frozen=True)
 class ProbeResult:
+    """One capability probe's outcome: pass/fail plus a detail line."""
+
     ok: bool
     detail: str = ""
 
 
 @dataclass
 class SmokeReport:
+    """Everything the smoke test observed about an OpenAI-compatible
+    endpoint: the model listing, the tool-call round trip, where reasoning
+    text came back, token use, and the capability probes (temperature,
+    seed, tool_choice)."""
+
     model: str
     available_models: list[str] = field(default_factory=list)
     tool_call_ok: bool = False
@@ -69,6 +76,13 @@ def _try(client: Any, **kwargs: Any) -> tuple[Any, ProbeResult]:
 
 
 def run_smoke(client: Any, model: str) -> SmokeReport:
+    """Run the probe sequence against ``client`` and collect a SmokeReport.
+
+    The sequence: list available models, do a tool-call round trip (without
+    and with reasoning content), then probe temperature, seed and
+    tool_choice support. Each step records itself in the report so one
+    failure does not hide the rest.
+    """
     report = SmokeReport(model=model)
     try:
         listing = client.models.list()
@@ -165,6 +179,8 @@ def _status(probe: ProbeResult | None) -> str:
 
 
 def format_report(report: SmokeReport) -> str:
+    """Render a SmokeReport as the fixed-width text written to
+    ``notes/week0/llm_smoke.txt``."""
     needed = passback_needed(report)
     shown = ", ".join(report.available_models[:20])
     lines = [

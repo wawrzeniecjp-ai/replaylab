@@ -19,6 +19,11 @@ class ScoringContext:
 
 @dataclass(frozen=True)
 class ScoreCard:
+    """The result of one finished campaign: hits, what was spent, the
+    cumulative hit curve in purchase order, family diversity and when it
+    ended. ``net_value`` and ``regret`` support the usual buy-vs-stop
+    analyses at any hit-to-cost ``ratio``."""
+
     hits: int
     purchases: int
     curve: tuple[int, ...]  # cumulative hits after each purchase, in purchase order
@@ -41,6 +46,22 @@ class ScoreCard:
 def score(
     state: CampaignState, *, stopped: bool, context: ScoringContext | None = None
 ) -> ScoreCard:
+    """Turn a settled campaign into a :class:`ScoreCard`.
+
+    Purchase order is batch order, then position inside the batch (D9), so
+    the curve shows what an early stop would have been worth.
+
+    Args:
+        state: the final campaign snapshot.
+        stopped: whether the campaign was stopped (decides ``stopped_early``).
+        context: hidden cluster ids for ``distinct_families``; pass ``None``
+            for pools the cluster table does not cover (families are then
+            ``None`` rather than an error).
+
+    Raises:
+        ScoringError: designs are still pending, or a hit has no cluster
+            while a context was given.
+    """
     if state.pending_ids:
         raise ScoringError("cannot score while designs are pending; call settle() first")
     curve: list[int] = []

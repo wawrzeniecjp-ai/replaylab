@@ -62,6 +62,10 @@ _ALLOWED_TRANSITIONS = {
 
 @dataclass(frozen=True)
 class Event:
+    """One row of a campaign's append-only event log: what happened, when
+    (UTC), and the payload that the event kind defines. Replaying this log
+    is what restores a backend after a crash (kill-and-resume)."""
+
     id: int
     campaign_id: int
     ts: str
@@ -71,6 +75,10 @@ class Event:
 
 @dataclass(frozen=True)
 class Prediction:
+    """A recorded buy prediction: which round and batch, the predicted hit
+    rate, which model predicted it, and when -- kept for the later
+    calibration analysis."""
+
     round: int
     batch_id: str | None
     predicted_rate: float
@@ -99,6 +107,11 @@ class CampaignStore:
     def open(
         cls, path: Path | str = ":memory:", *, clock: Callable[[], str] | None = None
     ) -> CampaignStore:
+        """Open (or create) the SQLite store at ``path`` (``":memory:"`` for a
+        throwaway), creating or migrating the schema as needed. ``clock``
+        injects the timestamp source; scripts leave it alone and tests pass
+        a fixed one.
+        """
         conn = sqlite3.connect(str(path))
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys = ON")
@@ -113,6 +126,7 @@ class CampaignStore:
         return cls(conn, clock or _utc_now)
 
     def close(self) -> None:
+        """Close the database connection (prefer the context manager)."""
         self._conn.close()
 
     def __enter__(self) -> CampaignStore:
@@ -123,6 +137,7 @@ class CampaignStore:
 
     @property
     def schema_version(self) -> int:
+        """The store's schema version (0 for an empty file)."""
         return current_version(self._conn)
 
     # --- helpers -------------------------------------------------------------
@@ -164,6 +179,7 @@ class CampaignStore:
     # --- campaigns -----------------------------------------------------------
 
     def create_campaign(self, config: CampaignConfig) -> int:
+        """Insert a campaign row (clock 0, empty log) and return its id."""
         with self._conn:
             cursor = self._conn.execute(
                 "INSERT INTO campaigns (name, target, mode, config_json, clock, created_at) "
@@ -179,9 +195,16 @@ class CampaignStore:
         return campaign_id
 
     def campaign_ids(self) -> list[int]:
+        """Every campaign id in the store, ascending (build_replay_campaign
+        uses the first one to decide create-vs-resume)."""
         return [int(r["id"]) for r in self._conn.execute("SELECT id FROM campaigns ORDER BY id")]
 
     def get_config(self, campaign_id: int) -> CampaignConfig:
+        """The stored CampaignConfig.
+
+        Raises:
+            UnknownCampaign: if the id is not in the store.
+        """
         row = self._conn.execute(
             "SELECT config_json FROM campaigns WHERE id = ?", (campaign_id,)
         ).fetchone()
@@ -192,6 +215,7 @@ class CampaignStore:
         return CampaignConfig(**data)
 
     def get_clock(self, campaign_id: int) -> int:
+        """The campaign's stored clock (elapsed rounds)."""
         row = self._conn.execute(
             "SELECT clock FROM campaigns WHERE id = ?", (campaign_id,)
         ).fetchone()
@@ -275,6 +299,8 @@ class CampaignStore:
     # --- batches -------------------------------------------------------------
 
     def record_batch(self, campaign_id: int, batch: Batch) -> None:
+        """Record a newly proposed batch (nothing spent yet); the batch id
+        must be free."""
         with self._conn:
             self._require_campaign(campaign_id)
             exists = self._conn.execute(
@@ -323,6 +349,10 @@ class CampaignStore:
         status: BatchStatus,
         backend_ref: str | None = None,
     ) -> None:
+        """Move a batch forward to ``status`` (proposed -> submitted ->
+        partial -> complete). A backward move raises InvalidTransition; the
+        same status is a no-op that may still fill in ``backend_ref``.
+        """
         with self._conn:
             row = self._batch_row(campaign_id, batch_id)
             current = BatchStatus(row["status"])
@@ -355,6 +385,8 @@ class CampaignStore:
             )
 
     def discard_batch(self, campaign_id: int, batch_id: str) -> None:
+        """Remove a batch that is still ``proposed`` (a rejected proposal);
+        anything that left the process raises InvalidTransition."""
         with self._conn:
             row = self._batch_row(campaign_id, batch_id)
             if BatchStatus(row["status"]) is not BatchStatus.PROPOSED:
@@ -446,6 +478,8 @@ class CampaignStore:
         model: str,
         batch_id: str | None = None,
     ) -> None:
+        """Store a predicted hit rate for a round (rate in [0, 1], round
+        1-indexed) for the later calibration analysis."""
         if not 0.0 <= predicted_rate <= 1.0:
             raise StoreError("predicted_rate must be between 0 and 1")
         if round < 1:
@@ -464,6 +498,7 @@ class CampaignStore:
             )
 
     def predictions(self, campaign_id: int) -> list[Prediction]:
+        """Every recorded prediction of a campaign, in creation order."""
         rows = self._conn.execute(
             "SELECT * FROM predictions WHERE campaign_id = ? ORDER BY id", (campaign_id,)
         ).fetchall()
@@ -475,6 +510,11 @@ class CampaignStore:
     # --- events ----------------------------------------------------------------
 
     def append_event(self, campaign_id: int, kind: str, payload: Mapping[str, Any]) -> int:
+        """Append one event to the campaign's append-only log; returns its id.
+
+        The log is what restore replays, so event kinds are part of the
+        store's contract (``submission_clock``, ``campaign_stopped``, ...).
+        """
         if not kind:
             raise StoreError("event kind must be non-empty")
         with self._conn:
@@ -482,6 +522,7 @@ class CampaignStore:
             return self._event(campaign_id, kind, payload)
 
     def events(self, campaign_id: int) -> list[Event]:
+        """The campaign's events in insertion order (oldest first)."""
         rows = self._conn.execute(
             "SELECT * FROM events WHERE campaign_id = ? ORDER BY id", (campaign_id,)
         ).fetchall()

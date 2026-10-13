@@ -73,6 +73,7 @@ class Design:
 
     @property
     def length(self) -> int:
+        """Length of the amino-acid sequence, in residues."""
         return len(self.sequence)
 
 
@@ -101,6 +102,7 @@ class Outcome:
 
     @property
     def is_hit(self) -> bool:
+        """True only for a definite hit: an inconclusive result is not one."""
         return self.hit is True
 
 
@@ -198,10 +200,12 @@ class CampaignState:
 
     @property
     def delivered_ids(self) -> frozenset[DesignId]:
+        """Purchased designs whose outcome has already arrived."""
         return frozenset(self.outcomes)
 
     @property
     def pending_ids(self) -> frozenset[DesignId]:
+        """Purchased designs still waiting for their outcome."""
         return self.purchased_ids - self.delivered_ids
 
     @property
@@ -211,14 +215,17 @@ class CampaignState:
 
     @property
     def n_purchased(self) -> int:
+        """How many designs have been bought (delivered or pending)."""
         return len(self.purchased_ids)
 
     @property
     def n_hits(self) -> int:
+        """Hits among the delivered outcomes; pending designs never count."""
         return sum(1 for o in self.outcomes.values() if o.is_hit)
 
     @property
     def budget_remaining(self) -> int:
+        """Designs that can still be bought: budget minus purchases so far."""
         return self.config.budget - self.n_purchased
 
     @property

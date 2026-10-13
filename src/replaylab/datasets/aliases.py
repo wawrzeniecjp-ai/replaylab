@@ -31,6 +31,13 @@ class Aliaser:
 
     @classmethod
     def from_seed(cls, real_ids: Iterable[str], seed: int) -> Aliaser:
+        """Build the seed-dependent mapping (decision D4).
+
+        Real ids are sorted on ``sha256(f'{seed}|{id}')`` and assigned
+        ``d0001``, ``d0002``, ... in that order, so the result is identical
+        on every machine and Python version. Changing the seed reshuffles
+        every alias; the *set* of aliases does not change.
+        """
         ids = list(real_ids)
         if len(set(ids)) != len(ids):
             raise ValueError("real_ids must be unique")
@@ -39,12 +46,22 @@ class Aliaser:
         return cls({real: f"d{position:0{width}d}" for position, real in enumerate(ordered, 1)})
 
     def alias(self, real_id: str) -> str:
+        """Real design id -> alias.
+
+        Raises:
+            UnknownIdError: if the id is not part of this mapping.
+        """
         try:
             return self._real_to_alias[real_id]
         except KeyError:
             raise UnknownIdError(f"unknown design id {real_id!r}") from None
 
     def real(self, alias: str) -> str:
+        """Alias -> real design id (the inverse of :meth:`alias`).
+
+        Raises:
+            UnknownIdError: if the alias is not part of this mapping.
+        """
         try:
             return self._alias_to_real[alias]
         except KeyError:

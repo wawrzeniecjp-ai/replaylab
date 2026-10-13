@@ -31,6 +31,14 @@ _CONSTANT = 1e-12
 
 @dataclass(frozen=True)
 class Preprocessor:
+    """Fitted preprocessing for one pool: medians, orientation, standardizing
+    statistics and the one-hot classes -- everything needed to turn Designs
+    into the numeric matrix the model fits on.
+
+    Fit it once per pool (it never sees outcomes); see the module docstring
+    for the exact column layout.
+    """
+
     features: tuple[str, ...]  # configured features that are kept, in config order
     orientation: Mapping[str, float]
     medians: Mapping[str, float]  # raw (not oriented) pool medians
@@ -43,6 +51,13 @@ class Preprocessor:
 
     @classmethod
     def fit(cls, designs: Mapping[str, Design], feature_config: FeatureConfig) -> Preprocessor:
+        """Fit medians, means and standard deviations on the whole pool.
+
+        Only visible information is used (features, sequence length, class),
+        so what the preprocessor sees is exactly what an agent could query.
+        Columns with no variation (or no values at all) are dropped and
+        listed in ``dropped``.
+        """
         pool = list(designs.values())
         if not pool:
             raise ValueError("cannot fit a preprocessor on an empty pool")

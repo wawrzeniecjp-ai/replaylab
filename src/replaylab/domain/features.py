@@ -63,6 +63,8 @@ class FeatureConfig:
 
     @property
     def names(self) -> tuple[str, ...]:
+        """The feature names, in configuration order (the first is the
+        pre-registered ``first_column`` when it matches)."""
         return tuple(spec.name for spec in self.specs)
 
     @property
@@ -72,6 +74,7 @@ class FeatureConfig:
 
 
 def feature_names(specs: Iterable[FeatureSpec] = DEFAULT_FEATURES) -> tuple[str, ...]:
+    """The names of ``specs`` as a tuple, in order."""
     return tuple(spec.name for spec in specs)
 
 

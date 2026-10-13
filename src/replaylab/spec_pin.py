@@ -11,6 +11,7 @@ from pathlib import Path
 
 
 def sha256_file(path: Path | str) -> str:
+    """Hex sha256 digest of the file's raw bytes."""
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
@@ -39,4 +40,5 @@ def read_pin(pin_path: Path | str) -> str:
 
 
 def verify_pin(spec_path: Path | str, pin_path: Path | str) -> bool:
+    """True when the spec file still hashes to the pinned digest."""
     return sha256_file(spec_path) == read_pin(pin_path)

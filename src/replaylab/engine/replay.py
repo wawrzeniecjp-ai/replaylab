@@ -24,12 +24,17 @@ from replaylab.store import CampaignStore
 
 @dataclass
 class ReplayEnvironment:
+    """A game wired together: campaign, hidden scoring context, aliaser and
+    store. ``score()`` is the only place that combines a public state with
+    hidden information."""
+
     campaign: Campaign
     context: ScoringContext
     aliaser: Aliaser
     store: CampaignStore
 
     def score(self) -> ScoreCard:
+        """Score the campaign -- hidden information; never show to a policy."""
         return score(self.campaign.state(), stopped=self.campaign.stopped, context=self.context)
 
 
@@ -69,6 +74,26 @@ def build_replay_campaign(
     store_path: Path | str = ":memory:",
     final_run: bool = False,
 ) -> ReplayEnvironment:
+    """Wire one game from the processed tables.
+
+    Builds the pool and the hidden outcomes, aliases every id with the seed
+    (D4), starts a fresh campaign -- or, if ``store_path`` already holds one,
+    restores the backend from the event log and resumes it, so a killed
+    process picks up exactly where it stopped.
+
+    Args:
+        game: the game to play (target, split, budget, delay).
+        tables_dir: directory with designs.parquet / outcomes.parquet.
+        feature_config: visible features and their orientation.
+        seed: episode seed; decides aliases and is stored with the config.
+        folds_path: folds.csv, needed for dev/heldout splits.
+        clusters_path: clusters.csv, for distinct-family scoring.
+        store_path: SQLite path, or ``":memory:"`` for a throwaway store.
+        final_run: must be True to read the held-out split (D-guard).
+
+    Returns:
+        The environment: campaign plus the hidden scoring context.
+    """
     pool = load_pool(
         tables_dir, game, feature_config, folds_path=folds_path, clusters_path=clusters_path
     )

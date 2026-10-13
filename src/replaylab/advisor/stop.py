@@ -31,6 +31,9 @@ DECAY_DROP = 0.05
 
 @dataclass(frozen=True)
 class StopVerdict:
+    """One rule's answer: its name, whether it fired, and the numbers behind
+    the decision (kept in ``detail`` for reports and debugging)."""
+
     name: str
     fired: bool
     detail: dict[str, Any] = field(default_factory=dict)
@@ -38,6 +41,10 @@ class StopVerdict:
 
 @dataclass(frozen=True)
 class StopAdvice:
+    """Every stop rule evaluated at one round boundary, plus the aggregates
+    they were computed from. Advice only: nothing enforces it -- a policy
+    chooses whether to listen (see :class:`WithStop` in the policies)."""
+
     purchases: int
     hits: int
     cumulative_rate: float | None
@@ -53,6 +60,12 @@ def low_yield(
     min_purchases: int = LOW_YIELD_MIN_PURCHASES,
     floor: float = LOW_YIELD_FLOOR,
 ) -> StopVerdict:
+    """Fire when enough purchases have been delivered and the cumulative hit
+    rate is strictly below ``floor`` -- "this campaign is not producing".
+
+    Before ``min_purchases`` deliveries there is not enough evidence, so the
+    rule stays quiet (and the verdict's ``detail`` explains why).
+    """
     rate = n_hits / n_purchases if n_purchases else None
     fired = n_purchases >= min_purchases and rate is not None and rate < floor
     return StopVerdict(
@@ -98,6 +111,12 @@ def window_hits_at_boundaries(state: CampaignState, window: int = DECAY_WINDOW) 
 
 
 def stop_advice(state: CampaignState) -> StopAdvice:
+    """Evaluate every stop rule at the current round boundary.
+
+    Only delivered purchases count (pending outcomes are unknown), and the
+    rules come back as verdicts whether or not any policy wrapper listens to
+    them -- the ladder uses this to measure false-stop rates.
+    """
     n, hits = len(state.outcomes), state.n_hits
     windows = window_hits_at_boundaries(state)
     return StopAdvice(

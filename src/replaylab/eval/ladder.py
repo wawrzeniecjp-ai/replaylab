@@ -182,6 +182,7 @@ class PurchasedLearner(Learner):
     name: str = "learner_purchased"
 
     def choose(self, state: CampaignState, k: int, rng: np.random.Generator) -> list[str]:
+        """``Learner.choose`` with the delivered-row scaler (see :func:`purchased_scale`)."""
         return _scaled_choose(self, state, k, rng, purchased=True)
 
 
@@ -192,6 +193,7 @@ class PurchasedLearnerSim(LearnerSim):
     name: str = "learner_sim_purchased"
 
     def choose(self, state: CampaignState, k: int, rng: np.random.Generator) -> list[str]:
+        """``LearnerSim.choose`` with the delivered-row scaler."""
         return _scaled_choose(self, state, k, rng, purchased=True)
 
 
@@ -206,6 +208,13 @@ class FrozenConfig:
 
     @classmethod
     def from_dict(cls, data: Any, *, where: str = "frozen config") -> FrozenConfig:
+        """Parse a ``frozen_v1.yaml`` mapping into the typed configuration.
+
+        Raises:
+            ValueError: wrong version, or ``stop_rules`` that disagree with
+                the library's constants -- those rules are not configurable
+                yet, so silently accepting them would be a lie.
+        """
         if not isinstance(data, dict) or data.get("version") != 1:
             raise ValueError(f"{where}: expected a mapping with version: 1")
         policies = data.get("policies") or {}

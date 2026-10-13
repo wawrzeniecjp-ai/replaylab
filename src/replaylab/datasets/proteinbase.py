@@ -194,6 +194,14 @@ def load_raw(path: str | Path) -> pd.DataFrame:
 
 
 def validate_raw(raw: pd.DataFrame) -> pd.DataFrame:
+    """Check the raw export for what everything downstream relies on.
+
+    Returns the frame unchanged so calls can be chained. Duplicate ids are
+    rejected rather than dropped: they would silently corrupt every join.
+
+    Raises:
+        ValueError: missing columns, designs without an id, or duplicate ids.
+    """
     missing = [c for c in REQUIRED_COLUMNS if c not in raw.columns]
     if missing:
         raise ValueError(f"missing required columns: {missing}")
@@ -456,6 +464,9 @@ def compare_to_spec(report: dict[str, Any], expected: dict[str, int] | None = No
 
 @dataclass
 class Tables:
+    """The five outputs of :func:`build_all`: the designs, outcomes, targets
+    and evaluations-long tables, plus the build report (counts and checks)."""
+
     designs: pd.DataFrame
     outcomes: pd.DataFrame
     targets: pd.DataFrame

@@ -97,6 +97,8 @@ LATEST_VERSION = len(MIGRATIONS)
 
 
 def current_version(conn: sqlite3.Connection) -> int:
+    """The schema version recorded in the database; 0 for a fresh file
+    (no ``schema_version`` table yet)."""
     has_table = conn.execute(
         "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'schema_version'"
     ).fetchone()

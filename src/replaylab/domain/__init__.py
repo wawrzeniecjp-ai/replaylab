@@ -2,6 +2,7 @@
 
 from replaylab.domain.features import (
     DEFAULT_FEATURES,
+    FeatureConfig,
     FeatureSpec,
     feature_names,
     orientation_signs,

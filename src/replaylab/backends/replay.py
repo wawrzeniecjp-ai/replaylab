@@ -21,6 +21,10 @@ from replaylab.domain.types import Batch, BatchStatus, Outcome
 
 
 class ReplayBackend:
+    """Replay implementation of LabBackend over recorded outcomes: a
+    submission's outcome becomes visible only when the clock reaches
+    submission + delay (see the module docstring for the leak rules)."""
+
     def __init__(self, outcomes: Mapping[str, Outcome], *, delay_rounds: int = 0) -> None:
         if delay_rounds < 0:
             raise ValueError("delay_rounds cannot be negative")
@@ -35,13 +39,22 @@ class ReplayBackend:
 
     @property
     def delay_rounds(self) -> int:
+        """The configured feedback delay, in rounds."""
         return self._delay
 
     @property
     def clock(self) -> int:
+        """Current simulated round, advanced by :meth:`advance`."""
         return self._clock
 
     def submit(self, batch: Batch) -> SubmissionHandle:
+        """Accept a batch and remember when it was submitted.
+
+        Raises:
+            UnknownDesignError: an id has no recorded outcome.
+            DuplicateSubmissionError: an id was submitted before (by D9,
+                every design is bought at most once).
+        """
         unknown = [d for d in batch.design_ids if d not in self._outcomes]
         if unknown:
             raise UnknownDesignError(f"unknown design(s): {unknown[:3]}")
@@ -54,6 +67,8 @@ class ReplayBackend:
         return SubmissionHandle(backend_ref=reference, batch_id=batch.batch_id)
 
     def poll(self, handle: SubmissionHandle) -> PollResult:
+        """Cumulative (D3): COMPLETE with every outcome once the clock has
+        reached submission + delay, otherwise SUBMITTED with nothing yet."""
         if handle.backend_ref not in self._submissions:
             raise BackendError(f"unknown submission {handle.backend_ref!r}")
         submitted_at, design_ids = self._submissions[handle.backend_ref]
@@ -62,4 +77,5 @@ class ReplayBackend:
         return PollResult(BatchStatus.SUBMITTED, ())
 
     def advance(self) -> None:
+        """Tick the simulated clock by one round."""
         self._clock += 1

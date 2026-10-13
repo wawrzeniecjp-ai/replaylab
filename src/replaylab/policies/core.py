@@ -33,9 +33,18 @@ def make_rng(seed: int, round_index: int) -> np.random.Generator:
 
 
 class Policy(Protocol):
+    """What every scripted strategy looks like: a name and a buy decision.
+
+    Implementations only ever receive a :class:`CampaignState` snapshot and
+    a seeded generator, so they cannot write anything and cannot see
+    outcomes they have not bought (enforced by the import-boundary test).
+    """
+
     name: str
 
-    def choose(self, state: CampaignState, k: int, rng: np.random.Generator) -> list[str]: ...
+    def choose(self, state: CampaignState, k: int, rng: np.random.Generator) -> list[str]:
+        """Return up to ``k`` unpurchased design ids, or ``[]`` to mean stop."""
+        ...
 
 
 def _available(state: CampaignState, k: int) -> tuple[list[str], int]:
@@ -58,9 +67,13 @@ def _top_and_explore(
 
 @dataclass(frozen=True)
 class RandomPolicy:
+    """Buy ``k`` unpurchased designs uniformly at random -- the baseline
+    every other policy has to beat (it scores the pool's base rate)."""
+
     name: str = "random"
 
     def choose(self, state: CampaignState, k: int, rng: np.random.Generator) -> list[str]:
+        """A uniform sample without replacement, returned in pool order."""
         available, k = _available(state, k)
         if k == 0:
             return []
@@ -81,6 +94,8 @@ class FixedMetric:
         object.__setattr__(self, "name", f"fixed:{self.column}")
 
     def choose(self, state: CampaignState, k: int, rng: np.random.Generator) -> list[str]:
+        """The top ``k`` by this metric (direction from ``higher_is_better``),
+        ties broken by design id; designs without a value come last."""
         available, k = _available(state, k)
         sign = -1.0 if self.higher_is_better else 1.0
 
@@ -114,6 +129,10 @@ class Learner:
         return model_scores
 
     def choose(self, state: CampaignState, k: int, rng: np.random.Generator) -> list[str]:
+        """Model scores when there is enough delivered data to fit, otherwise
+        fall back to the pre-registered ``first_column``. The top
+        ``floor((1 - eps) * k)`` go by score, the rest uniformly at random.
+        """
         available, k = _available(state, k)
         if k == 0:
             return []
@@ -158,9 +177,13 @@ class WithStop:
 
     @property
     def name(self) -> str:
+        """The wrapped policy's name with ``+stop`` appended."""
         return f"{self.policy.name}+stop"
 
     def choose(self, state: CampaignState, k: int, rng: np.random.Generator) -> list[str]:
+        """``[]`` (stop) as soon as one of the named rules fires; otherwise
+        delegate to the wrapped policy. ``low_yield`` only by default -- see
+        the class docstring for why ``decay`` was dropped."""
         for verdict in stop_advice(state).rules:
             if verdict.fired and verdict.name in self.rules:
                 return []

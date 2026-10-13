@@ -36,6 +36,11 @@ REASON_LEAK = "missingness is associated with the label"
 
 @dataclass(frozen=True)
 class MetricReview:
+    """The review of one numeric metric on one target: coverage, the hit
+    rates with and without a value, the missingness AUC, and the resulting
+    include/exclude decision with its reason (see the module docstring for
+    the rules)."""
+
     target: str
     metric: str
     n_designs: int
@@ -155,6 +160,13 @@ def render_markdown(
     max_rate_gap: float = DEFAULT_MAX_RATE_GAP,
     min_group: int = DEFAULT_MIN_GROUP,
 ) -> str:
+    """Render the numeric reviews and the non-numeric inventory as the
+    markdown report written to ``notes/week0/feature_review.md``.
+
+    The thresholds (``min_coverage``, ``max_rate_gap``, ``min_group``) are
+    echoed in the report header so a reader can see which rules produced
+    each decision.
+    """
     lines = [
         f"# Feature review: {target}",
         "",

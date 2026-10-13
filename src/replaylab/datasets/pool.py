@@ -32,6 +32,13 @@ class HeldOutAccessError(PermissionError):
 
 @dataclass(frozen=True)
 class Pool:
+    """One game's candidate designs, keyed by *real* id.
+
+    Everything an agent may see is in ``designs`` (visible features only,
+    raw orientation per D7); ``clusters`` and the outcomes stay hidden until
+    scoring or purchase.
+    """
+
     game: GameConfig
     designs: Mapping[str, Design]  # real id -> Design, sorted by real id
     clusters: Mapping[str, int]  # real id -> cluster id (hidden); empty if no file given
@@ -72,6 +79,27 @@ def load_pool(
     folds_path: Path | str | None = None,
     clusters_path: Path | str | None = None,
 ) -> Pool:
+    """Load the candidate designs of a game from the processed tables.
+
+    The pool is every design of the game's target, restricted to the split
+    (``all`` keeps everything; ``dev``/``heldout`` follow ``folds_path``).
+    Only *visible* feature columns are kept, missing values are dropped, and
+    feature values stay raw (D7: orientation is applied later, in the
+    advisor).
+
+    Args:
+        tables_dir: directory holding designs.parquet / outcomes.parquet.
+        game: which target, split and budget to build the pool for.
+        feature_config: which columns are visible and their orientation.
+        folds_path: folds.csv; required unless the split is ``all``.
+        clusters_path: clusters.csv; required to expose cluster ids. A
+            target absent from the file (the small stop-game targets)
+            raises here -- pass ``None`` to play without cluster ids.
+
+    Raises:
+        ValueError: unknown feature columns, a split without folds, or
+            designs missing from the tables or the cluster file.
+    """
     tables_dir = Path(tables_dir)
     designs = pd.read_parquet(tables_dir / "designs.parquet")
     outcomes = pd.read_parquet(tables_dir / "outcomes.parquet", columns=["design_id", "target"])

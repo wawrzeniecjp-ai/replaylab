@@ -50,6 +50,9 @@ _SETTLE_LIMIT = 10_000
 
 @dataclass(frozen=True)
 class SubmitResult:
+    """What one ``submit`` did: the batch's new status, the outcomes that
+    arrived during the call (in arrival order), and the rounds left."""
+
     batch_id: str
     status: BatchStatus
     delivered: tuple[Outcome, ...]  # outcomes that arrived during this call, in arrival order
@@ -57,6 +60,13 @@ class SubmitResult:
 
 
 class Campaign:
+    """One campaign: the rules of the game over a store and a backend.
+
+    Nothing here is random and nothing here decides *what* to buy -- it only
+    enforces the rules (validation order in the module docstring) and records
+    every mutation durably, which is what makes kill-and-resume work.
+    """
+
     def __init__(self, store: CampaignStore, backend: LabBackend, campaign_id: int) -> None:
         self._store = store
         self._backend = backend
@@ -73,6 +83,11 @@ class Campaign:
         store: CampaignStore,
         backend: LabBackend,
     ) -> Campaign:
+        """Create a campaign from scratch (no stored campaign yet).
+
+        Raises:
+            EngineError: if the backend's delay disagrees with the config.
+        """
         delay = getattr(backend, "delay_rounds", None)
         if delay is not None and delay != config.delay_rounds:
             raise EngineError(
@@ -85,6 +100,10 @@ class Campaign:
 
     @classmethod
     def resume(cls, store: CampaignStore, backend: LabBackend, campaign_id: int) -> Campaign:
+        """Re-attach to a stored campaign; pending batches re-register their
+        backend handles. The caller must have restored the backend first
+        (see :func:`replaylab.engine.replay.restore_backend`).
+        """
         campaign = cls(store, backend, campaign_id)
         for batch in store.snapshot(campaign_id).batches:
             if batch.status in _PENDING:
@@ -99,17 +118,21 @@ class Campaign:
 
     @property
     def campaign_id(self) -> int:
+        """The store's id for this campaign."""
         return self._cid
 
     @property
     def config(self) -> CampaignConfig:
+        """The campaign's static configuration, as stored."""
         return self._store.get_config(self._cid)
 
     @property
     def stopped(self) -> bool:
+        """True once a ``campaign_stopped`` event exists (stop is one-way)."""
         return any(e.kind == "campaign_stopped" for e in self._store.events(self._cid))
 
     def state(self) -> CampaignState:
+        """An immutable snapshot of the campaign right now."""
         return self._store.snapshot(self._cid)
 
     def is_finished(self) -> bool:
@@ -174,6 +197,13 @@ class Campaign:
         return batch
 
     def submit(self, design_ids: Sequence[str]) -> SubmitResult:
+        """Buy a batch: validate, hand it to the backend, ingest what is
+        ready, then tick the clock once and ingest again (decision D1).
+
+        Validation runs in a fixed order and the first failure raises:
+        stopped, no rounds left, empty, too large, duplicates, unknown,
+        already purchased, over budget.
+        """
         state = self.state()
         self._validate(state, design_ids, submitting=True)
         ids = tuple(design_ids)
@@ -223,6 +253,11 @@ class Campaign:
         raise EngineError("settle did not converge")
 
     def stop(self, reason: str) -> None:
+        """End buying for good (recorded as an event, with the reason).
+
+        Waiting and settling still work afterwards, so pending deliveries
+        can finish arriving.
+        """
         if not self.stopped:
             self._store.append_event(self._cid, "campaign_stopped", {"reason": reason})
 

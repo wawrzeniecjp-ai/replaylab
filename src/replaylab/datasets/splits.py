@@ -29,6 +29,10 @@ class NoBalancedSplit(RuntimeError):
 
 @dataclass(frozen=True)
 class FoldSelection:
+    """The balanced fold assignment that was chosen: which candidate seed
+    won, the fold index per row, and the per-fold sizes and hit counts that
+    satisfied the balance rule."""
+
     seed: int
     folds: np.ndarray  # fold index per row, in input order
     sizes: tuple[int, ...]

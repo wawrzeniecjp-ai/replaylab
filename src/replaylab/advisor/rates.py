@@ -19,6 +19,10 @@ NO_CLASS = "(none)"
 
 @dataclass(frozen=True)
 class RateEstimate:
+    """Beta-posterior summary of a hit rate: posterior mean, the 5th-95th
+    percentile interval, and the posterior parameters themselves so further
+    questions (``p_above``) need no recomputation."""
+
     n: int
     hits: int
     mean: float
@@ -34,12 +38,19 @@ class RateEstimate:
 
 @dataclass(frozen=True)
 class GroupEstimate:
+    """One group's estimate plus ``low_n``: fewer than ``LOW_N`` delivered
+    purchases, so treat the group's numbers as indicative only."""
+
     estimate: RateEstimate
     low_n: bool
 
 
 @dataclass(frozen=True)
 class HitRateReport:
+    """The hit-rate view of a campaign: the overall posterior estimate,
+    optionally the probability of beating a threshold, and optionally a
+    per-``design_class`` breakdown."""
+
     overall: RateEstimate
     p_above_threshold: float | None
     groups: dict[str, GroupEstimate]
