@@ -161,34 +161,60 @@ Scaling comparison (same legacy script, both scalers, 100 seeds):
   the library keeps its pool-wide default (already the library behaviour).
 * For `learner_sim`, purchased-row scaling wins by **6.27 hits -- more than 2**,
   so per the card the library must **not** be changed without asking first.
-  This is an open question for the author (see section 7): the ladder in section 6
-  was run with the library's pool-wide scaling, so its `learner_sim` rows are
-  the conservative ones.
+  Asked and decided 2026-10-13 (section 7): keep the library pool-wide and
+  track both variants in the ladder, so the `learner_sim` rows in section 6
+  (pool-wide) and the `learner_sim_purchased` rows are compared side by side
+  until the gap is explained.
 
 ## 6. The ladder (T20 step 1)
 
-`python scripts/run_ladder.py` (frozen config loaded): **9,200 rows** = 92
-(game, policy) pairs x 100 seeds, 11 games (all but `N-held`), ~21 minutes.
-Full tables: `reports/ladder.csv` and `reports/ladder.md`. Highlights:
+`python scripts/run_ladder.py` (frozen config loaded): **11,400 rows** = 114
+(game, policy) pairs x 100 seeds, 11 games (all but `N-held`), ~26 minutes.
+Full tables: `reports/ladder.csv` and `reports/ladder.md`. Highlights from
+ladder v2 -- after the two 2026-10-13 decisions (v1 numbers in parentheses):
 
 | game | best policy (mean hits) | worst policy (mean hits) |
 | --- | --- | --- |
-| N-dev | learner (18.2) | fixed:proteinmpnn_score (4.0) |
-| N-dev-delay2 | learner (17.3) | fixed:proteinmpnn_score (4.0) |
-| E | learner_sim (10.4) | learner_sim+stop (1.0) |
-| stop games (S-*) | ties (budget = pool size, all buy everything) | +stop variants can cut a round short |
+| N-dev | learner_sim_purchased (26.4) | fixed:proteinmpnn_score (4.0) |
+| N-dev-delay2 | learner_sim_purchased (25.1) | fixed:proteinmpnn_score (4.0) |
+| E | learner_sim (10.4, ties with its +stop) | learner(_sim)_purchased (4.5) |
+| stop games (S-*) | ties (budget = pool size, all buy everything) | +stop can only tie or stop early |
+
+**Stop rules after dropping `decay` (decision 2):** every `+stop` variant now
+scores *exactly* its unwrapped twin on every game -- on E, `learner_sim+stop`
+went from **1.0 (v1) to 10.4 (v2)**. `low_yield` fires only in the four zero-hit
+stop games, stopping at 20 of 30 purchases with zero hits lost: a pure saving.
+Nothing is given away anymore.
+
+**Scaling tracker (decision 1, both variants kept)** -- mean hits, pool-wide ->
+purchased-row:
+
+| game | learner | learner_sim |
+| --- | --- | --- |
+| N-dev | 18.2 -> 15.8 (-2.4) | 14.5 -> **26.4 (+11.9)** |
+| N-dev-delay2 | 17.3 -> 13.7 (-3.6) | 16.4 -> **25.1 (+8.7)** |
+| E | 7.4 -> 4.5 (-2.9) | 10.4 -> 4.5 (-5.9) |
+| legacy game (section 5) | 27.0 -> 25.9 (-1.1) | 32.2 -> **38.5 (+6.3)** |
+| stop games (S-*) | 0.0 (ties) | 0.0 (ties) |
+
+* The purchased-row boost **replicates on both nipah ladder games** (+11.9,
+  +8.7) and on the legacy game (+6.3): it is no longer a single-script artifact.
+* But it **reverses on E** (-5.9) and plain `learner` is mildly worse with
+  purchased scaling everywhere, so the picture is an interaction between the
+  scaler, the similarity fusion and nipah's 7-feature space -- precisely why
+  both variants stay tracked until that is explained.
+* Notably, purchased+sim (26.4) is the best policy on N-dev, beating plain
+  `learner` (18.2); the pooled scaler was what made `learner_sim` look weak
+  there in v1 (14.5).
 
 Observations:
 
 * `learner` and `learner_sim` beat every fixed metric on the two nipah games;
   the model + similarity machinery earns its keep there.
-* On E (egfr, 2 features) the `+stop` variants are catastrophic:
-  `learner_sim+stop` gets 1.0 hits vs 10.4 without the stop wrapper -- the stop
-  rules fire early and cut the campaign (see the false-stop table below).
 * The stop games have `budget == pool size`, so every non-stopping policy buys
-  the whole pool and ties at the pool's total hits; only `+stop` variants can do
-  worse (they buy less), never better. The games therefore measure stopping
-  behaviour, not ranking.
+  the whole pool and ties at the pool's total hits; only `+stop` variants can
+  stop early (now always without losing hits). The games therefore measure
+  stopping behaviour, not ranking.
 
 Stop-rule false-stop rates (second table in `reports/ladder.md`; N-dev, 100 seeds,
 rules evaluated at every round boundary regardless of the wrapper):
@@ -204,22 +230,37 @@ rules evaluated at every round boundary regardless of the wrapper):
 * `decay` (window 15, drop 0.05) fires in the large majority of runs -- one hit
   of decline inside the window is 1/15 = 0.067 > 0.05, exactly the caveat written
   in `advisor/stop.py`. This is the phase-5 measurement that caveat asked for.
-  It explains the E results above and means `WithStop` as specified gives away a
-  round almost every game. The parameters are frozen as specified; whether to
-  retune `decay` is a decision for the eval phases (would change the spec).
+  In ladder v1 it gave away a round almost every game (E: `learner_sim+stop` 1.0
+  vs 10.4). **Decided 2026-10-13 (section 7): dropped from `WithStop`'s
+  default** -- ladder v2 shows every `+stop` variant tying its base policy.
+  The parameters stay frozen, the rule stays measurable in this table and
+  explicitly selectable; cross-val retuning is the documented alternative if it
+  is ever wanted back.
 
-## 7. Still open
+## 7. Decisions taken (2026-10-13) and what is still open
 
-* **Decision needed:** purchased-row scaling beats pool-wide by 6.27 hits for
-  `learner_sim` (> the card's 2-hit threshold). The card says: do not change the
-  library without asking first. Options: keep pool-wide (conservative, what the
-  ladder used), switch the library to purchased-row, or run both as a variant in
-  the phase-7 eval. See section 5.
-* **Decision needed:** `decay` false-stops 77-98% of runs (section 6). Frozen as
-  specified, but retuning it (or dropping it from `WithStop`) would need a spec
-  change and a ladder re-run.
+**Decided after reading sections 5 and 6:**
+
+1. **Keep both scaling variants.** The purchased-row boost may be an artifact,
+   so nothing is switched: the library keeps pool-wide scaling as its default,
+   and the ladder now runs `learner_purchased` and `learner_sim_purchased`
+   next to `learner` and `learner_sim` (same pipeline, only the standardizing
+   means/stds come from the delivered rows -- see `purchased_scale` in
+   `eval/ladder.py`). Both variants stay in every ladder run until the 6.27-hit
+   gap is explained. First tracked run (section 6): +11.9 / +8.7 on the two
+   nipah games, +6.3 on legacy, but -5.9 on E -- replicated, not universal,
+   so tracking continues.
+2. **Drop `decay` from the stop rules' default.** It false-stops 77-98% of
+   runs, so `WithStop` now defaults to `rules=("low_yield",)`. `decay` is still
+   computed by `stop_advice` (its false-stop rate stays in the report), can be
+   requested explicitly, and its parameters remain frozen -- retuning it by
+   cross-validation is the documented alternative if it is ever wanted back.
+   The spec's section 3.5 should be updated to match.
+
+**Still open:**
+
 * Replace the table in section 2.4 of the spec (project document, outside this
-  repo) with the new ladder.
+  repo) with the new ladder, and section 3.5 with the `low_yield`-only default.
 * Send the pack author: `make test`, `reports/ladder.md`, the `reproduce_legacy`
   table, `config/features.yaml`, `notes/week0/llm_smoke.txt` — that triggers the
   phase-6 pack (MCP server + CLI).

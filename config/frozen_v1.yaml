@@ -11,6 +11,9 @@
 #
 # stop_rules below equal advisor/stop.py's constants; load_frozen refuses any
 # other value, because the stop rules are not configurable in the library yet.
+# 2026-10-13 decision: WithStop no longer listens to `decay` by default -- it
+# false-stopped 77-98% of N-dev runs (design-notes section 6). The rule stays
+# here for measurement and explicit opt-in; low_yield remains active.
 version: 1
 policies:
   learner: {C: 0.1, solver: lbfgs, class_weight: null, eps: 0.2, min_hits: 2, min_purchases: 8}

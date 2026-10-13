@@ -144,10 +144,17 @@ class LearnerSim(Learner):
 
 @dataclass(frozen=True)
 class WithStop:
-    """Wrap a policy: return [] (stop) as soon as one of the named stop rules fires."""
+    """Wrap a policy: return [] (stop) as soon as one of the named stop rules fires.
+
+    The default listens to ``low_yield`` only. ``decay`` was dropped from the
+    default on 2026-10-13: it false-stopped 77-98% of N-dev runs (one hit of
+    decline inside a 15-purchase window is 0.067 > 0.05), so it gave away a
+    round almost every game. It is still computed by :func:`stop_advice` for
+    measurement and can be requested explicitly with ``rules=("decay",)``.
+    """
 
     policy: Policy
-    rules: tuple[str, ...] = ("low_yield", "decay")
+    rules: tuple[str, ...] = ("low_yield",)
 
     @property
     def name(self) -> str:

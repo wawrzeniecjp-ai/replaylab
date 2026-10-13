@@ -12,7 +12,7 @@ from replaylab.datasets.split_tables import build_cluster_table
 from replaylab.domain.features import FeatureConfig, FeatureSpec
 from replaylab.engine.scoring import ScoreCard
 from replaylab.eval import ladder
-from replaylab.policies.core import RandomPolicy
+from replaylab.policies.core import RandomPolicy, WithStop
 
 FEATURES = FeatureConfig(
     NIPAH,
@@ -109,8 +109,8 @@ def test_the_ladder_frame_has_the_documented_columns(tables):
     assert traces  # "g" is the stop game, random and learner_sim are traced
     assert set(frame["game"]) == {"g"}
     assert set(frame["seed"]) == {0, 1}
-    # 8 ladder policies (random, 3 fixed, 4 learners) x 2 seeds
-    assert len(frame) == 16
+    # 10 ladder policies (random, 3 fixed, 4 learners, 2 scaling variants) x 2 seeds
+    assert len(frame) == 20
 
 
 def test_write_reports_writes_the_csv_header(tables, tmp_path):
@@ -199,6 +199,8 @@ def test_policies_cover_the_ladder(tables):
         "learner+stop",
         "learner_sim",
         "learner_sim+stop",
+        "learner_purchased",  # both scaling variants, tracked side by side
+        "learner_sim_purchased",
     ]
     # deterministic: same seed, same policy list
     assert [p.name for p in ladder_game.policies(0)] == names
@@ -214,3 +216,34 @@ def test_run_game_is_deterministic_per_seed(tables):
     second = ladder.run_game(game(), RandomPolicy(), 7, **kwargs)
     assert first == second  # same seed, same ScoreCard
     assert sum(first.curve) >= 0  # curve is populated in purchase order
+
+
+def test_purchased_scale_only_moves_scale_to_delivered_rows(tables):
+    from replaylab.advisor.preprocess import Preprocessor
+    from replaylab.engine.replay import build_replay_campaign
+
+    g = game(rounds=2, batch=5)
+    env = build_replay_campaign(
+        g, tables["dir"], FEATURES, seed=0, clusters_path=tables["clusters"]
+    )
+    pool_prep = Preprocessor.fit(env.campaign.state().designs, FEATURES)
+
+    # before any purchase nothing can be scaled: the pool preprocessor is returned
+    assert ladder.purchased_scale(pool_prep, env.campaign.state()) is pool_prep
+
+    env.campaign.submit(list(env.campaign.state().unpurchased_ids)[:5])
+    env.campaign.settle()
+    scaled = ladder.purchased_scale(pool_prep, env.campaign.state())
+    assert scaled is not pool_prep
+    assert scaled.columns == pool_prep.columns  # same columns...
+    assert scaled.medians == pool_prep.medians  # ...same pool medians...
+    assert scaled.orientation == pool_prep.orientation
+    assert scaled.means != pool_prep.means  # ...but standardized on delivered rows
+    assert scaled.stds != pool_prep.stds
+
+
+def test_with_stop_defaults_to_low_yield_only():
+    # 2026-10-13: decay false-stopped 77-98% of runs, so it left the default
+    policy = AlwaysStop()
+    assert WithStop(policy).rules == ("low_yield",)
+    assert WithStop(policy, rules=("decay",)).rules == ("decay",)  # still selectable

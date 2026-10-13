@@ -21,14 +21,15 @@ Held-out games are refused with ``ValueError``: that split is run once, at the e
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pandas as pd
 import yaml
 
-from replaylab.advisor.model import ModelConfig
+from replaylab.advisor.model import InsufficientData, ModelConfig, fit_model
 from replaylab.advisor.preprocess import Preprocessor
 from replaylab.advisor.similarity import SimilarityIndex
 from replaylab.advisor.stop import (
@@ -43,7 +44,7 @@ from replaylab.config import GameConfig
 from replaylab.datasets.aliases import Aliaser
 from replaylab.datasets.pool import Pool, load_pool
 from replaylab.domain.features import FeatureConfig
-from replaylab.domain.types import Design
+from replaylab.domain.types import CampaignState, Design
 from replaylab.engine.replay import build_replay_campaign
 from replaylab.engine.scoring import ScoreCard, score
 from replaylab.policies.core import (
@@ -53,6 +54,8 @@ from replaylab.policies.core import (
     Policy,
     RandomPolicy,
     WithStop,
+    _available,
+    _top_and_explore,
     make_rng,
 )
 
@@ -115,6 +118,81 @@ def run_game(
     # distinct_families rather than raising ScoringError for every hit.
     context = env.context if env.context.clusters else None
     return score(env.campaign.state(), stopped=env.campaign.stopped, context=context)
+
+
+def purchased_scale(preprocessor: Preprocessor, state: CampaignState) -> Preprocessor:
+    """Same columns as ``preprocessor``, but standardized on the delivered rows.
+
+    The open scaling question (design-notes section 5): purchased-row scaling
+    beat pool-wide by 6.27 hits for the legacy ``learner_sim``, more than the
+    card's 2-hit threshold, so both variants are tracked until the gap is
+    explained. Medians, orientation, one-hot classes and length handling stay
+    pool-wide (matching the legacy recipe: pool medians, purchased scaler); only
+    the standardizing means/stds move to the delivered purchases, recomputed at
+    every round. A column with no variation among delivered rows keeps its pool
+    standard deviation.
+    """
+    delivered = [state.designs[d] for d in sorted(state.outcomes)]
+    if not delivered:
+        return preprocessor
+
+    means = dict(preprocessor.means)
+    stds = dict(preprocessor.stds)
+    columns: list[tuple[str, list[float]]] = []
+    for name in preprocessor.features:
+        values = [
+            design.features.get(name, preprocessor.medians[name]) * preprocessor.orientation[name]
+            for design in delivered
+        ]
+        columns.append((name, values))
+    if preprocessor.use_length:
+        columns.append(("length", [float(len(d.sequence)) for d in delivered]))
+    for name, values in columns:
+        array = np.asarray(values, dtype=float)
+        means[name] = float(array.mean())
+        deviation = float(array.std())  # ddof = 0, as Preprocessor does
+        if deviation >= 1e-12:
+            stds[name] = deviation
+    return replace(preprocessor, means=means, stds=stds)
+
+
+def _scaled_choose(
+    policy: Learner, state: CampaignState, k: int, rng: np.random.Generator, *, purchased: bool
+) -> list[str]:
+    """``Learner.choose`` with a choice of scaler: identical apart from the
+    preprocessing passed to the model (the two scaling variants must differ in
+    nothing else for the comparison to mean anything)."""
+    available, k = _available(state, k)
+    if k == 0:
+        return []
+    preprocessor = purchased_scale(policy.preprocessor, state) if purchased else policy.preprocessor
+    fitted = fit_model(state, preprocessor, policy.model)
+    if isinstance(fitted, InsufficientData):
+        return policy._fallback(state, k, rng)
+    model_scores = fitted.score([state.designs[d] for d in available])
+    scores = policy._scores(state, available, model_scores)
+    ranked = policy._ranked(state, available, scores)
+    return _top_and_explore(ranked, available, k, policy.eps, rng)
+
+
+@dataclass(frozen=True)
+class PurchasedLearner(Learner):
+    """``Learner`` standardized on the delivered purchases (scaling variant)."""
+
+    name: str = "learner_purchased"
+
+    def choose(self, state: CampaignState, k: int, rng: np.random.Generator) -> list[str]:
+        return _scaled_choose(self, state, k, rng, purchased=True)
+
+
+@dataclass(frozen=True)
+class PurchasedLearnerSim(LearnerSim):
+    """``LearnerSim`` standardized on the delivered purchases (scaling variant)."""
+
+    name: str = "learner_sim_purchased"
+
+    def choose(self, state: CampaignState, k: int, rng: np.random.Generator) -> list[str]:
+        return _scaled_choose(self, state, k, rng, purchased=True)
 
 
 @dataclass(frozen=True)
@@ -247,7 +325,30 @@ class LadderGame:
         policies.extend(
             FixedMetric(spec.name, spec.higher_is_better) for spec in specs if spec.name != first
         )
-        policies.extend([learner, WithStop(learner), learner_sim, WithStop(learner_sim)])
+        learner_purchased = PurchasedLearner(
+            first, self.preprocessor, first_higher, model=model, eps=eps
+        )
+        learner_sim_purchased = PurchasedLearnerSim(
+            first,
+            self.preprocessor,
+            first_higher,
+            model=model,
+            eps=eps,
+            similarity=similarity,
+            w=w,
+        )
+        policies.extend(
+            [
+                learner,
+                WithStop(learner),
+                learner_sim,
+                WithStop(learner_sim),
+                # both scaling variants tracked side by side until the
+                # purchased-row boost is explained (design-notes section 5)
+                learner_purchased,
+                learner_sim_purchased,
+            ]
+        )
         return policies
 
     def run(
