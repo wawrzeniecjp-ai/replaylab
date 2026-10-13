@@ -19,6 +19,9 @@ dependencies = [
 [project.optional-dependencies]
 eval = ["openai>=1.30"]
 dev = ["pytest>=8", "ruff>=0.5"]
+# documentation site: `uv sync --extra docs`, then `great-docs init` / `great-docs build`
+# (great-docs also needs Quarto installed system-wide: https://quarto.org)
+docs = ["great-docs>=0.17"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -19,3 +19,6 @@ __pycache__/
 
 # Task pack
 .task-pack/
+
+# great-docs build output (ephemeral; great-docs.yml is committed)
+great-docs/
