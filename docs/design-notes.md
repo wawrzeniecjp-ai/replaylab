@@ -75,6 +75,12 @@ agrees with the code: **631 clusters**, largest 125, 570 singletons.
    object across all 100 seeds (so one cached index), and `legacy learner_sim`
    scored 20.0 instead of ~39 while the index-free `legacy learner` matched 25.93
    vs 25.9 exactly. With a policy factory (fresh per seed) the bug disappears.
+   *Re-verified 2026-10-14 as a pre-phase-6 gate:* seed 0 -> seeds 1..5 -> seed 0
+   again on one shared `LadderGame` gives byte-identical score cards, so
+   `ladder.py` (which builds the index inside `policies(seed)`) never shared one
+   and the 26-minute re-run is not needed. Two permanent tests keep it honest:
+   `test_a_seed_result_does_not_depend_on_run_order` and
+   `test_the_similarity_index_is_rebuilt_per_seed`.
 2. **`config/features.yaml` gained entries for the eight stop-game targets.**
    The pack's `features.yaml` only covered nipah and egfr, but `games.yaml` plays
    ten more targets, so the ladder could not run at all. Entries were chosen by

@@ -218,6 +218,50 @@ def test_run_game_is_deterministic_per_seed(tables):
     assert sum(first.curve) >= 0  # curve is populated in purchase order
 
 
+def test_a_seed_result_does_not_depend_on_run_order(tables):
+    """A seed's score cards must be the same whether other seeds ran first or not.
+
+    Guards the shared-``SimilarityIndex`` failure mode: the aliases change per
+    seed (D4), so anything cached on the game or the policies across seeds
+    silently scores the wrong sequences (design-notes section 3).
+    """
+    kwargs = dict(
+        tables_dir=tables["dir"],
+        feature_config=FEATURES,
+        clusters_path=tables["clusters"],
+    )
+    shared = ladder.LadderGame.build(game(), **kwargs)
+
+    def cards(ladder_game, seed):
+        return {p.name: ladder_game.run(p, seed) for p in ladder_game.policies(seed)}
+
+    before = cards(shared, 7)
+    for seed in range(7):
+        cards(shared, seed)  # other seeds in between, on the same object
+    assert cards(shared, 7) == before
+    fresh = ladder.LadderGame.build(game(), **kwargs)  # and on a brand-new one
+    assert cards(fresh, 7) == before
+
+
+def test_the_similarity_index_is_rebuilt_per_seed(tables):
+    """``policies(seed)`` hands out a fresh index keyed by that seed's aliases."""
+    ladder_game = ladder.LadderGame.build(
+        game(),
+        tables_dir=tables["dir"],
+        feature_config=FEATURES,
+        clusters_path=tables["clusters"],
+    )
+
+    def index(seed: int):
+        return next(p for p in ladder_game.policies(seed) if p.name == "learner_sim").similarity
+
+    first, second = index(0), index(0)
+    assert first is not second  # rebuilt on every call, never cached
+    assert first._ids == list(ladder_game.aliased_designs(0))
+    assert index(1)._ids == list(ladder_game.aliased_designs(1))
+    assert first._ids != index(1)._ids  # the aliases really do differ per seed
+
+
 def test_purchased_scale_only_moves_scale_to_delivered_rows(tables):
     from replaylab.advisor.preprocess import Preprocessor
     from replaylab.engine.replay import build_replay_campaign
