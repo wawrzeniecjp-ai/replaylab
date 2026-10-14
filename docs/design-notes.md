@@ -295,9 +295,12 @@ does the learner fit regularly, and at what purchase count does it cross
   (16.2%). `random` scores 9.59 hits in 60 purchases = 0.16 per purchase, the
   pool rate exactly.
 * `fixed:esmfold_plddt` -- which is byte-for-byte what the learner's fallback
-  buys -- scores 5.00 in 60 purchases and only **1 hit after the first 45**, so
-  the cold-start deficit against `random` at the first fit is ~6 hits, not the
-  3-4 estimated from the report tables.
+  buys -- scores 5.00 in 60 purchases and **4.00 after the first 45**, so
+  the cold-start deficit against `random` (7.33 at 45 purchases) is **3.3 hits**:
+  the pack author's 3-4 estimate checks out. *(Correction written after the run:
+  this bullet originally claimed "1 hit after 45, deficit ~6". That came from
+  misreading a three-seed trace -- 1 hit is the value at 30 purchases, 4 hits at
+  45. The 100-seed curve in `reports/e_long.csv` is the authority.)*
 * Bounds for the horizon: below ~1/3 of the pool (275) and below the hit
   supply (134).
 
@@ -328,3 +331,26 @@ picking one.
 **Gate:** the first four rounds of `E-long` reproduce E's score cards exactly
 (`test_e_longs_first_four_rounds_reproduce_e`, marker `data`, needs
 `data/processed/`).
+
+**Result (run 2026-10-14: 9 policies x 100 seeds, 378 s,
+`reports/e_long.{csv,md}`):**
+
+* **Gate passed.** At 60 purchases this run reproduces every committed E mean
+  exactly (nine for nine), so the longer horizon touched nothing upstream.
+* **The cold start is exactly three rounds.** The gate opens in round 4 for
+  **100% of seeds** and stays open for rounds 5-8. Rounds 1-3 are identical for
+  all six learner variants -- 1.00 / 1.00 / 4.00 hits after 15 / 30 / 45
+  purchases, always below `random` (2.38 / 4.77 / 7.33).
+* **Crossing `random`:** `learner_sim` crosses in round 4 itself (10.39 vs 9.59
+  at 60); `learner` and `learner_sim_purchased` cross at ~90 purchases (round 6,
+  14.37 and 16.59 vs 14.29); `learner_purchased` at ~105 (round 7, 17.02 vs
+  16.97). At 120 purchases: `learner_sim` 34.26, `learner_sim_purchased` 31.70,
+  `learner` 26.23, `learner_purchased` 24.07, `random` 19.53,
+  `fixed:esmfold_plddt` 11.00.
+* **The scaler flip is real and horizon-independent.** Purchased-row scaling
+  costs `learner_sim` 5.9 hits at 60 (4.45 vs 10.39) and still 2.6 at 120
+  (31.70 vs 34.26), while on N-dev the same variant wins by 11.9. A longer
+  horizon does not explain it away -- it is the scaler, not the horizon.
+* No policy approaches the 134-hit supply at 120 purchases, so there is no
+  convergence artefact, and `+stop` never fires on E (rows identical to their
+  base policies).

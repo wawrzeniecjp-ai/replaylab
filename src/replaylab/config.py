@@ -59,6 +59,12 @@ def _require_int(value: Any, where: str, field_name: str) -> int:
     return value
 
 
+def _require_bool(value: Any, where: str, field_name: str) -> bool:
+    if not isinstance(value, bool):
+        raise ConfigError(f"{where}: {field_name} must be a boolean, got {value!r}")
+    return value
+
+
 # --- features ---------------------------------------------------------------
 
 
@@ -105,7 +111,12 @@ def load_feature_config(path: Path | str) -> dict[str, FeatureConfig]:
 
 @dataclass(frozen=True)
 class GameConfig:
-    """One game: which pool, how many rounds, how big a batch, and any feedback delay."""
+    """One game: which pool, how many rounds, how big a batch, and any feedback delay.
+
+    ``exploratory`` games exist to answer a pre-registered question (design-notes
+    section 8): they are excluded from the default ladder, from ``frozen_v1`` and
+    from every decision rule, and are only run when asked for explicitly.
+    """
 
     id: str
     target: str
@@ -115,6 +126,7 @@ class GameConfig:
     budget: int
     delay_rounds: int = 0
     kind: str = "rank"
+    exploratory: bool = False
 
     def __post_init__(self) -> None:
         if not self.id:
@@ -124,6 +136,8 @@ class GameConfig:
             raise ConfigError(f"{where}: unknown split {self.split!r}; expected one of {SPLITS}")
         if self.kind not in KINDS:
             raise ConfigError(f"{where}: unknown kind {self.kind!r}; expected one of {KINDS}")
+        if not isinstance(self.exploratory, bool):
+            raise ConfigError(f"{where}: exploratory must be a boolean, got {self.exploratory!r}")
         if self.rounds < 1:
             raise ConfigError(f"{where}: rounds must be at least 1")
         if self.batch_size < 1:
@@ -179,7 +193,7 @@ def parse_games(data: Any) -> dict[str, GameConfig]:
         _check_keys(
             body,
             {"target", "split", "rounds", "batch_size", "budget"},
-            {"delay_rounds", "kind"},
+            {"delay_rounds", "kind", "exploratory"},
             where,
         )
         result[str(game_id)] = GameConfig(
@@ -191,6 +205,7 @@ def parse_games(data: Any) -> dict[str, GameConfig]:
             budget=_require_int(body["budget"], where, "budget"),
             delay_rounds=_require_int(body.get("delay_rounds", 0), where, "delay_rounds"),
             kind=body.get("kind", "rank"),
+            exploratory=_require_bool(body.get("exploratory", False), where, "exploratory"),
         )
     return result
 

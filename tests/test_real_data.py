@@ -12,6 +12,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
+from replaylab.config import load_feature_config, load_games
 from replaylab.datasets.split_tables import (
     NIPAH,
     build_cluster_table,
@@ -19,6 +20,7 @@ from replaylab.datasets.split_tables import (
     compare_cluster_summary,
     heldout_ids,
 )
+from replaylab.eval import ladder
 
 ROOT = Path(__file__).resolve().parents[1]
 PROCESSED = ROOT / "data" / "processed"
@@ -72,3 +74,35 @@ def test_heldout_ids_are_only_nipah_designs_and_match_fold_two(real):
     assert held == heldout_ids(folds)
     assert len(held) == len(set(held))
     assert set(folds["design_id"]) == nipah_ids  # every Nipah-G design has a fold
+
+
+def test_e_longs_first_four_rounds_reproduce_e():
+    """The pre-registered gate (design-notes section 8): E-long differs from E
+    in the horizon alone, so its first four rounds must replay E exactly."""
+    games = load_games(ROOT / "config" / "games.yaml")
+    features = load_feature_config(ROOT / "config" / "features.yaml")
+    short, extended = games["E"], games["E-long"]
+    assert extended.exploratory and not short.exploratory
+    assert (extended.target, extended.split, extended.batch_size) == (
+        short.target,
+        short.split,
+        short.batch_size,
+    )
+    assert extended.rounds > short.rounds
+
+    kwargs = dict(
+        tables_dir=PROCESSED,
+        feature_config=features[short.target],
+        folds_path=SPLITS / "folds.csv",
+        clusters_path=SPLITS / "clusters.csv",
+    )
+    ladder_game = ladder.LadderGame.build(short, **kwargs)
+    for seed in (0, 3):
+        for name in ("random", "learner", "learner_sim", "learner_sim_purchased"):
+            policy = next(p for p in ladder_game.policies(seed) if p.name == name)
+            e_card = ladder.run_game(short, policy, seed, **kwargs)
+            long_card = ladder.run_game(extended, policy, seed, **kwargs)
+            # the whole E score card is the prefix of the E-long card
+            assert long_card.curve[: e_card.purchases] == e_card.curve, (name, seed)
+            assert long_card.hits_at_boundaries[: short.rounds] == e_card.hits_at_boundaries
+            assert long_card.purchases >= e_card.purchases

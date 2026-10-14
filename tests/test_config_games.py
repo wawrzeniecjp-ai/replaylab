@@ -37,6 +37,7 @@ def make_game(**overrides) -> GameConfig:
 def test_defaults():
     game = make_game()
     assert game.delay_rounds == 0 and game.kind == "rank"
+    assert game.exploratory is False  # opted in per game, never by default
 
 
 @pytest.mark.parametrize(
@@ -47,6 +48,7 @@ def test_defaults():
         ({"rounds": 0, "budget": 0}, "rounds must be at least 1"),
         ({"batch_size": 0, "budget": 0}, "batch_size must be at least 1"),
         ({"delay_rounds": -1}, "delay_rounds cannot be negative"),
+        ({"exploratory": "yes"}, "exploratory must be a boolean"),
         ({"budget": 59}, r"budget must equal rounds \* batch_size \(4 \* 15 = 60\), got 59"),
         ({"id": ""}, "game id"),
     ],
@@ -93,6 +95,7 @@ def test_valid_games_parse():
         (lambda d: d["games"]["G"].update(rounds=True), "rounds must be an integer"),
         (lambda d: d["games"]["G"].update(budget=61), "budget must equal"),
         (lambda d: d["games"]["G"].update(split="train"), "unknown split"),
+        (lambda d: d["games"]["G"].update(exploratory="yes"), "exploratory must be a boolean"),
     ],
 )
 def test_invalid_games_raise_config_error(mutator, message):
@@ -115,13 +118,14 @@ def test_committed_games_yaml_defines_the_expected_games():
         "S-human-ambp": "human-ambp",
         "S-human-idi2": "human-idi2",
     }
-    assert set(games) == {"N-dev", "N-held", "E", "N-dev-delay2", *stop_targets}
+    assert set(games) == {"N-dev", "N-held", "E", "E-long", "N-dev-delay2", *stop_targets}
 
     nipah = "nipah-glycoprotein-g"
     expected = {
         "N-dev": (nipah, "dev", 4, 15, 60, 0, "rank"),
         "N-held": (nipah, "heldout", 4, 8, 32, 0, "rank"),
         "E": ("egfr", "all", 4, 15, 60, 0, "rank"),
+        "E-long": ("egfr", "all", 8, 15, 120, 0, "rank"),
         "N-dev-delay2": (nipah, "dev", 6, 10, 60, 2, "rank"),
     }
     for game_id, values in expected.items():
@@ -132,3 +136,8 @@ def test_committed_games_yaml_defines_the_expected_games():
         game = games[game_id]
         assert (game.target, game.split, game.kind) == (target, "all", "stop")
         assert (game.rounds, game.batch_size, game.budget, game.delay_rounds) == (6, 5, 30, 0)
+    # only the pre-registered longer-horizon E is exploratory (design-notes 8)
+    assert {game_id for game_id, game in games.items() if game.exploratory} == {"E-long"}
+    assert games["E-long"].target == games["E"].target
+    assert games["E-long"].split == games["E"].split
+    assert games["E-long"].batch_size == games["E"].batch_size

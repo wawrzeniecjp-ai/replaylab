@@ -25,9 +25,9 @@ FEATURES = FeatureConfig(
 )
 
 
-def game(split: str = "all", rounds: int = 3, batch: int = 5) -> GameConfig:
+def game(split: str = "all", rounds: int = 3, batch: int = 5, game_id: str = "g") -> GameConfig:
     return GameConfig(
-        id="g",
+        id=game_id,
         target=NIPAH,
         split=split,
         rounds=rounds,
@@ -260,6 +260,31 @@ def test_the_similarity_index_is_rebuilt_per_seed(tables):
     assert first._ids == list(ladder_game.aliased_designs(0))
     assert index(1)._ids == list(ladder_game.aliased_designs(1))
     assert first._ids != index(1)._ids  # the aliases really do differ per seed
+
+
+def test_a_longer_horizon_reproduces_the_early_rounds(tables):
+    """Changing the horizon alone may not change the early rounds.
+
+    The random stream is keyed by ``(seed, round)`` and the budget only ever
+    binds later, so a longer game must replay the short one purchase for
+    purchase until the short game would have ended (the E-long gate, in the CI
+    set -- ``test_e_longs_first_four_rounds_reproduce_e`` runs it on the real
+    data).
+    """
+    kwargs = dict(
+        tables_dir=tables["dir"],
+        feature_config=FEATURES,
+        clusters_path=tables["clusters"],
+    )
+    short, extended = game(rounds=3), game(rounds=6, game_id="g-long")
+    ladder_game = ladder.LadderGame.build(short, **kwargs)
+    for seed in (0, 1):
+        for policy in ladder_game.policies(seed):
+            early = ladder.run_game(short, policy, seed, **kwargs)
+            longer = ladder.run_game(extended, policy, seed, **kwargs)
+            assert longer.curve[: early.purchases] == early.curve, (policy.name, seed)
+            assert longer.hits_at_boundaries[: short.rounds] == early.hits_at_boundaries
+            assert longer.purchases == len(longer.curve)
 
 
 def test_purchased_scale_only_moves_scale_to_delivered_rows(tables):

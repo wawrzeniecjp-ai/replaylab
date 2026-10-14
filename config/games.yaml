@@ -9,6 +9,11 @@ games:
     {target: nipah-glycoprotein-g, split: heldout, rounds: 4, batch_size: 8, budget: 32}
   E:
     {target: egfr, split: all, rounds: 4, batch_size: 15, budget: 60}
+  # Exploratory: the pre-registered longer-horizon E (design-notes section 8).
+  # Same target, split and batch size, twice the horizon; excluded from the
+  # default ladder, frozen_v1 and every decision rule.
+  E-long:
+    {target: egfr, split: all, rounds: 8, batch_size: 15, budget: 120, exploratory: true}
   N-dev-delay2:
     {target: nipah-glycoprotein-g, split: dev, rounds: 6, batch_size: 10, budget: 60, delay_rounds: 2}
   S-human-serum-albumin:

@@ -3,8 +3,9 @@
 
 Usage (from the repository root):
 
-    python scripts/run_ladder.py                     # all games except held-out ones
+    python scripts/run_ladder.py                     # non-held-out, non-exploratory games
     python scripts/run_ladder.py --game N-dev --seeds 100
+    python scripts/run_ladder.py --include-exploratory  # also run E-long
 
 Writes reports/ladder.csv (one row per game, policy and seed) and reports/ladder.md
 (one table per game plus the stop-rule false-stop table on N-dev).
@@ -46,6 +47,11 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="game id to run (repeatable; default: every game that is not held out)",
     )
+    parser.add_argument(
+        "--include-exploratory",
+        action="store_true",
+        help="also run games flagged `exploratory: true` (E-long); default skips them",
+    )
     parser.add_argument("--out-csv", type=Path, default=REPO_ROOT / "reports/ladder.csv")
     parser.add_argument("--out-md", type=Path, default=REPO_ROOT / "reports/ladder.md")
     parser.add_argument("--stop-game", default="N-dev", help="game used for the false-stop table")
@@ -64,10 +70,20 @@ def main(argv: list[str] | None = None) -> int:
             print(f"unknown game id(s): {unknown}", file=sys.stderr)
             return 2
     else:
-        selected = [g for g, game in games.items() if game.split != "heldout"]
-        skipped = [g for g, game in games.items() if game.split == "heldout"]
-        if skipped:
-            print(f"skipping held-out game(s) {skipped} (run once, at the end)")
+        selected = [
+            game_id
+            for game_id, game in games.items()
+            if game.split != "heldout" and (args.include_exploratory or not game.exploratory)
+        ]
+        held_out = [game_id for game_id, game in games.items() if game.split == "heldout"]
+        exploratory = [game_id for game_id, game in games.items() if game.exploratory]
+        if held_out:
+            print(f"skipping held-out game(s) {held_out} (run once, at the end)")
+        if exploratory and not args.include_exploratory:
+            print(
+                f"skipping exploratory game(s) {exploratory} "
+                "(pre-registered, design-notes section 8; pass --include-exploratory)"
+            )
 
     started = time.time()
     try:
