@@ -277,3 +277,54 @@ rules evaluated at every round boundary regardless of the wrapper):
   info.version 0.0.2), pinned in `spec/openapi.sha256`, the T04 test
   un-skipped (484 passed, 0 skipped); phase 10 unblocked.
 * Whether to add the extra reviewed features (section 1) as a second experiment.
+
+## 8. Pre-registration: does a longer horizon change what E measures? (2026-10-14)
+
+Written **before** the run, at the pack author's request: declare the question
+and the horizons first, report every horizon, never the best one.
+
+**Question.** E fits a model in exactly one of its four rounds, so every
+difference between the learner variants (7.44 / 10.39 / 4.51 / 4.45) is decided
+by a single round. The pre-registered questions are: *at what purchase count
+does the learner fit regularly, and at what purchase count does it cross
+`random`?*
+
+**Facts the horizon is derived from** (measured before the run):
+
+* E's pool (`egfr`, split `all`) holds **826 designs** with **134 hits**
+  (16.2%). `random` scores 9.59 hits in 60 purchases = 0.16 per purchase, the
+  pool rate exactly.
+* `fixed:esmfold_plddt` -- which is byte-for-byte what the learner's fallback
+  buys -- scores 5.00 in 60 purchases and only **1 hit after the first 45**, so
+  the cold-start deficit against `random` at the first fit is ~6 hits, not the
+  3-4 estimated from the report tables.
+* Bounds for the horizon: below ~1/3 of the pool (275) and below the hit
+  supply (134).
+
+**Horizon.** `E-long` = same target, split and batch size as E, **8 rounds x
+15 = 120 purchases** (14.5% of the pool, under both bounds). Rounds 1-4 are
+required to reproduce E exactly, so one run contains every shorter horizon: the
+report gives cumulative hits at *every* round, i.e. at every horizon, instead of
+picking one.
+
+**Rules.**
+
+1. Only the horizon changes. No policy, model or `frozen_v1` change rides
+   along; adding exploration to the fallback would be a design change, a
+   separate experiment justified on N-dev and the other games -- not on E.
+2. `E-long` carries `exploratory: true`: excluded from the default ladder, from
+   `frozen_v1` and from every decision rule. The headline E numbers in sections
+   6 and 7 stay as they are.
+3. The report (`reports/e_long.md`) gives mean cumulative hits against
+   purchases for **every** ladder policy with bootstrap intervals over seeds,
+   `random` and `fixed:esmfold_plddt` as references, and the first round each
+   learner variant passes the gate.
+4. The intervals are over seeds and measure policy randomness only: every seed
+   replays the same pool, so they say nothing about variation across targets.
+5. E is the only transfer target with a pool this size, so this cannot answer
+   whether the learner transfers *across targets*. That stays a separate
+   question.
+
+**Gate:** the first four rounds of `E-long` reproduce E's score cards exactly
+(`test_e_longs_first_four_rounds_reproduce_e`, marker `data`, needs
+`data/processed/`).
