@@ -13,6 +13,7 @@ from replaylab.domain.features import FeatureConfig, FeatureSpec
 from replaylab.engine.scoring import ScoreCard
 from replaylab.eval import ladder
 from replaylab.policies.core import RandomPolicy, WithStop
+from replaylab.policies.purchased import purchased_scale
 
 FEATURES = FeatureConfig(
     NIPAH,
@@ -298,11 +299,11 @@ def test_purchased_scale_only_moves_scale_to_delivered_rows(tables):
     pool_prep = Preprocessor.fit(env.campaign.state().designs, FEATURES)
 
     # before any purchase nothing can be scaled: the pool preprocessor is returned
-    assert ladder.purchased_scale(pool_prep, env.campaign.state()) is pool_prep
+    assert purchased_scale(pool_prep, env.campaign.state()) is pool_prep
 
     env.campaign.submit(list(env.campaign.state().unpurchased_ids)[:5])
     env.campaign.settle()
-    scaled = ladder.purchased_scale(pool_prep, env.campaign.state())
+    scaled = purchased_scale(pool_prep, env.campaign.state())
     assert scaled is not pool_prep
     assert scaled.columns == pool_prep.columns  # same columns...
     assert scaled.medians == pool_prep.medians  # ...same pool medians...

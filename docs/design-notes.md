@@ -252,7 +252,7 @@ rules evaluated at every round boundary regardless of the wrapper):
    and the ladder now runs `learner_purchased` and `learner_sim_purchased`
    next to `learner` and `learner_sim` (same pipeline, only the standardizing
    means/stds come from the delivered rows -- see `purchased_scale` in
-   `eval/ladder.py`). Both variants stay in every ladder run until the 6.27-hit
+   `policies/purchased.py`). Both variants stay in every ladder run until the 6.27-hit
    gap is explained. First tracked run (section 6): +11.9 / +8.7 on the two
    nipah games, +6.3 on legacy, but -5.9 on E -- replicated, not universal,
    so tracking continues.

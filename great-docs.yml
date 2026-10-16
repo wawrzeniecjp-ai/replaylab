@@ -214,6 +214,9 @@ reference:
         - policies.FixedMetric
         - policies.Learner
         - policies.LearnerSim
+        - policies.PurchasedLearner
+        - policies.PurchasedLearnerSim
+        - policies.purchased_scale
         - policies.WithStop
         - policies.make_rng
 
@@ -228,9 +231,6 @@ reference:
         - eval.ladder.run_ladder
         - eval.ladder.FrozenConfig
         - eval.ladder.load_frozen
-        - eval.ladder.purchased_scale
-        - eval.ladder.PurchasedLearner
-        - eval.ladder.PurchasedLearnerSim
         - eval.ladder.summarize
         - eval.ladder.write_reports
         - eval.smoke.run_smoke

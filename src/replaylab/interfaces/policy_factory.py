@@ -10,9 +10,20 @@ from __future__ import annotations
 from replaylab.advisor.preprocess import Preprocessor
 from replaylab.advisor.similarity import SimilarityIndex
 from replaylab.domain.features import FeatureConfig
-from replaylab.policies import FixedMetric, Learner, LearnerSim, Policy, RandomPolicy
+from replaylab.policies import (
+    FixedMetric,
+    Learner,
+    LearnerSim,
+    Policy,
+    PurchasedLearner,
+    PurchasedLearnerSim,
+    RandomPolicy,
+)
 
-POLICY_NAMES = ("learner_sim", "learner", "random")
+# Both scaling variants are offered (decision D13): the ladder tracks pool-wide
+# and purchased-row scaling side by side, so an agent must be able to reach the
+# scripted bar (learner_sim_purchased) and its pool-wide twin.
+POLICY_NAMES = ("learner_sim", "learner_sim_purchased", "learner", "learner_purchased", "random")
 
 
 class UnknownPolicy(ValueError):
@@ -39,8 +50,14 @@ def make_policy(
         return LearnerSim(
             first, preprocessor, first_higher_is_better=higher, eps=eps, similarity=similarity
         )
+    if name == "learner_sim_purchased":
+        return PurchasedLearnerSim(
+            first, preprocessor, first_higher_is_better=higher, eps=eps, similarity=similarity
+        )
     if name == "learner":
         return Learner(first, preprocessor, first_higher_is_better=higher, eps=eps)
+    if name == "learner_purchased":
+        return PurchasedLearner(first, preprocessor, first_higher_is_better=higher, eps=eps)
     if name == "random":
         return RandomPolicy()
     if name.startswith("fixed:"):
