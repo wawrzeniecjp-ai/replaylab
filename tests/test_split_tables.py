@@ -15,6 +15,7 @@ from replaylab.datasets.split_tables import (
     build_fold_table,
     compare_cluster_summary,
     heldout_ids,
+    target_has_clusters,
     write_split_files,
 )
 
@@ -88,6 +89,20 @@ def test_small_targets_are_skipped(tables):
     table, summaries = build_cluster_table(tables.designs, outcomes, min_designs=MIN_DESIGNS)
     assert set(table["target"]) == {NIPAH}
     assert set(summaries) == {NIPAH}
+
+
+def test_target_has_clusters_tells_a_covered_target_from_an_uncovered_one(tmp_path):
+    # both the ladder and the runtime use this before handing clusters.csv on:
+    # a target without rows must be played without distinct_families, not fail
+    assert target_has_clusters(None, NIPAH) is False
+    missing = tmp_path / "nope.csv"
+    assert target_has_clusters(missing, NIPAH) is False
+    path = tmp_path / "clusters.csv"
+    pd.DataFrame({"design_id": ["d1", "d2"], "target": ["egfr", "egfr"], "cluster": [0, 0]}).to_csv(
+        path, index=False
+    )
+    assert target_has_clusters(path, "egfr") is True
+    assert target_has_clusters(path, NIPAH) is False
 
 
 def test_a_design_on_two_targets_is_clustered_once_per_target():

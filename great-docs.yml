@@ -239,6 +239,38 @@ reference:
         - eval.smoke.format_report
         - eval.smoke.passback_needed
 
+    - title: Agent interfaces
+      desc: >-
+        The 14 tools an agent gets over MCP (stdio), plus the same tools on
+        the command line. Every tool is a plain method over one campaign,
+        so what an agent sees is what the tool tests check. This is the one
+        package allowed to see every layer -- and nothing may import it.
+      contents:
+        - interfaces.tools.Toolbox
+        - interfaces.tools.ToolContext
+        - interfaces.tools.ToolFailure
+        - interfaces.tools.resolve_tool_selection
+        - interfaces.tools.TOOL_DESCRIPTIONS
+        - interfaces.runtime.Runtime
+        - interfaces.runtime.build_runtime
+        - interfaces.runtime.SetupError
+        - interfaces.policy_factory.make_policy
+        - interfaces.policy_factory.policy_help
+        - interfaces.policy_factory.UnknownPolicy
+        - interfaces.server.build_server
+        - interfaces.server.serve
+        - interfaces.server.REGISTERED_TOOLS
+        - interfaces.schemas.DescribeCampaign
+        - interfaces.schemas.QueryPoolResult
+        - interfaces.schemas.SubmitBatchResult
+        - interfaces.schemas.ProposeBatchResult
+        - interfaces.schemas.FitAndRankResult
+        - interfaces.schemas.HitRateResult
+        - interfaces.schemas.SimilarDesignsResult
+        - interfaces.schemas.CampaignSummaryResult
+        - interfaces.schemas.StopAdviceResult
+        - interfaces.schemas.History
+
     - title: OpenAPI spec pin
       desc: >-
         Records the sha256 of the published Adaptyv OpenAPI spec so a later

@@ -1,0 +1,349 @@
+[
+  {
+    "description": "Summarize progress: rounds used, hits, best affinity, the cumulative hit curve, hit rate by design class, and predicted against realized rates. Use it for a status review. It covers delivered results only.",
+    "input_schema": {
+      "properties": {},
+      "title": "campaign_summaryArguments",
+      "type": "object"
+    },
+    "name": "campaign_summary"
+  },
+  {
+    "description": "Summarize each column over the whole pool (min, median, max and share missing; counts for classes). Use it to pick thresholds before querying. It says nothing about which designs are hits.",
+    "input_schema": {
+      "properties": {
+        "columns": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Columns"
+        }
+      },
+      "title": "column_summaryArguments",
+      "type": "object"
+    },
+    "name": "column_summary"
+  },
+  {
+    "description": "Show the budget, rounds left, batch size, counts of purchased and pending designs, hits found, and the columns you can query. Call it first and after every submit. It never shows outcomes of designs you have not bought.",
+    "input_schema": {
+      "properties": {},
+      "title": "describe_campaignArguments",
+      "type": "object"
+    },
+    "name": "describe_campaign"
+  },
+  {
+    "description": "Estimate the hit rate so far with a 90% interval, optionally per design class, or predict the rate of a proposed next batch. Use it to decide whether more purchases are worthwhile. Next-batch predictions are flagged uncalibrated until 3 rounds of predictions are realized.",
+    "input_schema": {
+      "properties": {
+        "by": {
+          "anyOf": [
+            {
+              "const": "design_class",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "By"
+        },
+        "next_batch": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Next Batch"
+        },
+        "threshold": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Threshold"
+        }
+      },
+      "title": "estimate_hit_rateArguments",
+      "type": "object"
+    },
+    "name": "estimate_hit_rate"
+  },
+  {
+    "description": "Fit a regularized logistic model on delivered designs and rank unpurchased designs by predicted hit probability. Needs at least 2 hits and 8 delivered purchases, otherwise it returns insufficient_data. Use it to see which features matter.",
+    "input_schema": {
+      "properties": {
+        "exploration": {
+          "default": 0.2,
+          "title": "Exploration",
+          "type": "number"
+        },
+        "features": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Features"
+        },
+        "top_k": {
+          "default": 20,
+          "title": "Top K",
+          "type": "integer"
+        }
+      },
+      "title": "fit_and_rankArguments",
+      "type": "object"
+    },
+    "name": "fit_and_rank"
+  },
+  {
+    "description": "Return every purchased design whose result has arrived, with its features and outcome. Use it to review what you have learned. Pending designs are not listed.",
+    "input_schema": {
+      "properties": {},
+      "title": "get_historyArguments",
+      "type": "object"
+    },
+    "name": "get_history"
+  },
+  {
+    "description": "List batches that were submitted but whose results have not arrived. Use it when results are delayed. It does not advance time.",
+    "input_schema": {
+      "properties": {},
+      "title": "pending_batchesArguments",
+      "type": "object"
+    },
+    "name": "pending_batches"
+  },
+  {
+    "description": "Run a pre-registered scripted policy on the data so far and record the proposed batch with reasons. Use it for a strong default batch, then submit it yourself with submit_batch. It spends nothing.",
+    "input_schema": {
+      "properties": {
+        "exploration": {
+          "default": 0.2,
+          "title": "Exploration",
+          "type": "number"
+        },
+        "k": {
+          "title": "K",
+          "type": "integer"
+        },
+        "policy": {
+          "default": "learner_sim",
+          "title": "Policy",
+          "type": "string"
+        }
+      },
+      "required": [
+        "k"
+      ],
+      "title": "propose_batchArguments",
+      "type": "object"
+    },
+    "name": "propose_batch"
+  },
+  {
+    "description": "List unpurchased designs with their raw metric values, optionally filtered and sorted (at most 50 rows). Use it to look at candidates before buying. Metric values are raw, so a lower ProteinMPNN score is better.",
+    "input_schema": {
+      "$defs": {
+        "Condition": {
+          "additionalProperties": false,
+          "description": "One ``column op value`` filter for ``query_pool``.",
+          "properties": {
+            "column": {
+              "title": "Column",
+              "type": "string"
+            },
+            "op": {
+              "enum": [
+                ">",
+                ">=",
+                "<",
+                "<=",
+                "==",
+                "!="
+              ],
+              "title": "Op",
+              "type": "string"
+            },
+            "value": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                }
+              ],
+              "title": "Value"
+            }
+          },
+          "required": [
+            "column",
+            "op",
+            "value"
+          ],
+          "title": "Condition",
+          "type": "object"
+        }
+      },
+      "properties": {
+        "descending": {
+          "default": true,
+          "title": "Descending",
+          "type": "boolean"
+        },
+        "exclude_purchased": {
+          "default": true,
+          "title": "Exclude Purchased",
+          "type": "boolean"
+        },
+        "limit": {
+          "default": 20,
+          "title": "Limit",
+          "type": "integer"
+        },
+        "sort_by": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sort By"
+        },
+        "where": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/Condition"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Where"
+        }
+      },
+      "title": "query_poolArguments",
+      "type": "object"
+    },
+    "name": "query_pool"
+  },
+  {
+    "description": "Find unpurchased designs whose sequences are most similar (3-mer cosine) to the designs you give, typically hits. Use it to follow up on a hit. Similarity partly reflects shared authorship, so do not over-buy one family.",
+    "input_schema": {
+      "properties": {
+        "design_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Design Ids",
+          "type": "array"
+        },
+        "k": {
+          "default": 10,
+          "title": "K",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "design_ids"
+      ],
+      "title": "similar_designsArguments",
+      "type": "object"
+    },
+    "name": "similar_designs"
+  },
+  {
+    "description": "End the campaign with a reason; no further batches can be submitted. Use it when more purchases are unlikely to pay off. It cannot be undone, but pending results can still arrive.",
+    "input_schema": {
+      "properties": {
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "reason"
+      ],
+      "title": "stopArguments",
+      "type": "object"
+    },
+    "name": "stop"
+  },
+  {
+    "description": "Report the hit-rate trend and whether the low_yield or decay stop rules have fired. Use it before deciding to stop. The decay rule is noisy and often fires by chance, so treat it as weak evidence.",
+    "input_schema": {
+      "properties": {},
+      "title": "stop_adviceArguments",
+      "type": "object"
+    },
+    "name": "stop_advice"
+  },
+  {
+    "description": "Buy up to batch_size designs that are not yet purchased or pending, within budget. Results come back immediately when there is no delay, otherwise through wait or later submits. Do not use it to explore: every call spends a round.",
+    "input_schema": {
+      "properties": {
+        "design_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Design Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "design_ids"
+      ],
+      "title": "submit_batchArguments",
+      "type": "object"
+    },
+    "name": "submit_batch"
+  },
+  {
+    "description": "Advance one round without buying and return any results that arrive. Use it only when something is pending. It fails if nothing is pending.",
+    "input_schema": {
+      "properties": {},
+      "title": "waitArguments",
+      "type": "object"
+    },
+    "name": "wait"
+  }
+]

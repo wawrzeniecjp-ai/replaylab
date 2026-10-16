@@ -43,6 +43,21 @@ CLUSTER_COLUMNS = ["design_id", "target", "cluster_id", "cluster_size"]
 FOLD_COLUMNS = ["design_id", "target", "fold", "seed"]
 
 
+def target_has_clusters(clusters_path: Path | str | None, target: str) -> bool:
+    """Whether ``clusters.csv`` has rows for ``target`` at all.
+
+    Targets below ``DEFAULT_MIN_DESIGNS`` designs get no cluster rows, so their
+    pools must be loaded and scored without ``distinct_families`` -- passing the
+    file on would fail in ``load_pool`` instead.
+    """
+    if clusters_path is None:
+        return False
+    path = Path(clusters_path)
+    if not path.exists():
+        return False
+    return target in set(pd.read_csv(path, usecols=["target"])["target"])
+
+
 def build_cluster_table(
     designs: pd.DataFrame,
     outcomes: pd.DataFrame,

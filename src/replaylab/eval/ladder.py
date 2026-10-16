@@ -43,6 +43,7 @@ from replaylab.advisor.stop import (
 from replaylab.config import GameConfig
 from replaylab.datasets.aliases import Aliaser
 from replaylab.datasets.pool import Pool, load_pool
+from replaylab.datasets.split_tables import target_has_clusters
 from replaylab.domain.features import FeatureConfig
 from replaylab.domain.types import CampaignState, Design
 from replaylab.engine.replay import build_replay_campaign
@@ -281,7 +282,7 @@ class LadderGame:
     ) -> LadderGame:
         """Load the pool once. Clusters are passed on only for clustered targets:
         ``load_pool`` raises for a target the cluster table does not cover."""
-        resolved = clusters_path if _has_clusters(clusters_path, game.target) else None
+        resolved = clusters_path if target_has_clusters(clusters_path, game.target) else None
         pool = load_pool(
             tables_dir, game, feature_config, folds_path=folds_path, clusters_path=resolved
         )
@@ -378,15 +379,6 @@ class LadderGame:
             clusters_path=self.clusters_path,
             stop_trace=stop_trace,
         )
-
-
-def _has_clusters(clusters_path: Path | str | None, target: str) -> bool:
-    if clusters_path is None:
-        return False
-    path = Path(clusters_path)
-    if not path.exists():
-        return False
-    return target in set(pd.read_csv(path, usecols=["target"])["target"])
 
 
 def run_ladder(

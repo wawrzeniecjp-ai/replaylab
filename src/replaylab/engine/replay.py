@@ -34,8 +34,14 @@ class ReplayEnvironment:
     store: CampaignStore
 
     def score(self) -> ScoreCard:
-        """Score the campaign -- hidden information; never show to a policy."""
-        return score(self.campaign.state(), stopped=self.campaign.stopped, context=self.context)
+        """Score the campaign -- hidden information; never show to a policy.
+
+        Without cluster ids (a target that is not clustered) the scoring
+        context is dropped, so ``distinct_families`` stays ``None`` instead of
+        raising "no cluster for hit design(s)".
+        """
+        context = self.context if self.context.clusters else None
+        return score(self.campaign.state(), stopped=self.campaign.stopped, context=context)
 
 
 def restore_backend(backend: ReplayBackend, store: CampaignStore, campaign_id: int) -> None:

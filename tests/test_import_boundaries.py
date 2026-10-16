@@ -23,6 +23,18 @@ ALLOWED: dict[str, set[str]] = {
     "advisor": {"domain", "datasets"},
     "policies": {"domain", "advisor"},
     "engine": {"domain", "store", "backends", "datasets", "config"},
+    # the agent-facing layer: the one package allowed to see everything,
+    # which is why nothing may import it in return
+    "interfaces": {
+        "domain",
+        "config",
+        "datasets",
+        "store",
+        "backends",
+        "engine",
+        "advisor",
+        "policies",
+    },
 }
 
 
