@@ -1,37 +1,32 @@
 # replaylab
 
-A decision engine for protein design selection, validated by replaying real wet-lab
-outcomes. An agent buys batches of designs under a budget, results come back (immediately
-or after a delay), and the agent decides what to buy next and when to stop. Every strategy
-is validated offline by replaying the recorded Proteinbase outcomes; the same code is meant
-to drive a live campaign later. Hidden outcomes must never leak to a strategy before it
-buys the design.
+A decision engine for protein design selection, validated by replaying real lab
+results. Designed to help agents select batches of designs and improve their hit rate under a fixed budget. In simulation mode, results come back immediately
+or after a delay, and the agent decides what to buy next and when to stop. Every strategy is validated offline by replaying the recorded Proteinbase outcomes. The forward mode is meant to drive live campaigns.
 
 ## Layout
 
 ```text
 src/replaylab/
-  domain/     core types and feature specs — stdlib only (enforced by a test)
-  config.py   YAML loading: config/features.yaml, config/games.yaml
+  domain/     core types and feature specs
+  config.py   YAML configuration loading and validation
   datasets/   Proteinbase tables, 3-mer similarity/clustering, folds, aliases,
-              pool loader (the only reader of hidden outcomes), phase-0 analyses
-  store/      SQLite campaign store: transactional, forward-only batch states
-  backends/   replay backend: serves recorded outcomes only after submit + delay
-  engine/     campaign rules (clock, submit/settle/wait), scoring, replay wiring
+              pool loader
+  store/      SQLite store: append-only campaign history
+  backends/   replay backend: serves recorded outcomes to the agent
+  engine/     campaign rules (clock, submit/settle/wait), scoring
   advisor/    preprocessing, logistic model, similarity index, rate/stop rules
-  policies/   scripted ladder: random, fixed metric, learner, learner_sim (+stop)
-  eval/       LLM smoke test, and the ladder runner (run every scripted policy
-              on every game for many seeds)
+  policies/   batch selection strategies: random, fixed metric, learner, learner_sim (+stop)
+  eval/       evaluation engine
   spec_pin.py OpenAPI spec pin
-data/         thin CLIs: build_tables, build_clusters, build_folds, feature_review,
-              author_checks
-scripts/      pin_spec.py, smoke_llm.py, run_ladder.py, reproduce_legacy.py
+data/         data handling and processing scripts
+scripts/      convenience scripts
 tests/        one test file per module + import-boundary guard
 ```
 
+## Import boundaries test
 `advisor` and `policies` never import `store`, `backends` or `engine`: they receive a
-`CampaignState` snapshot only, so they cannot write and cannot see hidden outcomes
-(`tests/test_import_boundaries.py`).
+`CampaignState` snapshot only, so they cannot write and cannot see hidden outcomes. This is enforced by `tests/test_import_boundaries.py`, to ensure that future outcome data cannot leak into the agent context.
 
 ## Quickstart
 
@@ -41,27 +36,21 @@ make test                                  # CI set: no data, network or key nee
 make lint                                  # ruff check + format check
 make test-all                              # everything, including real-data checks
 
-# put the Proteinbase CSV at data/raw/proteinbase.csv (never commit it), then:
+# Download the Proteinbase CSV at data/raw/proteinbase.csv (gitignored), then:
 python data/build_tables.py --csv data/raw/proteinbase.csv --check   # expect 15 x OK
 python data/build_clusters.py --check                                # cluster summary check
 python data/build_folds.py                                           # writes the frozen split
 pytest -m data -q                                                    # real-data checks
 
-# the evaluation harness (task T20):
+# Evaluation harness
 python scripts/run_ladder.py                                         # reports/ladder.{csv,md}
-python scripts/reproduce_legacy.py                                    # checks the exploratory numbers
-cat docs/design-notes.md                                             # why every number is what it is
 ```
 
-`--check` prints `OK` or `DIFF` per line; add `--strict` to exit non-zero on any difference.
-A `DIFF` is a finding to investigate, not necessarily a bug: the expected numbers came from
-exploratory runs. `build_clusters.py` also prints how many pairs sit within 1e-6 of the
-distance threshold; if that number is 0, floating-point rounding cannot explain a mismatch.
-
+### Note
 `build_folds.py` refuses to overwrite `data/splits/folds.csv` or the held-out id file once they
 exist (exit code 3); pass `--force` only if you really mean to replace a frozen split.
 
-## Definitions (section 2 of the spec)
+## Definitions
 
 * **hit**: any binding record for the (design, target) pair is True.
 * **conflict**: the binding records for the pair disagree.

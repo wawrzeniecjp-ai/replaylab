@@ -1,26 +1,13 @@
 ---
 title: "User Guide"
-guide-section: "Start here"
+guide-section: "Quick Start"
 ---
 
-This is the narrative layer of the documentation — the *why* behind the code.
-It sits next to two other layers:
+**Suggested reading:**
 
-| Layer | What it answers | Where |
-| --- | --- | --- |
-| README / home | What is this and how do I run it? | Landing page |
-| **User Guide** | How does it fit together, what do the words mean? | You are here |
-| API Reference | Exact signatures and behaviour, per symbol | Reference (navbar) |
-
-**Reading paths:**
-
-* *New to the codebase* → [Architecture](00-architecture.qmd) for the map,
+* *New to the codebase?* → [Architecture](00-architecture.qmd) for the map,
   then [Core concepts](01-concepts.qmd) for the vocabulary (pools, aliases,
   rounds, purchases), then wander into the Reference from there.
 * *Evaluating strategies* → the architecture page's "leak rules" section
   first, because everything else is designed around them.
 
-::: {.callout-tip}
-Every API page links back to its source file, so the docstring you read here
-is the one in the code — they cannot drift apart.
-:::

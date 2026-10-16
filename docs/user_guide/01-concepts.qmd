@@ -1,54 +1,49 @@
 ---
-title: "Core concepts"
+title: "Glossary"
 guide-section: "Understanding replaylab"
 ---
 
-The vocabulary used everywhere else in the code and tests. Every term below
-is explained on its own; the API Reference has the exact signatures.
+The vocabulary used in the code and documentation.
 
 # The game
 
 **pool**
-: The designs of one game — one target, one split. What an agent may buy from.
+: The designs of one game: one target, one split. What an agent may buy from.
 
 **game / campaign**
 : A *game* is the static configuration (target, split, rounds, batch size,
-  budget, delay — [`GameConfig`](../reference/config.GameConfig.qmd)); a
-  *campaign* is one play of it against the
+  budget, and delay, encapsulated in [`GameConfig`](../reference/config.GameConfig.qmd)). 
+  A *campaign* is one play of it against the
   [`CampaignStore`](../reference/store.CampaignStore.qmd).
 
 **alias**
 : Agents never see real design ids, only `d0001`-style aliases. The mapping is
-  built by sorting real ids on `sha256(f"{seed}|{id}")` — identical on every
-  machine, and **reshuffled by every seed** (a subtlety that has already bitten
-  once: a similarity index keyed by the wrong seed's aliases silently scores
-  the wrong sequences).
+  built by sorting real ids on `sha256(f"{seed}|{id}")` and reshuffled by every seed.  
 
 **round, tick, clock**
 : Rounds are *batch slots*. `state.clock` counts elapsed rounds. `submit`
   creates a batch, hands it to the backend, ingests what is ready, then ticks
-  once. A batch submitted at clock *t* with delay *d* delivers at *t + d* — so
-  a delay of 1 looks identical to 0 to the agent, and `wait` (tick without
-  buying) is allowed only while something is pending.
+  once. A batch submitted at clock *t* with delay *d* delivers at *t + d*.
+  `wait` (tick without buying any batch) is allowed only while something is pending.
 
 **batch**
-: Designs proposed or submitted together, moving only forward through
+: Designs proposed or submitted together, moving only forward through state transitions
   `proposed → submitted → partial → complete`.
 
 # Status of a design
 
 | Term | Meaning |
 | --- | --- |
-| **purchased** | in a batch that left `proposed` (delivered *or* pending); purchase order = batch order, then position inside the batch |
-| **delivered** | its outcome has arrived and is in the store |
-| **pending** | purchased but the outcome has not arrived yet |
+| **purchased** | in a batch that left `proposed` (delivered *or* pending) |
+| **delivered** | outcome has arrived and is in the store |
+| **pending** | purchased but outcome has not arrived yet |
 | **unpurchased** | still available to buy |
 
 # Outcomes
 
 **hit**
 : any binding record for the (design, target) pair is True. An *inconclusive*
-  result (`hit is None`) is a purchase but **not** a hit, and is excluded from
+  result (`hit is None`) is a purchase but not a hit, and is excluded from
   model fitting.
 
 **conflict / strength / kd_molar**
@@ -56,14 +51,14 @@ is explained on its own; the API Reference has the exact signatures.
   smallest KD converted to molar units.
 
 **budget**
-: `rounds × batch_size` — every game spends at most its budget, and at most
-  one round slot per submit.
+: `rounds × batch_size`: upper bound on the total number of designs that can be bought 
+  during a campaign.
 
 # The agent side
 
 **snapshot** ([`CampaignState`](../reference/domain.CampaignState.qmd))
-: The immutable view a policy or advisor function receives: designs, batches,
-  delivered outcomes, clock, and derived views (`unpurchased_ids`,
+: Immutable view of a campaign accessible to a policy or advisor function: 
+  designs, batches, delivered outcomes, clock, and derived views (`unpurchased_ids`,
   `budget_remaining`, …). Everything the agent knows comes through this object.
 
 **feature orientation**
@@ -73,27 +68,26 @@ is explained on its own; the API Reference has the exact signatures.
   covariate points the same way before the model sees it.
 
 **policy**
-: `choose(state, k, rng) -> ids`. Returns `[]` to mean *stop*. The scripted
-  ladder: `random`, `fixed:<metric>`, `learner`, `learner_sim`, each optionally
-  wrapped in `WithStop`.
+: `choose(state, k, rng) -> ids` returns a batch proposal given the current campaign state. 
+  Returns `[]` to mean *stop*. 
+  The baseline policies are: `random`, `fixed:<metric>`, `learner`, `learner_sim`;
+  each can be optionally wrapped in `WithStop`.
 
 **stop rules**
-: Advice evaluated at round boundaries on delivered purchases only.
+: Advice on when to stop the campaign, evaluated at round boundaries on delivered purchases only.
   `low_yield` (the default): fires from 20 purchases when the cumulative hit
-  rate is below 0.03. `decay` exists but was dropped from the default after it
-  false-stopped 77–98% of runs; treat it as experimental.
+  rate is below 0.03.
 
 **frozen configuration**
 : `config/frozen_v1.yaml` pins the model hyper-parameters chosen on `N-dev`
-  only. It changes only deliberately, never as a side effect of other work.
+  only.
 
 # Splits and evaluation
 
 **dev / held-out split**
 : Nipah-G designs are grouped into folds by sequence cluster (fold 2 is
   held out). The held-out outcomes can only be read with `final_run=True`, and
-  the evaluation runner refuses held-out games entirely — that split is run
-  **once, at the end**.
+  the evaluation runner refuses held-out games entirely.
 
 **replay vs live**
 : `mode="replay"` plays recorded outcomes through the

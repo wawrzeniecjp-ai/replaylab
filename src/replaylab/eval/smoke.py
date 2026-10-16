@@ -1,16 +1,12 @@
 """Smoke test for an OpenAI-compatible chat API with tool calling.
 
-It answers the Week 0 questions about the agent model, without guessing:
+It answers the following questions:
 
 1. Which models does the endpoint list?
 2. Does one round trip with a tool call work (right tool, right arguments)?
 3. Does the response carry a separate reasoning field, and must that field be passed
    back in the next turn of a tool loop?
 4. Are ``temperature``, ``seed`` and ``tool_choice='required'`` accepted?
-
-The client is passed in, so the logic is testable with a fake. The client must offer
-``client.models.list()`` and ``client.chat.completions.create(**kwargs)`` as the OpenAI
-Python SDK does.
 """
 
 from __future__ import annotations

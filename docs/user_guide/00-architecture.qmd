@@ -3,7 +3,7 @@ title: "Architecture"
 guide-section: "Understanding replaylab"
 ---
 
-# The one-paragraph version
+# Architecture overview
 
 replaylab decides **which designed proteins to test in a wet lab**. A pool of
 designs has predicted metrics; an agent buys batches under a budget, results
@@ -13,34 +13,68 @@ recorded real outcomes (Adaptyv's Proteinbase data); the same code is meant to
 drive a live campaign later.
 
 # Data flow
+ 
+The following charts summarize the data flow in replaylab.
 
+*Build phase*
 ```{d2}
 direction: right
+
 csv: "proteinbase.csv"
-tables: "designs / outcomes / targets (parquet)"
-clusters: "clusters.csv"
-folds: "folds.csv"
-pool: "Pool (visible features only)"
+
+tables: {
+  label: "build_tables"
+  designs: "designs (parquet)"
+  outcomes: "outcomes (parquet)"
+  targets: "targets (parquet)"
+}
+
+derived: {
+  label: "derived tables"
+  clusters: "clusters.csv"
+  folds: "folds.csv"
+}
+
+pool: "Pool\n(visible features)"
 hidden: "hidden outcomes"
-env: "build_replay_campaign (aliases by seed)"
-state: "CampaignState snapshot"
-batch: "batch of design ids"
-submit: "Campaign.submit (ticks the clock, stores events)"
-backend: "Backend.poll (outcomes arrive)"
+
+csv -> tables
+tables -> derived
+tables -> pool
+tables -> hidden
+```
+
+*Campaign phase*
+```{d2}
+direction: right
+
+inputs: {
+  pool: "Pool"
+  clusters: "clusters"
+  folds: "folds"
+  hidden: "hidden outcomes"
+}
+
+vars: {
+  d2-config: {
+    layout-engine: elk
+  }
+}
+
+env: "build_replay_campaign\n(aliases by seed)"
+state: "CampaignState\nsnapshot"
+batch: "batch of\ndesign ids"
+submit: "Campaign.submit\n(ticks the clock,\nstores events)"
+backend: "Backend.poll\n(outcomes arrive)"
 score: "settle + score"
 card: "ScoreCard"
 
-csv -> tables: build_tables
-tables -> clusters: build_clusters
-tables -> folds: build_folds
-tables -> pool
-tables -> hidden
-pool -> env
-clusters -> env
-folds -> env
-hidden -> env
+inputs.pool -> env
+inputs.clusters -> env
+inputs.folds -> env
+inputs.hidden -> env
 env -> state
-state -> batch: policy chooses a batch
+state -> batch: policy chooses\na batch
 batch -> submit
 submit -> backend
 backend -> state
@@ -48,16 +82,32 @@ submit -> score
 score -> card
 ```
 
-# The layers
-
+# Layers
 ```{d2}
+direction: right
+
+classes: {
+  module: {
+    width: 170
+    style.font-size: 13
+  }
+}
+
+vars: {
+  d2-config: {
+    layout-engine: elk
+  }
+}
+
 world: "The world" {
-  engine: "engine (the rules of the game)"
-  store: "store (SQLite persistence)"
-  backends: "backends (where outcomes come from)"
-  datasets: "datasets (tables, clustering, the pool)"
+  direction: down
+
+  engine: "engine (game rules)"
+  store: "store (SQLite)"
+  backends: "backends\n(deliver outcomes)"
+  datasets: "datasets"
   config: "config (YAML loading)"
-  domain: "domain (core types, stdlib only)"
+  domain: "domain (core types)\nstdlib only -- imports nothing"
 
   engine -> store
   engine -> backends
@@ -71,13 +121,27 @@ world: "The world" {
 }
 
 agent: "The agent" {
-  policies: "policies (scripted strategies)"
-  advisor: "advisor (pure functions over a snapshot)"
+  direction: down
+
+  policies: "policies"
+  advisor: "advisor"
 
   policies -> advisor
 }
 
-eval: "eval (offline evaluation)"
+eval: "eval"
+
+world.engine.class: module
+world.store.class: module
+world.backends.class: module
+world.datasets.class: module
+world.config.class: module
+world.domain.class: module
+
+agent.policies.class: module
+agent.advisor.class: module
+
+eval.class: module
 
 agent.policies -> world.domain
 agent.advisor -> world.domain
@@ -85,6 +149,15 @@ agent.advisor -> world.datasets
 eval -> world.engine { style.stroke-dash: 4 }
 eval -> agent.policies { style.stroke-dash: 4 }
 ```
+
+In this chart the arrows are **imports, not data flow**: `a -> b` means package
+`a` may import package `b`, which is exactly the map
+`tests/test_import_boundaries.py` enforces (dashed edges: `eval` drives that
+layer and may import anything). Every arrow ends at `domain` because `domain`
+imports nothing from replaylab -- standard library only. It holds the shared
+vocabulary (`Design`, `Outcome`, `CampaignState`, the feature specs) that all
+the other packages are written in, so it is the floor everything stands on,
+not a funnel things flow into.
 
 The split is not cosmetic: `tests/test_import_boundaries.py` fails the build
 if a package imports outside its lane.
