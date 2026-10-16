@@ -41,7 +41,7 @@ from replaylab.advisor.stop import (
 )
 from replaylab.config import GameConfig
 from replaylab.datasets.aliases import Aliaser
-from replaylab.datasets.pool import Pool, load_pool
+from replaylab.datasets.pool import DesignPool, load_pool
 from replaylab.datasets.split_tables import target_has_clusters
 from replaylab.domain.features import FeatureConfig
 from replaylab.domain.types import Design
@@ -185,7 +185,7 @@ class LadderGame:
 
     game: GameConfig
     feature_config: FeatureConfig
-    pool: Pool
+    pool: DesignPool
     preprocessor: Preprocessor
     tables_dir: Path
     folds_path: Path | None

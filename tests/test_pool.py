@@ -7,7 +7,7 @@ import pytest
 from factories import EGFR, NIPAH, make_pool_raw
 
 from replaylab.config import GameConfig
-from replaylab.datasets.pool import HeldOutAccessError, Pool, load_outcomes, load_pool
+from replaylab.datasets.pool import DesignPool, HeldOutAccessError, load_outcomes, load_pool
 from replaylab.datasets.proteinbase import build_all, write_tables
 from replaylab.datasets.split_tables import build_cluster_table, build_fold_table
 from replaylab.domain.features import FeatureConfig, FeatureSpec
@@ -45,7 +45,7 @@ def env(tmp_path_factory):
     }
 
 
-def pool_for(env, g: GameConfig, config: FeatureConfig = ALL_FEATURES, **kwargs) -> Pool:
+def pool_for(env, g: GameConfig, config: FeatureConfig = ALL_FEATURES, **kwargs) -> DesignPool:
     return load_pool(env["dir"], g, config, folds_path=env["folds"], **kwargs)
 
 

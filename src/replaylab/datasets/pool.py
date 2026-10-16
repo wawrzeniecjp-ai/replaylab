@@ -31,7 +31,7 @@ class HeldOutAccessError(PermissionError):
 
 
 @dataclass(frozen=True)
-class Pool:
+class DesignPool:
     """One game's candidate designs, keyed by *real* id.
 
     Everything an agent may see is in ``designs`` (visible features only,
@@ -78,7 +78,7 @@ def load_pool(
     *,
     folds_path: Path | str | None = None,
     clusters_path: Path | str | None = None,
-) -> Pool:
+) -> DesignPool:
     """Load the candidate designs of a game from the processed tables.
 
     The pool is every design of the game's target, restricted to the split
@@ -132,7 +132,7 @@ def load_pool(
             raise ValueError(f"{len(absent)} design(s) have no cluster in {clusters_path}")
         clusters = {i: int(lookup[i]) for i in ids}
 
-    return Pool(game, pool_designs, clusters, dict(feature_config.orientation))
+    return DesignPool(game, pool_designs, clusters, dict(feature_config.orientation))
 
 
 def load_outcomes(

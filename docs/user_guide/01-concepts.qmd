@@ -7,8 +7,10 @@ The vocabulary used in the code and documentation.
 
 # The game
 
-**pool**
+**pool** ([`DesignPool`](../reference/datasets.pool.DesignPool.qmd))
 : The designs of one game: one target, one split. What an agent may buy from.
+  It carries only the visible features; cluster ids and outcomes ride along
+  hidden, and nothing hands the object itself to an agent.
 
 **game / campaign**
 : A *game* is the static configuration (target, split, rounds, batch size,
@@ -18,7 +20,14 @@ The vocabulary used in the code and documentation.
 
 **alias**
 : Agents never see real design ids, only `d0001`-style aliases. The mapping is
-  built by sorting real ids on `sha256(f"{seed}|{id}")` and reshuffled by every seed.  
+  built by sorting real ids on `sha256(f"{seed}|{id}")` and reshuffled by every
+  seed: a per-episode pseudonym, not a naming scheme. A real id is a stable
+  handle on the whole dataset -- anything holding one can join it to outside
+  knowledge or to an earlier run's transcript -- while an alias points at
+  nothing outside its own campaign, and two seeds cannot be lined up on
+  `d0001`. It is deterministic (no random generator), so one seed reproduces
+  the same mapping on any machine. **Consequence:** state keyed by alias
+  belongs to exactly one seed, which is why policies are built fresh per seed.
 
 **round, tick, clock**
 : Rounds are *batch slots*. `state.clock` counts elapsed rounds. `Campaign.submit`
@@ -65,7 +74,13 @@ The vocabulary used in the code and documentation.
 : Feature values stay *raw* in the pool (a lower-is-better ProteinMPNN score
   looks lower); the ±1 orientation is applied once inside
   [`Preprocessor`](../reference/advisor.preprocess.Preprocessor.qmd), so every
-  covariate points the same way before the model sees it.
+  covariate points the same way before the model sees it. The direction is
+  declared once per target in `config/features.yaml` (`higher_is_better`), and
+  that declaration is also what every *raw* sort reads: round 1's
+  `first_column`, the fallback, and `fixed:<metric>`. It is a statement of
+  which way is good, not a modelling trick -- the model would learn the sign by
+  itself -- but with it declared, a positive weight reads as "better, more
+  hits" and nothing sorts a metric the wrong way.
 
 **policy**
 : `choose(state, k, rng) -> ids` returns a batch proposal given the current campaign state. 
@@ -84,10 +99,24 @@ The vocabulary used in the code and documentation.
 
 # Splits and evaluation
 
+**cluster** (a family)
+: Designs grouped by 3-mer cosine distance ≤ 0.4 -- the connected components of
+  that pair graph, built once by `data/build_clusters.py`. Hidden from every
+  policy and every tool. It does two jobs: keeping a family whole when the
+  folds are cut, and scoring campaigns by `distinct_families`.
+
+**fold**
+: One of three groups a target's designs are split into, with
+  `StratifiedGroupKFold` on the cluster as *group* (a family never straddles a
+  fold) and the hit as *label* (equal hit rates), taking the first seed that
+  lands every fold within ±2 designs and ±2 hits. **Fold 2 is the held-out
+  fold.** Frozen in `data/splits/folds.csv`.
+
 **dev / held-out split**
-: Nipah-G designs are grouped into folds by sequence cluster (fold 2 is
-  held out). The held-out outcomes can only be read with `final_run=True`, and
-  the evaluation runner refuses held-out games entirely.
+: `dev` is folds 0 and 1 (`N-dev` and the other development games), `heldout`
+  is fold 2 (`N-held`), `all` ignores folds. Held-out outcomes can only be read
+  with `final_run=True`, the evaluation runner refuses held-out games entirely,
+  and `replaylab serve` exits with code 2 for them.
 
 **replay vs live**
 : `mode="replay"` plays recorded outcomes through the

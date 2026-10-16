@@ -35,7 +35,7 @@ derived: {
   folds: "folds.csv"
 }
 
-pool: "Pool\n(visible features)"
+pool: "DesignPool\n(visible features)"
 hidden: "hidden outcomes"
 
 csv -> tables
@@ -44,12 +44,52 @@ tables -> pool
 tables -> hidden
 ```
 
+## Derived tables: clusters and folds
+
+Both files in that box come from `data/build_clusters.py` and
+`data/build_folds.py`, are committed under `data/splits/`, and are then treated
+as frozen: `--check` only prints `OK` or `DIFF` against the committed summary,
+and rewriting one deliberately takes `--force`.
+
+**Clusters: which designs are the same design, twice.** Each sequence becomes a
+binary 3-mer vector (`kmer_matrix`), and designs within cosine distance 0.4 of
+each other are joined into one *cluster* -- the connected components of that
+pair graph. Sequences that close are almost always the same family, often the
+same author, so a cluster is this repo's unit of "variants of one thing".
+Clusters do two jobs, both offline:
+
+* **cutting the split** (next paragraph): a family is never divided across
+  folds, so no design's cousins sit in the development games while it sits in
+  the held-out set;
+* **scoring**: `ScoreCard.distinct_families` counts how many clusters the hits
+  came from -- four hits from one family is a different result from four
+  families.
+
+Clusters never reach a decision: they live on `DesignPool` and in the scoring
+context, not on `CampaignState`, and no tool can return one. What an agent gets
+instead is `similar_designs` -- the same 3-mer geometry, computed live from the
+campaign's designs and returned as similarity values only.
+
+**Folds: the train/test cut.** Every design of a target lands in one of three
+folds, assigned with `StratifiedGroupKFold` where the *group* is its cluster
+(family integrity) and the *label* is its hit (equal hit rates). The builder
+tries seeds until one split puts all three folds within ±2 designs and ±2 hits
+of each other. **Fold 2 is the held-out fold**, which gives the three splits in
+`config/games.yaml`: `dev` = folds 0 and 1, `heldout` = fold 2, and `all` ignores
+folds entirely (the stop games, `E`, `E-long`).
+
+So `folds.csv` *is* the train/test split, frozen and committed instead of drawn
+at run time. That is why it is an argument to `build_replay_campaign`: it
+decides **which designs the game contains** -- `load_pool` and `load_outcomes`
+both filter through it -- and no model is cross-validated on it; a model is fit
+only on what a campaign has actually bought.
+
 *Campaign phase*
 ```{d2}
 direction: right
 
 inputs: {
-  pool: "Pool"
+  pool: "DesignPool"
   clusters: "clusters"
   folds: "folds"
   hidden: "hidden outcomes"

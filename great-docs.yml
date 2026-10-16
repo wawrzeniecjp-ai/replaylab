@@ -106,7 +106,7 @@ reference:
         - datasets.split_tables.compare_cluster_summary
         - datasets.aliases.Aliaser
         - datasets.aliases.UnknownIdError
-        - datasets.pool.Pool
+        - datasets.pool.DesignPool
         - datasets.pool.load_pool
         - datasets.pool.load_outcomes
         - datasets.pool.HeldOutAccessError
