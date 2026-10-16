@@ -21,10 +21,10 @@ The vocabulary used in the code and documentation.
   built by sorting real ids on `sha256(f"{seed}|{id}")` and reshuffled by every seed.  
 
 **round, tick, clock**
-: Rounds are *batch slots*. `state.clock` counts elapsed rounds. `submit`
+: Rounds are *batch slots*. `state.clock` counts elapsed rounds. `Campaign.submit`
   creates a batch, hands it to the backend, ingests what is ready, then ticks
   once. A batch submitted at clock *t* with delay *d* delivers at *t + d*.
-  `wait` (tick without buying any batch) is allowed only while something is pending.
+  `Campaign.wait` (tick without buying any batch) is allowed only while something is pending.
 
 **batch**
 : Designs proposed or submitted together, moving only forward through state transitions

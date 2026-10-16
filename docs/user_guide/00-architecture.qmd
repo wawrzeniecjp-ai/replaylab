@@ -131,6 +131,9 @@ agent: "The agent" {
 
 eval: "eval"
 
+# the agent-facing layer: imports every lane, and nothing imports it
+interfaces: "interfaces\n(14 tools: MCP server + CLI)"
+
 world.engine.class: module
 world.store.class: module
 world.backends.class: module
@@ -142,19 +145,25 @@ agent.policies.class: module
 agent.advisor.class: module
 
 eval.class: module
+interfaces.class: module
 
 agent.policies -> world.domain
 agent.advisor -> world.domain
 agent.advisor -> world.datasets
 eval -> world.engine { style.stroke-dash: 4 }
 eval -> agent.policies { style.stroke-dash: 4 }
+interfaces -> world
+interfaces -> agent
 ```
 
 In this chart the arrows are **imports, not data flow**: `a -> b` means package
 `a` may import package `b`, which is exactly the map
 `tests/test_import_boundaries.py` enforces (dashed edges: `eval` drives that
-layer and may import anything). Every arrow ends at `domain` because `domain`
-imports nothing from replaylab -- standard library only. It holds the shared
+layer and may import anything). The lane that reaches both sides is
+`interfaces` -- the 14 tools, the MCP server and the command line: it may
+import every package shown here, and none of them may import it back (the same
+boundary test, which exempts `eval`, the driver). Every arrow ends at `domain`
+because `domain` imports nothing from replaylab -- standard library only. It holds the shared
 vocabulary (`Design`, `Outcome`, `CampaignState`, the feature specs) that all
 the other packages are written in, so it is the floor everything stands on,
 not a funnel things flow into.
@@ -188,7 +197,7 @@ independent layers enforce this:
 
 1. **Architecture** — the import boundaries above; policies only see snapshots.
 2. **API shape** — the [`ReplayBackend`](../reference/backends.ReplayBackend.qmd)
-   serves an outcome only via `submit` + `poll` after its delay; there is no
+   serves an outcome only via `Campaign.submit` + `ReplayBackend.poll` after its delay; there is no
    bulk accessor to leak through.
 3. **Guards** — `load_outcomes` refuses to read the held-out split outside the
    final run (`HeldOutAccessError`), and the evaluation runner refuses

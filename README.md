@@ -18,6 +18,7 @@ src/replaylab/
   advisor/    preprocessing, logistic model, similarity index, rate/stop rules
   policies/   batch selection strategies: random, fixed metric, learner, learner_sim (+stop)
   eval/       evaluation engine
+  interfaces/ the 14 tools, MCP server and CLI (the agent-facing layer)
   spec_pin.py OpenAPI spec pin
 data/         data handling and processing scripts
 scripts/      convenience scripts
