@@ -1,0 +1,23 @@
+# Model configuration for the eval. Copy to config/models.yaml and check every value against
+# the provider's documentation and your own run of scripts/smoke_llm.py. Nothing here is guessed
+# by the code: `params` is sent as given, and the API key is read from the environment variable named.
+version: 1
+models:
+  deepseek-v4-flash:
+    base_url: "https://api.deepseek.com"      # verify
+    model: "deepseek-v4-flash"                # verify the exact id
+    api_key_env: DEEPSEEK_API_KEY
+    price_key: deepseek-v4-flash              # entry in config/prices.yaml
+    reasoning_passback: true                  # set from the smoke test line "reasoning pass-back needed"
+    reasoning_field: reasoning_content
+    params:
+      max_tokens: 4096
+      # temperature / seed / extra_body (for example a thinking switch): only what the smoke test showed is accepted
+  local-qwen:
+    base_url: "http://127.0.0.1:8080/v1"
+    model: "/path/to/Qwen3-1.7B.Q4_K_M.gguf"
+    api_key_env: LLM_API_KEY
+    price_key: local-free
+    reasoning_passback: false
+    reasoning_field: reasoning_content
+    params: {max_tokens: 2048}

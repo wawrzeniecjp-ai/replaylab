@@ -9,10 +9,10 @@ test-all:
 	uv run pytest -q
 
 lint:
-	uv ruff check . && ruff format --check .
+	uv run ruff check . && uv run ruff format --check .
 
 fix:
-	uv ruff check . --fix && ruff format .
+	uv run ruff check . --fix && uv run ruff format .
 
 data:
 	uv run python data/build_tables.py --check

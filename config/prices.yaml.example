@@ -1,0 +1,20 @@
+# Copy to config/prices.yaml and fill in from the PROVIDER'S OWN pricing page.
+# Set `date` to the day you checked. Prices are USD per million tokens.
+# The numbers below were reported by third-party sources in mid 2026 and are NOT verified:
+# check them before relying on any spend figure.
+version: 1
+prices:
+  deepseek-v4-flash:
+    currency: USD
+    date: "YYYY-MM-DD"
+    source: "https://api-docs.deepseek.com/ (pricing page)"
+    input_per_mtok: 0.14
+    cached_input_per_mtok: 0.0028
+    output_per_mtok: 0.28
+  local-free:
+    currency: USD
+    date: "n/a"
+    source: "a model you run yourself costs nothing per token"
+    input_per_mtok: 0
+    cached_input_per_mtok: 0
+    output_per_mtok: 0

@@ -32,7 +32,7 @@ tests/        one test file per module + import-boundary guard
 ## Quickstart
 
 ```bash
-uv venv && uv pip install -e ".[dev]"      # or: python -m venv .venv && pip install -e ".[dev]"
+uv sync                                    # project + dev group (pytest, ruff); without uv: pip install -e . pytest ruff
 make test                                  # CI set: no data, network or key needed
 make lint                                  # ruff check + format check
 make test-all                              # everything, including real-data checks

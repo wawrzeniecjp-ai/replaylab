@@ -1,0 +1,11 @@
+# Eval conditions as tool allow-lists. One system prompt (prompts/system.md) serves all of them.
+# Tokens are group names (campaign, advisor, knowledge) or tool names. `exclude` removes tools.
+# NOTE: until the knowledge tools exist (phase 8), condition B has exactly the same tools as B1.
+version: 1
+conditions:
+  A:  {include: [campaign]}
+  B:  {include: [campaign, advisor, knowledge]}
+  B1: {include: [campaign, advisor]}
+  B2: {include: [campaign, advisor], exclude: [similar_designs]}
+  B3: {include: [campaign, advisor], exclude: [fit_and_rank]}
+  B4: {include: [campaign, advisor], exclude: [stop_advice]}

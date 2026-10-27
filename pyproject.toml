@@ -14,7 +14,6 @@ dependencies = [
     "scipy>=1.11",
     "scikit-learn>=1.3",
     "pyyaml>=6",
-    # phase 6: the MCP server and the command line
     "pydantic>=2.7",
     "mcp>=2.3,<3",
     "typer>=0.12",
@@ -22,16 +21,26 @@ dependencies = [
 
 [project.scripts]
 replaylab = "replaylab.interfaces.cli:app"
+replaylab-eval = "replaylab.eval.cli:app"
 
 [project.optional-dependencies]
-eval = ["openai>=1.30"]
-dev = ["pytest>=8", "ruff>=0.5"]
+# openai is only needed to actually *run* the eval: the adapter takes an injected
+# async client (AsyncOpenAI or anything with chat.completions.create), so the
+# library and its tests never import it. Install with `uv sync --extra eval`.
+eval = ["openai>=3.37.0"]
 # documentation site: `uv sync --extra docs`, then `great-docs init` / `great-docs build`
 # (great-docs also needs Quarto installed system-wide: https://quarto.org,
 #  and the `d2` binary for diagrams: https://d2lang.com)
 # Pinned to git main: D2 diagram support is documented but not yet in a PyPI
 # release (0.17.0 lacks it). Switch back to "great-docs>=0.18" once released.
 docs = ["great-docs @ git+https://github.com/posit-dev/great-docs"]
+
+[dependency-groups]
+# uv installs the default `dev` group on every `uv sync` / `uv run`, so a bare
+# sync can never strip the test and lint tools again (an extras-based `dev` was
+# silently removed by `uv sync`, which made `make test` fall back to the system
+# pytest).
+dev = ["pytest>=8", "ruff>=0.5"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -57,3 +66,5 @@ select = ["E", "F", "I", "UP", "B"]
 [tool.ruff.lint.per-file-ignores]
 # Tool descriptions and agent-facing error messages are long sentences on purpose.
 "src/replaylab/interfaces/tools.py" = ["E501"]
+"src/replaylab/eval/cli.py" = ["E501"]  # usage examples in the module docstring
+"tests/**" = ["E501"]  # data tables
