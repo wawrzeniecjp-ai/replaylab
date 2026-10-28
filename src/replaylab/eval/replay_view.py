@@ -102,7 +102,9 @@ def _summary(name: str, arguments: Mapping[str, Any], content: str, data: Any) -
 def timeline(record: Mapping[str, Any]) -> list[dict[str, Any]]:
     """One step per tool call, plus one per assistant reply without tool calls.
 
-    Each step carries the turn's text and reasoning (on its first step only), the designs
+    One model turn may make several tool calls at once: they share the turn's text and
+    reasoning (carried on the turn's first step only) and are numbered ``call`` of
+    ``calls`` (0 of 0 for a reply without tool calls). Each step also carries the designs
     the result names (``seen``), the designs bought and the outcomes delivered by it, and
     the running totals ``purchased`` and ``hits`` after it.
     """
@@ -123,7 +125,8 @@ def timeline(record: Mapping[str, Any]) -> list[dict[str, Any]]:
         calls = message.get("tool_calls") or []
         if not calls:
             steps.append(
-                {"turn": turn, "tool": None, "args": {}, "ok": True, "summary": "",
+                {"turn": turn, "call": 0, "calls": 0, "tool": None, "args": {}, "ok": True,
+                 "summary": "",
                  "text": text, "reasoning": thought, "seen": [], "bought": [],
                  "delivered": [], "purchased": purchased, "hits": hits}
             )  # fmt: skip
@@ -148,6 +151,8 @@ def timeline(record: Mapping[str, Any]) -> list[dict[str, Any]]:
             steps.append(
                 {
                     "turn": turn,
+                    "call": index + 1,
+                    "calls": len(calls),
                     "tool": name,
                     "args": arguments if isinstance(arguments, dict) else {},
                     "ok": ok,

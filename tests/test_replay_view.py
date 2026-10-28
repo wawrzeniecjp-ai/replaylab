@@ -73,6 +73,20 @@ MESSAGES = [
 ]
 
 
+def test_parallel_calls_of_one_turn_are_numbered_and_share_the_turns_words_once():
+    # One model turn may call several tools at once (deepseek B1 did, turns 3-5).
+    messages = [
+        assistant(("c1", "query_pool", {"limit": 2}), ("c2", "get_history", {}), content="Two."),
+        tool("c1", {"rows": [], "total_matching": 0}),
+        tool("c2", {"designs": []}),
+    ]
+    first, second = timeline(record(messages, reasoning=["why both"]))
+    assert (first["turn"], first["call"], first["calls"]) == (1, 1, 2)
+    assert (second["turn"], second["call"], second["calls"]) == (1, 2, 2)
+    assert first["reasoning"] == "why both" and first["text"] == "Two."
+    assert second["reasoning"] is None and second["text"] is None
+
+
 def test_the_timeline_has_one_step_per_tool_call_and_a_final_answer():
     steps = timeline(record(MESSAGES, reasoning=["think 1", None, "think 3", "think 4"]))
     assert [s["tool"] for s in steps] == ["query_pool", "submit_batch", "submit_batch", None]

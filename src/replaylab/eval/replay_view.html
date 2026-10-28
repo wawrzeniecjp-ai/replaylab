@@ -66,6 +66,11 @@ svg text { fill: var(--muted); font-size: 11px; }
 .step .good { color: var(--hit); }
 .thought { margin-top: 10px; padding: 10px 12px; background: var(--soft); border-radius: 8px; font-size: 13px; white-space: pre-wrap; max-height: 260px; overflow: auto; }
 .thought code { font-family: var(--mono); font-size: 12px; word-break: break-all; }
+.thought.call { opacity: .55; }
+.thought.call.now { opacity: 1; box-shadow: inset 3px 0 0 var(--accent); }
+.thought .result { margin-top: 4px; color: var(--muted); font-size: 12px; }
+.thought .result.err { color: var(--miss); }
+.turnhead { font-size: 12px; color: var(--muted); margin-bottom: 2px; }
 .thought .lab { font-size: 11px; color: var(--faint); display: block; margin-bottom: 4px; }
 .say { font-family: Georgia, "Times New Roman", serif; }
 .vs { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; font-size: 12px; }
@@ -140,7 +145,7 @@ kbd { font-family: var(--mono); font-size: 11px; border: 1px solid var(--line); 
       <div class="feed" id="feed"></div>
     </section>
     <section class="panel">
-      <h2>The agent's words</h2>
+      <h2>This turn</h2>
       <div id="words"></div>
     </section>
   </div>
@@ -273,7 +278,7 @@ window.REPLAY_DATA = /*__REPLAY_DATA__*/null;
     const feed = $("feed"); feed.innerHTML = "";
     steps.forEach((s, i) => {
       const row = el("div", "step");
-      row.append(el("span", "t", "t" + s.turn));
+      row.append(el("span", "t", "t" + s.turn + (s.calls > 1 ? String.fromCharCode(96 + s.call) : "")));  // t3a, t3b: one turn's parallel calls
       const name = el("span"); name.append(el("code", null, s.tool || "reply")); row.append(name);
       const what = el("span", s.ok ? (s.delivered.some((d) => d.hit) ? "good" : "") : "err", s.tool ? s.summary : (s.text || "").slice(0, 140));
       row.append(what);
@@ -292,19 +297,25 @@ window.REPLAY_DATA = /*__REPLAY_DATA__*/null;
   }
 
   function paintWords() {
+    // A turn, in the order it happened: the model read the previous results, reasoned,
+    // spoke, then made one or more tool calls (several calls of one turn run in order).
     const box = $("words"); box.innerHTML = "";
-    let text = null, thought = null;
-    for (let i = idx; i >= 0; i--) { if (steps[i].text || steps[i].reasoning) { text = steps[i].text; thought = steps[i].reasoning; break; } }
     const s = steps[idx];
-    if (s && s.tool) {
-      const call = el("div", "thought");
-      call.append(el("span", "lab", "tool call"));
-      call.append(el("code", null, `${s.tool}(${JSON.stringify(s.args)})`));
-      box.append(call);
-    }
-    if (thought) { const t = el("div", "thought"); t.append(el("span", "lab", "reasoning")); t.append(document.createTextNode(thought)); box.append(t); }
-    if (text) { const t = el("div", "thought say"); t.append(el("span", "lab", "says")); t.append(document.createTextNode(text)); box.append(t); }
-    if (!box.children.length) box.append(el("p", "tag", "Nothing said at this step."));
+    if (!s) return;
+    const turn = steps.filter((x) => x.turn === s.turn);
+    const head = turn[0];
+    const n = head.calls;
+    box.append(el("div", "turnhead", `Turn ${s.turn}` + (n > 1 ? ` · ${n} tool calls at once` : n === 1 ? " · 1 tool call" : " · final reply")));
+    if (head.reasoning) { const t = el("div", "thought"); t.append(el("span", "lab", "1 · reasoning")); t.append(document.createTextNode(head.reasoning)); box.append(t); }
+    if (head.text) { const t = el("div", "thought say"); t.append(el("span", "lab", (head.reasoning ? "2" : "1") + " · says")); t.append(document.createTextNode(head.text)); box.append(t); }
+    if (!head.reasoning && !head.text) box.append(el("p", "tag", "No reasoning or text recorded for this turn."));
+    turn.filter((x) => x.tool).forEach((x) => {
+      const c = el("div", "thought call" + (x === s ? " now" : ""));
+      c.append(el("span", "lab", n > 1 ? `tool call ${x.call} of ${n}` : "tool call"));
+      c.append(el("code", null, `${x.tool}(${JSON.stringify(x.args)})`));
+      c.append(el("div", "result" + (x.ok ? "" : " err"), "→ " + x.summary));
+      box.append(c);
+    });
   }
 
   function paintRace(st) {
