@@ -311,3 +311,31 @@ def test_first_trial_must_not_be_negative(setup, tmp_path):
     args = ["scripted", "--run-dir", str(tmp_path), "--games", "G", "--policies", "random"]
     result = invoke([*args, "--first-trial", "-1", *setup["common"]])
     assert result.exit_code == 2
+
+
+def test_compare_can_restrict_to_a_trial_range(setup, tmp_path):
+    # During an extension one side has more trials than the other: compare all of it
+    # refuses (unpaired), a range compares the block both sides have.
+    from replaylab.eval.records import append_record
+
+    path = tmp_path / "e.jsonl"
+    for seed, (a, b) in enumerate([(5, 1), (2, 2), (9, 3), (1, 4)]):
+        append_record(path, {**episode(seed, "A"), "scores": {"hits": a}})
+        append_record(path, {**episode(seed, "B1"), "scores": {"hits": b}})
+    append_record(path, {**episode(7, "A"), "scores": {"hits": 50}})  # extension under way
+    base = ["compare", "--records", str(path), "--game", "G", "--a", "A", "--b", "B1"]
+    assert invoke(base).exit_code == 1
+    full = json.loads(invoke([*base, "--trial-range", "0-3"]).stdout)
+    assert full["n"] == 4 and full["mean_diff"] == pytest.approx(7 / 4)
+    assert full["trial_range"] == [0, 3]
+    half = json.loads(invoke([*base, "--trial-range", "2-3"]).stdout)
+    assert half["n"] == 2 and half["mean_diff"] == pytest.approx(3 / 2)
+
+
+@pytest.mark.parametrize("bad", ["3", "5-2", "a-b", "-1-4"])
+def test_compare_refuses_a_malformed_trial_range(setup, tmp_path, bad):
+    path = tmp_path / "e.jsonl"
+    path.write_text("")
+    args = ["compare", "--records", str(path), "--game", "G", "--a", "A", "--b", "B1"]
+    result = invoke([*args, "--trial-range", bad])
+    assert result.exit_code == 2 and "trial range" in result.output

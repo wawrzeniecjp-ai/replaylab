@@ -5,7 +5,7 @@
     replaylab-eval pilot --model deepseek-v4-flash --games N-dev --conditions A,B1 --trials 5 --max-usd 3 --run-dir runs/x
     replaylab-eval run   --model deepseek-v4-flash --games N-dev --conditions A,B1 --trials 5 --max-usd 20 --run-dir runs/x
     replaylab-eval run   ... --trials 20 --first-trial 100      # a fresh block: trials 100-119
-    replaylab-eval compare --records runs/x/episodes.jsonl --game N-dev --a B1 --b A --ci 0.9
+    replaylab-eval compare --records runs/x/episodes.jsonl --game N-dev --a B1 --b A --ci 0.9 --trial-range 0-9
     replaylab-eval view --run-dir runs/x        # writes runs/x/replay.html
 
 Exit codes: 0 success, 1 the operation was refused or incomplete, 2 bad setup.
@@ -394,9 +394,20 @@ def compare(
     resamples: Annotated[int, typer.Option("--resamples")] = 10_000,
     seed: Annotated[int, typer.Option("--seed")] = 0,
     ci: Annotated[float, typer.Option("--ci", help="Interval level, e.g. 0.9 or 0.95.")] = 0.95,
+    trial_range: Annotated[
+        str | None,
+        typer.Option("--trial-range", help="Only trials FIRST-LAST, inclusive, e.g. 0-9."),
+    ] = None,
 ) -> None:
     """Paired bootstrap of a minus b over episode seeds."""
     loaded = read_records(records)
+    bounds = None
+    if trial_range is not None:
+        first, _, last = trial_range.partition("-")
+        if not (first.isdigit() and last.isdigit() and int(first) <= int(last)):
+            raise _fail(f"bad trial range {trial_range!r}; expected FIRST-LAST, e.g. 0-9", 2)
+        bounds = [int(first), int(last)]
+        loaded = [r for r in loaded if bounds[0] <= int(r["trial"]) <= bounds[1]]
     try:
         result = paired_bootstrap(
             metric_by_seed(loaded, game, a, metric),
@@ -407,7 +418,7 @@ def compare(
         )
     except (UnpairedError, ValueError) as error:
         raise _fail(str(error), 1) from None
-    _emit({"game": game, "a": a, "b": b, "metric": metric, **asdict(result)})
+    _emit({"game": game, "a": a, "b": b, "metric": metric, "trial_range": bounds, **asdict(result)})
 
 
 @app.command("view")

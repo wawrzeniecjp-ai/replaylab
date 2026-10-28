@@ -464,3 +464,47 @@ that fails one is fixed and replayed, never analysed:
 7. *Sampling.* `config/models.yaml` sets no temperature or sampling seed, so
    the providers' defaults apply and a replayed episode is not reproducible
    token for token; the records file, not a rerun, is the result.
+
+**Results (evaluated 2026-10-28: `--ci 0.9`, 10000 resamples, seed 0).**
+Trials 10-19 did not exist when this block was first written. Reproduce with
+`compare ... --trial-range 0-9` (sensitivity: `--trial-range 5-9`); the range
+is needed once the extension's trials sit in the same file.
+*Deviation, disclosed:* gates 1 and 2 were checked before any hit count was
+read, but gate 3 (the transcript pass) was not -- it is still pending below.
+
+| model | primary (B1 - `learner_sim_purchased`) | 90% CI | W/L/T | sensitivity, trials 5-9 | gates |
+| --- | --- | --- | --- | --- | --- |
+| deepseek (`runs/ds2`) | **-9.2** | [-12.4, -5.6] | 2/8/0 | -9.4 [-14.6, -4.0] | 0 failures, 20x `finished`, 5 tool-errors, 1 config hash |
+| mimo (`runs/mimo2`) | **-5.2** | [-10.1, -0.4] | 4/6/0 | -10.4 [-16.4, -4.0] | 1/20 failures (replayed), 20x `finished`, 2 tool-errors, 1 config hash |
+
+* **deepseek: FAIL** -- the interval lies wholly below -2 and the sensitivity
+  agrees (same verdict on the unseen half).
+* **mimo: inconclusive** -- the interval [-10.1, -0.4] contains -2 (FAIL
+  needs high < -2), so the pre-committed extension to trials 0-19 fires.
+* **Headline: NO-GO.** The headline is the deepseek verdict, and it is final
+  at n=10. The rule extends *both* models, so deepseek's trials 10-19 are
+  played for symmetry and reported descriptively; they cannot change its
+  verdict. The extension decides mimo's verdict only (the replication).
+* **The extension runs the same commands and configuration:** only the spend
+  cap (`--max-usd`) is raised, to pay for the extra episodes; the turn limit,
+  `max_tokens` and the config hash are unchanged.
+* **Seed-reuse rule 4 fires for mimo: the verdicts differ.** All of trials
+  0-9: inconclusive. The unseen trials 5-9 alone: FAIL (-10.4 [-16.4, -4.0]).
+  On the seen trials 0-4 mimo's mean difference is 0.0, on 5-9 -10.4;
+  deepseek is steady (-9.0 on 0-4, -9.4 on 5-9). With halves of n=5 this may
+  be chance, but it is the pattern rule 4 exists for: the tool descriptions
+  were edited after watching trials 0-4. It also means "mimo did better than
+  deepseek" holds on the seen half only.
+* The mimo, headline, extension and rule-4 items above were written after the
+  extension had started (`runs/ds2` held trials >= 10 for A and B1), without
+  looking at their outcomes. They resolve what the rule already says and add
+  no new criterion.
+* **Secondary at n=10:** both agents beat `random` decisively (deepseek +11.9
+  [+8.5, +15.8], mimo +15.9 [+11.3, +20.6]); neither is distinguishable from
+  plain `learner` (deepseek -0.6 [-3.8, +3.0], losing 7 of 10 trials; mimo
+  +3.4 [-1.2, +7.9]); condition A fails the bar on both models (-9.1, -9.7);
+  B1 - A shows no detectable difference on either model (deepseek -0.1
+  [-5.1, +5.5]; mimo +4.5 [-1.3, +10.6]) -- descriptive only, per scope.
+* The pilot's "A ahead on deepseek" did not survive trials 5-9 (full-set
+  B1 - A = -0.1): rule 4's sensitivity line earns its keep.
+* Awaiting: the extension results and the viewer transcript pass (gate 3).
