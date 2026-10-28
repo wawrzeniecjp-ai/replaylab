@@ -105,6 +105,7 @@ def test_input_schemas_describe_the_documented_parameters(env):
         "descending",
         "limit",
         "exclude_purchased",
+        "design_ids",
     }
     assert tools["submit_batch"]["required"] == ["design_ids"]
     assert tools["propose_batch"]["required"] == ["k"]

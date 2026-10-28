@@ -173,7 +173,7 @@
     "name": "propose_batch"
   },
   {
-    "description": "List unpurchased designs with their raw metric values, optionally filtered and sorted (at most 50 rows). Use it to look at candidates before buying. Metric values are raw, so a lower ProteinMPNN score is better.",
+    "description": "List unpurchased designs with their raw metric values, optionally filtered and sorted (at most 50 rows). Use it to look at candidates before buying, or pass design_ids to look up specific designs (purchased ones included). Metric values are raw, so a lower ProteinMPNN score is better.",
     "input_schema": {
       "$defs": {
         "Condition": {
@@ -222,6 +222,21 @@
           "default": true,
           "title": "Descending",
           "type": "boolean"
+        },
+        "design_ids": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Design Ids"
         },
         "exclude_purchased": {
           "default": true,

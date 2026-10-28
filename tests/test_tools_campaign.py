@@ -221,6 +221,44 @@ def test_query_pool_excludes_purchased_and_pending_by_default():
     }  # no outcome fields
 
 
+def test_query_pool_looks_up_designs_by_id_purchased_ones_included():
+    # The pilots tried where=[design_id == "d0150"] to see a design named by another tool.
+    toolbox = mini_toolbox(delay=2)
+    toolbox.submit_batch(["d0001"])  # pending
+    result = toolbox.query_pool(design_ids=["d0005", "d0001", "d0003"])
+    assert ids(result) == ["d0001", "d0003", "d0005"] and result.total_matching == 3
+    assert set(result.rows[0]) == {"design_id", "length", "design_class", "f1", "f2"}
+
+
+def test_query_pool_design_ids_combine_with_filters_and_sorting():
+    toolbox = mini_toolbox()
+    result = toolbox.query_pool(
+        design_ids=["d0001", "d0002", "d0004", "d0005"],
+        where=[cond("f1", ">", 1.5)],
+        sort_by="length",
+        descending=False,
+    )
+    assert ids(result) == ["d0002", "d0004"]
+
+
+def test_query_pool_rejects_unknown_design_ids():
+    with pytest.raises(ToolFailure, match="unknown design id"):
+        mini_toolbox().query_pool(design_ids=["d0001", "d9999"])
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        lambda t: t.query_pool(where=[cond("design_id", "==", "d0001")]),
+        lambda t: t.query_pool(sort_by="design_id"),
+    ],
+)
+def test_design_id_as_a_column_points_to_design_ids(call):
+    with pytest.raises(ToolFailure) as error:
+        call(mini_toolbox())
+    assert "design_ids" in str(error.value) and "not a column" in str(error.value)
+
+
 @pytest.mark.parametrize(
     ("call", "needles"),
     [

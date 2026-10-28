@@ -53,8 +53,11 @@ def build_server(toolbox: Toolbox, tools: str | None = None) -> MCPServer:
         descending: bool = True,
         limit: int = 20,
         exclude_purchased: bool = True,
+        design_ids: list[str] | None = None,
     ) -> s.QueryPoolResult:
-        return _call(toolbox.query_pool, where, sort_by, descending, limit, exclude_purchased)
+        return _call(
+            toolbox.query_pool, where, sort_by, descending, limit, exclude_purchased, design_ids
+        )
 
     async def submit_batch(design_ids: list[str]) -> s.SubmitBatchResult:
         return _call(toolbox.submit_batch, design_ids)

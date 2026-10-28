@@ -86,7 +86,8 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
     ),
     "query_pool": (
         "List unpurchased designs with their raw metric values, optionally filtered and sorted (at most 50 rows). "
-        "Use it to look at candidates before buying. Metric values are raw, so a lower ProteinMPNN score is better."
+        "Use it to look at candidates before buying, or pass design_ids to look up specific designs (purchased ones included). "
+        "Metric values are raw, so a lower ProteinMPNN score is better."
     ),
     "submit_batch": (
         "Buy up to batch_size designs that are not yet purchased or pending, within budget. "
@@ -243,6 +244,11 @@ class Toolbox:
         return design.features.get(column)
 
     def _check_column(self, column: str) -> None:
+        if column == "design_id":
+            raise ToolFailure(
+                "design_id is not a column to filter or sort on; "
+                "to look up designs by id, pass design_ids=[...] to query_pool"
+            )
         if column not in self._columns:
             raise ToolFailure(f"unknown column {column!r}; valid columns: {list(self._columns)}")
 
@@ -334,8 +340,13 @@ class Toolbox:
         descending: bool = True,
         limit: int = DEFAULT_QUERY_LIMIT,
         exclude_purchased: bool = True,
+        design_ids: list[str] | None = None,
     ) -> s.QueryPoolResult:
-        """Raw-valued pool rows, filtered and sorted; purchased designs excluded by default."""
+        """Raw-valued pool rows, filtered and sorted; purchased designs excluded by default.
+
+        ``design_ids`` restricts the rows to those designs, purchased ones included (a
+        lookup of designs another tool named; rows never carry outcomes).
+        """
         if limit < 1:
             raise ToolFailure("limit must be at least 1")
         limit = min(limit, MAX_QUERY_LIMIT)
@@ -352,10 +363,16 @@ class Toolbox:
             self._check_column(sort_by)
 
         state = self._state()
-        blocked = state.purchased_ids if exclude_purchased else frozenset()
+        wanted: set[str] | None = None
+        if design_ids is not None:
+            unknown = [d for d in design_ids if d not in state.designs]
+            if unknown:
+                raise ToolFailure(f"unknown design id(s) {unknown[:3]}; use ids from query_pool")
+            wanted = set(design_ids)
+        blocked = state.purchased_ids if exclude_purchased and wanted is None else frozenset()
         matching = []
         for design_id, design in state.designs.items():
-            if design_id in blocked:
+            if design_id in blocked or (wanted is not None and design_id not in wanted):
                 continue
             if all(self._matches(design, c) for c in where or []):
                 matching.append(design)
