@@ -1,0 +1,49 @@
+# Model configuration for the eval.
+# Verified against replaylab.eval.models.load_models (stricter than the example:
+# no unknown keys, no model/messages/tools in params).
+#
+# Before a paid run: check every value against the provider's documentation and
+# confirm with `scripts/smoke_llm.py` (LLM_API_KEY / LLM_MODEL / LLM_BASE_URL),
+# which reports whether reasoning pass-back is needed. Nothing here is guessed by
+# the code: `params` is sent as given, and the key is read from the named env var.
+version: 1
+models:
+  deepseek:
+    # smoke test 2026-10-28 (run twice): tool call OK, follow-ups OK, passback
+    # NOT needed. reasoning_content turns out to be a per-response coin flip:
+    # run 1 returned none, run 2 (identical request) returned it -- thinking
+    # mode can emit trivial reasoning. The eval records it whenever present
+    # (records schema 2) and never passes it back. Ids: deepseek-flash,
+    # deepseek-v4-pro. Thinking mode rejects tool_choice=required (400); the
+    # eval never sends tool_choice, so nothing here needs to change.
+    base_url: "https://api.deepseek.com"
+    model: "deepseek-flash"                  # confirmed by the smoke test
+    api_key_env: DEEPSEEK_API_KEY
+    price_key: deepseek-flash                # entry in config/prices.yaml
+    reasoning_passback: false                # smoke: "reasoning pass-back needed: no", field "none"
+    reasoning_field: reasoning_content       # unused while passback is false
+    params:
+      max_tokens: 4096
+      # temperature / seed / extra_body (a thinking switch): only what the smoke
+      # test showed is accepted
+
+  mimo:
+    base_url: "https://api.xiaomimimo.com/v1"
+    model: "mimo-v2.6-flash"
+    api_key_env: MIMO_API_KEY
+    price_key: mimo-v2.6-flash                # entry in config/prices.yaml (FILL the price)
+    reasoning_passback: false                 # smoke 2026-10-28: "reasoning pass-back needed: no" (field reasoning_content exists but is not required)
+    reasoning_field: reasoning_content
+    params:
+      max_tokens: 4096
+
+  # The local llama.cpp server (used by the recorded smoke run): free, so it is
+  # the cheapest way to test the whole eval plumbing with no key at all.
+  local-qwen:
+    base_url: "http://127.0.0.1:8080/v1"
+    model: "Qwen3-1.7B.Q4_K_M.gguf"
+    api_key_env: LLM_API_KEY
+    price_key: local-free
+    reasoning_passback: false                 # smoke: "reasoning pass-back needed: no" (notes/week0/llm_smoke.txt)
+    reasoning_field: reasoning_content
+    params: {max_tokens: 2048}
