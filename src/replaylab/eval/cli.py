@@ -5,6 +5,7 @@
     replaylab-eval pilot --model deepseek-v4-flash --games N-dev --conditions A,B1 --trials 5 --max-usd 3 --run-dir runs/x
     replaylab-eval run   --model deepseek-v4-flash --games N-dev --conditions A,B1 --trials 5 --max-usd 20 --run-dir runs/x
     replaylab-eval compare --records runs/x/episodes.jsonl --game N-dev --a B1 --b A
+    replaylab-eval view --run-dir runs/x        # writes runs/x/replay.html
 
 Exit codes: 0 success, 1 the operation was refused or incomplete, 2 bad setup.
 """
@@ -26,6 +27,7 @@ from replaylab.eval.loop import Limits
 from replaylab.eval.models import ModelConfig, ModelConfigError, load_models
 from replaylab.eval.prompts import USER_PROMPT, load_system_prompt, text_hash
 from replaylab.eval.records import config_hash, git_info, read_records
+from replaylab.eval.replay_view import PoolPaths, build_page, pool_view
 from replaylab.eval.runner import (
     RunnerDeps,
     expand_matrix,
@@ -389,3 +391,43 @@ def compare(
     except (UnpairedError, ValueError) as error:
         raise _fail(str(error), 1) from None
     _emit({"game": game, "a": a, "b": b, "metric": metric, **asdict(result)})
+
+
+@app.command("view")
+def view(
+    run_dir: RunDir,
+    out: Annotated[
+        Path | None, typer.Option("--out", help="Default: <run-dir>/replay.html")
+    ] = None,
+    ghost_files: Annotated[
+        list[Path] | None,
+        typer.Option(
+            "--ghosts",
+            help="Another run's episodes.jsonl with scripted records on the same seeds (repeatable).",
+        ),
+    ] = None,
+    tables: Tables = Path("data/processed"),
+    folds: Folds = Path("data/splits/folds.csv"),
+    clusters: Clusters = Path("data/splits/clusters.csv"),
+    games_config: GamesConfig = Path("config/games.yaml"),
+    features_config: FeaturesConfig = Path("config/features.yaml"),
+) -> None:
+    """Write a self-contained HTML page that replays the run's agent episodes."""
+    paths = PoolPaths(
+        games=games_config, features=features_config, tables=tables, folds=folds, clusters=clusters
+    )
+    target = out or run_dir / "replay.html"
+    try:
+        records = read_records(run_dir / "episodes.jsonl")
+        extra = [record for path in ghost_files or [] for record in read_records(path)]
+        page = build_page(
+            records,
+            lambda game, seed: pool_view(game, seed, paths),
+            title=f"replay: {run_dir.name}",
+            ghost_records=extra,
+        )
+        target.write_text(page, encoding="utf-8")
+    except (OSError, ValueError, KeyError) as error:
+        raise _fail(str(error), 2) from None
+    _emit({"episodes": sum(1 for r in records if not r["condition"].startswith("scripted:")),
+           "path": str(target)})  # fmt: skip

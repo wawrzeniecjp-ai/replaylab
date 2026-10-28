@@ -45,6 +45,9 @@ dev = ["pytest>=8", "ruff>=0.5"]
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+"replaylab.eval" = ["*.html"]  # the replay viewer's page template
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
