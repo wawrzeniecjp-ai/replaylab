@@ -44,10 +44,15 @@ class EpisodeSpec:
 
 
 def expand_matrix(
-    games: Sequence[str], conditions: Sequence[str], trials: int
+    games: Sequence[str], conditions: Sequence[str], trials: int, first_trial: int = 0
 ) -> list[EpisodeSpec]:
-    """Every (game, condition, trial), trial-major within each game."""
-    return [EpisodeSpec(g, c, t) for g in games for t in range(trials) for c in conditions]
+    """Every (game, condition, trial), trial-major within each game.
+
+    Trials are ``first_trial .. first_trial + trials - 1``: a later block gives fresh seeds
+    for a confirmatory run (the seed depends only on game and trial).
+    """
+    block = range(first_trial, first_trial + trials)
+    return [EpisodeSpec(g, c, t) for g in games for t in block for c in conditions]
 
 
 @dataclass
@@ -257,12 +262,11 @@ def run_scripted_matrix(
     *,
     deps: RunnerDeps,
     records_path: Path | str,
+    first_trial: int = 0,
 ) -> RunSummary:
     """Scripted policies on the LLM episodes' seeds (condition ``scripted:<policy>``)."""
     records_path = Path(records_path)
-    specs = [
-        EpisodeSpec(g, f"scripted:{p}", t) for g in games for t in range(trials) for p in policies
-    ]
+    specs = expand_matrix(games, [f"scripted:{p}" for p in policies], trials, first_trial)
     _check_games(games, deps.games_path)
     done = completed_keys(read_records(records_path))
     summary = RunSummary()

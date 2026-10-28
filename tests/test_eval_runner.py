@@ -67,6 +67,11 @@ def test_the_matrix_is_trial_major_within_each_game():
     ]  # fmt: skip
 
 
+def test_the_matrix_can_start_at_a_later_trial():
+    specs = expand_matrix(["G"], ["A"], 2, first_trial=100)
+    assert [(s.trial, s.condition) for s in specs] == [(100, "A"), (101, "A")]
+
+
 def test_unknown_conditions_and_games_and_heldout_games_are_refused_before_anything_runs(
     env, tmp_path
 ):

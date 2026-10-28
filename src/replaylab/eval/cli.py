@@ -4,7 +4,8 @@
     replaylab-eval scripted --games N-dev --policies learner_sim,random --trials 5 --run-dir runs/x
     replaylab-eval pilot --model deepseek-v4-flash --games N-dev --conditions A,B1 --trials 5 --max-usd 3 --run-dir runs/x
     replaylab-eval run   --model deepseek-v4-flash --games N-dev --conditions A,B1 --trials 5 --max-usd 20 --run-dir runs/x
-    replaylab-eval compare --records runs/x/episodes.jsonl --game N-dev --a B1 --b A
+    replaylab-eval run   ... --trials 20 --first-trial 100      # a fresh block: trials 100-119
+    replaylab-eval compare --records runs/x/episodes.jsonl --game N-dev --a B1 --b A --ci 0.9
     replaylab-eval view --run-dir runs/x        # writes runs/x/replay.html
 
 Exit codes: 0 success, 1 the operation was refused or incomplete, 2 bad setup.
@@ -65,6 +66,14 @@ ConditionsConfig = Annotated[Path, typer.Option("--conditions-config")]
 SystemPrompt = Annotated[Path, typer.Option("--system-prompt")]
 ModelsConfig = Annotated[Path, typer.Option("--models-config")]
 PricesConfig = Annotated[Path, typer.Option("--prices-config")]
+FirstTrial = Annotated[
+    int,
+    typer.Option(
+        "--first-trial",
+        min=0,
+        help="Play trials first..first+trials-1 (fresh seeds for a new block).",
+    ),
+]
 
 
 def _emit(payload: Any) -> None:
@@ -139,6 +148,7 @@ def scripted(
     games: Annotated[str, typer.Option("--games", help="Comma-separated game ids.")],
     policies: Annotated[str, typer.Option("--policies", help="Comma-separated policy names.")],
     trials: Annotated[int, typer.Option("--trials")] = 5,
+    first_trial: FirstTrial = 0,
     tables: Tables = Path("data/processed"),
     folds: Folds = Path("data/splits/folds.csv"),
     clusters: Clusters = Path("data/splits/clusters.csv"),
@@ -161,6 +171,7 @@ def scripted(
             trials,
             deps=deps,
             records_path=run_dir / "episodes.jsonl",
+            first_trial=first_trial,
         )
     except (SetupError, OSError, ValueError) as error:
         raise _fail(str(error), 2) from None
@@ -199,7 +210,7 @@ def _make_llm(cfg: ModelConfig) -> OpenAICompatClient:
 
 
 def _prepare(
-    *, model, games, conditions, trials, max_usd, concurrency, dry_run, run_dir, tables, folds, clusters,
+    *, model, games, conditions, trials, first_trial, max_usd, concurrency, dry_run, run_dir, tables, folds, clusters,
     games_config, features_config, conditions_config, system_prompt, models_config, prices_config,
 ):  # fmt: skip
     if not 1 <= concurrency <= MAX_CONCURRENCY:
@@ -226,7 +237,7 @@ def _prepare(
             passback=cfg.reasoning_passback, reasoning_field=cfg.reasoning_field,
             store_dir=run_dir / "stores",
         )  # fmt: skip
-        specs = expand_matrix(_split(games), _split(conditions), trials)
+        specs = expand_matrix(_split(games), _split(conditions), trials, first_trial)
         validate_specs(specs, deps)
     except (SetupError, OSError, ValueError) as error:
         raise _fail(str(error), 2) from None
@@ -252,6 +263,7 @@ def pilot(
     conditions: Annotated[str, typer.Option("--conditions")],
     max_usd: Annotated[float, typer.Option("--max-usd", help="Hard spending cap for the pilot.")],
     trials: Annotated[int, typer.Option("--trials")] = 5,
+    first_trial: FirstTrial = 0,
     n: Annotated[int, typer.Option("--n", help="Pilot size (episodes).")] = 10,
     concurrency: Annotated[int, typer.Option("--concurrency")] = MAX_CONCURRENCY,
     dry_run: Annotated[bool, typer.Option("--dry-run")] = False,
@@ -267,7 +279,8 @@ def pilot(
 ) -> None:
     """Run the first episodes, then write a cost projection for the whole matrix (pilot.json)."""
     deps, specs = _prepare(
-        model=model, games=games, conditions=conditions, trials=trials, max_usd=max_usd,
+        model=model, games=games, conditions=conditions, trials=trials, first_trial=first_trial,
+        max_usd=max_usd,
         concurrency=concurrency, dry_run=dry_run, run_dir=run_dir, tables=tables, folds=folds,
         clusters=clusters, games_config=games_config, features_config=features_config,
         conditions_config=conditions_config, system_prompt=system_prompt,
@@ -304,6 +317,7 @@ def run(
         float, typer.Option("--max-usd", help="Hard spending cap for the whole run.")
     ],
     trials: Annotated[int, typer.Option("--trials")] = 5,
+    first_trial: FirstTrial = 0,
     concurrency: Annotated[int, typer.Option("--concurrency")] = MAX_CONCURRENCY,
     skip_pilot: Annotated[bool, typer.Option("--skip-pilot")] = False,
     dry_run: Annotated[bool, typer.Option("--dry-run")] = False,
@@ -319,7 +333,8 @@ def run(
 ) -> None:
     """Play every missing episode of the matrix. Needs a pilot first; refuses a run projected over the cap."""
     deps, specs = _prepare(
-        model=model, games=games, conditions=conditions, trials=trials, max_usd=max_usd,
+        model=model, games=games, conditions=conditions, trials=trials, first_trial=first_trial,
+        max_usd=max_usd,
         concurrency=concurrency, dry_run=dry_run, run_dir=run_dir, tables=tables, folds=folds,
         clusters=clusters, games_config=games_config, features_config=features_config,
         conditions_config=conditions_config, system_prompt=system_prompt,
@@ -378,6 +393,7 @@ def compare(
     metric: Annotated[str, typer.Option("--metric")] = "hits",
     resamples: Annotated[int, typer.Option("--resamples")] = 10_000,
     seed: Annotated[int, typer.Option("--seed")] = 0,
+    ci: Annotated[float, typer.Option("--ci", help="Interval level, e.g. 0.9 or 0.95.")] = 0.95,
 ) -> None:
     """Paired bootstrap of a minus b over episode seeds."""
     loaded = read_records(records)
@@ -387,6 +403,7 @@ def compare(
             metric_by_seed(loaded, game, b, metric),
             n_resamples=resamples,
             seed=seed,
+            ci=ci,
         )
     except (UnpairedError, ValueError) as error:
         raise _fail(str(error), 1) from None

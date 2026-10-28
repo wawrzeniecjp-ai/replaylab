@@ -354,3 +354,113 @@ picking one.
 * No policy approaches the 134-hit supply at 120 purchases, so there is no
   convergence artefact, and `+stop` never fires on E (rows identical to their
   base policies).
+
+## 9. Pre-registration: the agent-vs-scripted criterion (2026-10-28)
+
+Written **before trials 5-9 of either model exist** (deepseek `runs/ds2` and
+mimo `runs/mimo2` hold only the pilots' trials 0-4), at git `4649e7b`.
+Disclosure: the pilot trials 0-4 are known to us (deepseek: A ahead of B1,
+paired gap +3.2); the confirmatory weight sits on the full trials 0-9, and
+nothing below may change once they are played. Same discipline as section 8.
+*Amended the same day, still before any trial 5-9 exists (the commit that adds
+`compare --ci` and `--first-trial`): the interval rule is made unambiguous, the
+end of the extension is fixed, and validity gates and seed rules are added.*
+
+**Scope.** N-dev, trials 0-9, conditions A and B1, models `deepseek` and
+`mimo`, each judged against the four scripted policies played on the same
+trials in the same records file. Comparisons are **paired per trial**:
+
+    replaylab-eval compare --records runs/<dir>/episodes.jsonl --game N-dev \
+        --a B1 --b scripted:learner_sim_purchased --resamples 10000 --seed 0 --ci 0.9
+
+(`--seed 0` fixes the bootstrap; `--ci 0.9` is a two-sided 90% interval, i.e.
+each bound is a one-sided 5% test -- the usual level for a non-inferiority
+margin; the margin below is in hits.)
+
+**Primary pass/fail -- the headline question: does the agent match the best
+scripted player?**  Bar: `scripted:learner_sim_purchased`, the pre-registered
+best scripted variant on N-dev (26.43 mean, section 6).
+
+The verdict is read from the 90% interval [low, high] of the paired difference
+(B1 - scripted), never from the mean alone (at n=10 the paired SD of ~5 hits
+puts the standard error near 1.6, so a mean near -2 decides nothing):
+
+* **PASS (matches):** low > **-2 hits**. The margin is this repo's own 2-hit
+  threshold for deciding that one policy beats another (section 5), not a
+  number chosen to fit the pilot.
+* **Exceeds:** additionally, low > 0.
+* **FAIL:** high < -2.
+* **Inconclusive** (the interval contains -2) **pre-commits an action:** both
+  models extend to trials 0-19 (same commands, same caps, criterion
+  unchanged); that extension is the only permitted escalation. Still
+  inconclusive at n=20: reported as inconclusive, nothing further is run.
+* **Headline:** the `deepseek` verdict. `mimo` is the replication; if the two
+  disagree, both verdicts are reported and the disagreement is the finding.
+
+**Secondary (reported, never pass/fail):**
+
+* `B1` vs `scripted:learner` (bar 18.18: does the agent add anything over a
+  plain scripted learner?);
+* `B1` vs `scripted:random` (6.03: does it use the features at all?);
+* `A` vs the same scripted set (environment-only is a legitimate condition);
+* `B1` vs `A` (do the advisor tools help? the pilot says A ahead, declared).
+
+**Rules.** No criterion, prompt, tool or policy edits until both models have
+completed trials 0-9 under this note. `mimo` is judged by the **same** bars --
+a replication, not a second chance -- and reported separately; model-vs-model
+differences are descriptive only. Any relaxation requires a new section below,
+written before the data that would benefit from it is seen.
+
+**Setup before judging.** Each records file must hold the four scripted
+policies on the same trials (`compare` reads one file). `runs/ds2` has them
+for trials 0-9; `runs/mimo2` has none yet:
+
+    replaylab-eval scripted --run-dir runs/mimo2 --games N-dev --trials 10 \
+        --policies random,learner,learner_sim,learner_sim_purchased
+
+(`--trials 20` if the extension is triggered, in both files.)
+
+**Validity gates** -- checked per model before any hit count is read; a run
+that fails one is fixed and replayed, never analysed:
+
+1. Failed episodes (no record: `LLMError`, `ResponseTruncated`, ...) are at
+   most 10% of that model's episodes. More suggests failures that depend on
+   the episode, and replaying them would bias the sample.
+2. Every agent episode ends `finished` or `agent_stopped`; an `agent_ended`
+   with rounds still left counts as a harness problem.
+3. A few transcripts are read in the viewer (`replaylab-eval view`) and the
+   `flags` totals are reported next to the verdict.
+
+**Seeds and reuse.**
+
+1. *Pairing.* `seed = episode_seed(game, trial)` depends only on game and
+   trial (D4), never on condition or model. Every comparison pairs episodes by
+   trial within one records file.
+2. *One draw per cell.* Each (model, condition, game, trial) is played once.
+   A failed episode leaves no record and is replayed (rule 4 of the handoff);
+   a recorded episode is never deleted or replayed to get another draw.
+3. *One configuration.* Every agent episode in a confirmatory comparison
+   carries the same `config_hash`. The hash covers model, price, prompts,
+   conditions, tool descriptions and limits, but not tool input schemas or
+   policy code, so the `git_sha` may differ only by commits that change
+   neither. Check: `git diff --stat <pilot sha>..<run sha> -- src prompts
+   config`. From `d4f7e88` (trials 0-4) to this amendment it lists only the
+   replay viewer and two CLI options whose defaults reproduce the old
+   behaviour (`compare --ci`, `--first-trial`; tested). Runs before
+   `d4f7e88` (`runs/ds`, `runs/mimo`) are excluded.
+4. *Seen seeds.* Trials 0-4 were inspected (pilots, viewer) before this note,
+   and tool descriptions changed after seeing them. A sensitivity line reports
+   the primary comparison on trials 5-9 (5-19 if extended) alone; if its
+   verdict differs from the full set, both are reported and the note says so.
+5. *A fresh block after any change.* Any prompt, tool, condition or policy
+   edit after this note makes a new configuration, whose confirmatory claims
+   use a block of trials never played under any configuration, chosen with
+   `--first-trial`. The next block is **trials 100-119**; trials 20-99 stay
+   free for development.
+6. *Scripted players are deterministic per seed* under `frozen_v1`, so their
+   records may be reused across runs (the viewer's `--ghosts` relies on it).
+   Agent episodes are not: a repeated seed is a new sample of the model, and
+   rule 2 still applies.
+7. *Sampling.* `config/models.yaml` sets no temperature or sampling seed, so
+   the providers' defaults apply and a replayed episode is not reproducible
+   token for token; the records file, not a rerun, is the result.

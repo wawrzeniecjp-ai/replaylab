@@ -273,3 +273,41 @@ def test_compare_refuses_unpaired_data(setup, tmp_path):
     append_record(path, episode(3, "B1"))
     result = invoke(["compare", "--records", str(path), "--game", "G", "--a", "A", "--b", "B1"])
     assert result.exit_code == 1 and "seeds differ" in result.output
+
+
+def test_compare_reports_the_requested_interval_level(setup, tmp_path):
+    from replaylab.eval.records import append_record
+
+    path = tmp_path / "e.jsonl"
+    for seed, (a, b) in enumerate([(5, 1), (2, 2), (9, 3), (1, 4), (6, 2), (3, 3)]):
+        append_record(path, {**episode(seed, "A"), "scores": {"hits": a}})
+        append_record(path, {**episode(seed, "B1"), "scores": {"hits": b}})
+    base = ["compare", "--records", str(path), "--game", "G", "--a", "A", "--b", "B1"]
+    wide = json.loads(invoke(base).stdout)
+    narrow = json.loads(invoke([*base, "--ci", "0.9"]).stdout)
+    assert wide["ci"] == 0.95 and narrow["ci"] == 0.9
+    assert wide["ci_low"] <= narrow["ci_low"] < narrow["ci_high"] <= wide["ci_high"]
+    assert wide["ci_low"] < narrow["ci_low"] or narrow["ci_high"] < wide["ci_high"]
+    bad = invoke([*base, "--ci", "95"])
+    assert bad.exit_code == 1 and "ci must be between 0 and 1" in bad.output
+
+
+def test_first_trial_plays_a_fresh_block_of_trials(setup, tmp_path):
+    common = ["--run-dir", str(tmp_path), "--games", "G", "--trials", "2", "--first-trial", "100"]
+    scripted = invoke(["scripted", *common, "--policies", "random", *setup["common"]])
+    assert scripted.exit_code == 0, scripted.output
+    assert sorted(int(r["trial"]) for r in read_records(tmp_path / "episodes.jsonl")) == [100, 101]
+    args = [*common, "--model", "m", "--conditions", "A", "--max-usd", "5"]
+    dry = invoke(["pilot", *args, *setup["common"], *setup["model"], "--dry-run"])
+    assert dry.exit_code == 0, dry.output
+    assert json.loads(dry.stdout)["episodes"] == 2
+    pilot = invoke(["pilot", *args, *setup["common"], *setup["model"], "--n", "2"])
+    assert pilot.exit_code == 0, pilot.output
+    trials = {(r["condition"], int(r["trial"])) for r in read_records(tmp_path / "episodes.jsonl")}
+    assert trials == {("scripted:random", 100), ("scripted:random", 101), ("A", 100), ("A", 101)}
+
+
+def test_first_trial_must_not_be_negative(setup, tmp_path):
+    args = ["scripted", "--run-dir", str(tmp_path), "--games", "G", "--policies", "random"]
+    result = invoke([*args, "--first-trial", "-1", *setup["common"]])
+    assert result.exit_code == 2
