@@ -289,3 +289,15 @@ def test_base_url_is_none_when_not_set(tmp_path):
         [], env={"LLM_API_KEY": "k", "LLM_MODEL": "m"}, client_factory=factory, out=tmp_path / "o"
     )
     assert seen["base_url"] is None
+
+
+def test_the_report_lists_the_message_fields():
+    """Which fields the message carries is the evidence behind the reasoning verdict."""
+    with_reasoning = format_report(run_smoke(FakeClient(lambda k: response(reasoning="hm")), "m"))
+    field_lines = [ln for ln in with_reasoning.splitlines() if ln.startswith("message fields:")]
+    assert len(field_lines) == 1
+    assert "tool_calls" in field_lines[0] and "reasoning_content" in field_lines[0]
+    plain = format_report(run_smoke(FakeClient(lambda k: response()), "m"))
+    plain_line = [ln for ln in plain.splitlines() if ln.startswith("message fields:")]
+    assert plain_line and "content" in plain_line[0]
+    assert "reasoning_content" not in plain_line[0]

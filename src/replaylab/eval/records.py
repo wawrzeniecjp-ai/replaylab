@@ -16,7 +16,9 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2  # 2 (2026-10-28): adds `reasoning` (one entry per assistant
+# message, None when the endpoint returned none); lines written before that
+# simply lack the key and readers must use .get().
 
 
 class CorruptRecords(Exception):
@@ -41,6 +43,7 @@ class EpisodeRecord:
     turns: int
     scores: dict[str, Any]
     flags: dict[str, int] = field(default_factory=dict)
+    reasoning: list[str | None] = field(default_factory=list)
     schema_version: int = SCHEMA_VERSION
 
     @property

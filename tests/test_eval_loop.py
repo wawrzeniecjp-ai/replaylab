@@ -195,6 +195,21 @@ def test_reasoning_is_passed_back_only_when_configured(env):
     assert any(m.get("reasoning_content") == "thinking hard" for m in on.histories[1])
 
 
+def test_reasoning_is_recorded_even_when_it_is_not_passed_back(env):
+    """The trace keeps what the endpoint returned; the model's history stays clean."""
+    llm = ScriptedLLM(
+        [
+            turn(calls=(call("describe_campaign"),)),
+            turn(content="done", reasoning="thinking hard"),
+        ]
+    )
+    trace, _ = play(env, llm)
+    assistants = [m for m in trace.messages if m["role"] == "assistant"]
+    assert trace.reasoning == [None, "thinking hard"]  # one entry per assistant message
+    assert len(assistants) == 2
+    assert "reasoning_content" not in json.dumps(trace.messages)  # nothing sent back
+
+
 def test_the_model_sees_exactly_the_offered_tools(env):
     seen = []
 

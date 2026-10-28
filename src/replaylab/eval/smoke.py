@@ -53,6 +53,7 @@ class SmokeReport:
     tool_call_ok: bool = False
     tool_call_detail: str = ""
     reasoning_field: str | None = None
+    message_fields: list[str] = field(default_factory=list)
     prompt_tokens: int | None = None
     completion_tokens: int | None = None
     followup_plain: ProbeResult | None = None
@@ -62,6 +63,21 @@ class SmokeReport:
 
 def _error(exc: Exception) -> ProbeResult:
     return ProbeResult(False, f"{type(exc).__name__}: {str(exc)[:200]}")
+
+
+def _message_fields(message: Any) -> list[str]:
+    """The field names the endpoint's message actually carries.
+
+    Pydantic extras count (the OpenAI SDK parses unknown fields like
+    ``reasoning_content`` as extras): this list is the evidence behind the
+    "reasoning field:" verdict, so a "none" can be told apart from a missed
+    field at a different location.
+    """
+    names = set(getattr(message, "model_fields", None) or ())
+    names |= set(getattr(message, "model_extra", None) or ())
+    if not names and hasattr(message, "__dict__"):
+        names = {k for k in vars(message) if not k.startswith("_")}
+    return sorted(names)
 
 
 def _try(client: Any, **kwargs: Any) -> tuple[Any, ProbeResult]:
@@ -102,6 +118,7 @@ def run_smoke(client: Any, model: str) -> SmokeReport:
         if isinstance(value, str) and value:
             report.reasoning_field = name
             break
+    report.message_fields = _message_fields(message)
 
     if not calls:
         report.tool_call_detail = "no tool call in the response"
@@ -184,6 +201,7 @@ def format_report(report: SmokeReport) -> str:
         f"available models: {len(report.available_models)} ({shown})",
         "tool call: " + ("OK" if report.tool_call_ok else f"FAILED ({report.tool_call_detail})"),
         f"reasoning field: {report.reasoning_field or 'none'}",
+        f"message fields: {', '.join(report.message_fields) or '(none)'}",
         f"tokens: prompt={report.prompt_tokens} completion={report.completion_tokens}",
         f"follow-up without reasoning: {_status(report.followup_plain)}",
         f"follow-up with reasoning: {_status(report.followup_with_reasoning)}",

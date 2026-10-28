@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 
@@ -159,9 +160,21 @@ def test_records_round_trip_and_keys(tmp_path):
     append_record(path, make_record(1, condition="B1"))
     records = read_records(path)
     assert [(r["trial"], r["condition"]) for r in records] == [(0, "A"), (1, "B1")]
-    assert records[0]["schema_version"] == 1 and records[0]["seed"] == episode_seed("G", 0)
+    assert records[0]["schema_version"] == 2 and records[0]["seed"] == episode_seed("G", 0)
+    assert records[0]["reasoning"] == []  # default when nothing was captured
     assert completed_keys(records) == {("G", "A", 0), ("G", "B1", 1)}
     assert make_record().key == ("G", "A", 0)
+
+
+def test_a_line_written_before_schema_2_still_reads(tmp_path):
+    """Old records lack the reasoning key; mixed-version files stay readable."""
+    path = tmp_path / "e.jsonl"
+    old_style = make_record(0).to_dict()
+    old_style.pop("reasoning")
+    path.write_text(json.dumps(old_style, sort_keys=True) + "\n")
+    records = read_records(path)
+    assert records[0].get("reasoning", []) == []
+    assert completed_keys(records) == {("G", "A", 0)}
 
 
 def test_a_half_written_last_line_is_ignored_but_damage_elsewhere_is_not(tmp_path):

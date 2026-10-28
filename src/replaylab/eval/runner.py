@@ -169,6 +169,7 @@ async def run_llm_episode(spec: EpisodeSpec, deps: RunnerDeps) -> EpisodeRecord:
         turns=trace.turns,
         scores=scores,
         flags=trace.flags,
+        reasoning=trace.reasoning,
     )
 
 

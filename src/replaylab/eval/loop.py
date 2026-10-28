@@ -44,6 +44,10 @@ class EpisodeTrace:
     stop_reason: str = ""
     turns: int = 0
     cost_usd: float = 0.0
+    # one entry per assistant message: the reasoning text the endpoint returned,
+    # or None when it returned none. Recorded for analysis; never sent back to
+    # the model (that is ``passback_reasoning``'s job).
+    reasoning: list[str | None] = field(default_factory=list)
     flags: dict[str, int] = field(
         default_factory=lambda: {
             "bad_json": 0,
@@ -111,6 +115,7 @@ async def run_episode(
                 reply, passback_reasoning=passback_reasoning, reasoning_field=reasoning_field
             )
         )
+        trace.reasoning.append(reply.reasoning)
         if not reply.tool_calls:
             trace.stop_reason = "agent_ended"
             return trace
