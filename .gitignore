@@ -24,3 +24,9 @@ __pycache__/
 great-docs/
 .great-docs-cache/
 _freeze/
+
+# eval run output (episode records, campaign stores, spend ledgers)
+runs/
+
+# temp files
+tmp/
