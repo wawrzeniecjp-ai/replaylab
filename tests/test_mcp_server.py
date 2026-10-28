@@ -11,6 +11,7 @@ import pytest
 from mcp.client import Client
 from toolbox_env import make_env, toolbox_for
 
+from replaylab.interfaces.policy_factory import POLICY_NAMES
 from replaylab.interfaces.server import REGISTERED_TOOLS, build_server
 from replaylab.interfaces.tools import ADVISOR_TOOLS, CAMPAIGN_TOOLS, TOOL_DESCRIPTIONS
 from replaylab.interfaces.tools import resolve_tool_selection as resolve
@@ -86,6 +87,14 @@ def test_descriptions_have_at_most_three_sentences_and_say_something(env):
         assert tool.description == TOOL_DESCRIPTIONS[tool.name]
         assert 1 <= len(sentences(tool.description)) <= 3, tool.name
         assert len(tool.description) >= 40, tool.name
+
+
+def test_propose_batch_names_every_policy_it_accepts():
+    # The phase-7 pilots never found learner_sim_purchased: the names were only in an error.
+    description = TOOL_DESCRIPTIONS["propose_batch"]
+    for name in POLICY_NAMES:
+        assert re.search(rf"(?<![\w:]){name}(?!\w)", description), name
+    assert "fixed:<feature>" in description
 
 
 def test_input_schemas_describe_the_documented_parameters(env):

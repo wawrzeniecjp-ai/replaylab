@@ -110,8 +110,13 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
         "Use it when more purchases are unlikely to pay off. It cannot be undone, but pending results can still arrive."
     ),
     "propose_batch": (
-        "Run a pre-registered scripted policy on the data so far and record the proposed batch with reasons. "
-        "Use it for a strong default batch, then submit it yourself with submit_batch. It spends nothing."
+        "Run a pre-registered scripted policy on the data so far and record the proposed batch with reasons; "
+        "it spends nothing, so submit the batch yourself with submit_batch. "
+        "Policies: learner (a model fitted on your results, plus random exploration), "
+        "learner_sim (learner plus sequence similarity to your hits), "
+        "learner_purchased and learner_sim_purchased (the same two, with features standardized on your purchased designs "
+        "instead of the whole pool), random, and fixed:<feature> (top designs by one feature). "
+        "The default is learner_sim."
     ),
     "fit_and_rank": (
         "Fit a regularized logistic model on delivered designs and rank unpurchased designs by predicted hit probability. "

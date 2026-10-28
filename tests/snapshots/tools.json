@@ -146,7 +146,7 @@
     "name": "pending_batches"
   },
   {
-    "description": "Run a pre-registered scripted policy on the data so far and record the proposed batch with reasons. Use it for a strong default batch, then submit it yourself with submit_batch. It spends nothing.",
+    "description": "Run a pre-registered scripted policy on the data so far and record the proposed batch with reasons; it spends nothing, so submit the batch yourself with submit_batch. Policies: learner (a model fitted on your results, plus random exploration), learner_sim (learner plus sequence similarity to your hits), learner_purchased and learner_sim_purchased (the same two, with features standardized on your purchased designs instead of the whole pool), random, and fixed:<feature> (top designs by one feature). The default is learner_sim.",
     "input_schema": {
       "properties": {
         "exploration": {

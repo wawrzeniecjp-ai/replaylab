@@ -9,7 +9,8 @@ order. An episode ends with exactly one ``stop_reason``:
 * ``max_turns``: the turn limit was reached.
 
 A spend cap or a model failure raises (``SpendCapReached`` / ``LLMError``): such an episode has
-no result and is not recorded, so a resumed run plays it again.
+no result and is not recorded, so a resumed run plays it again. A reply cut off by the
+output-token limit is such a failure (``ResponseTruncated``), never ``agent_ended``.
 """
 
 from __future__ import annotations
@@ -19,7 +20,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
-from replaylab.eval.llm_types import LLMClient
+from replaylab.eval.llm_types import LLMClient, ResponseTruncated
 from replaylab.eval.mcp_bridge import McpBridge
 from replaylab.eval.messages import assistant_message, initial_messages, tool_message
 from replaylab.eval.spend import SpendGuard
@@ -116,6 +117,11 @@ async def run_episode(
             )
         )
         trace.reasoning.append(reply.reasoning)
+        if reply.finish_reason == "length":
+            raise ResponseTruncated(
+                f"turn {turn}: the reply hit the output-token limit "
+                f"({reply.usage.output} tokens); raise max_tokens in config/models.yaml"
+            )
         if not reply.tool_calls:
             trace.stop_reason = "agent_ended"
             return trace

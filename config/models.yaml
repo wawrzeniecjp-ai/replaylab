@@ -23,7 +23,10 @@ models:
     reasoning_passback: false                # smoke: "reasoning pass-back needed: no", field "none"
     reasoning_field: reasoning_content       # unused while passback is false
     params:
-      max_tokens: 4096
+      # 4096 was too tight with thinking on (pilot peak 3471). 32768 is far under the
+      # documented max output (384K, api-docs.deepseek.com pricing page, 2026-10-28);
+      # a cut-off reply now fails the episode (ResponseTruncated), it is never recorded.
+      max_tokens: 32768
       # temperature / seed / extra_body (a thinking switch): only what the smoke
       # test showed is accepted
 
@@ -31,11 +34,14 @@ models:
     base_url: "https://api.xiaomimimo.com/v1"
     model: "mimo-v2.6-flash"
     api_key_env: MIMO_API_KEY
-    price_key: mimo-v2.6-flash                # entry in config/prices.yaml (FILL the price)
+    price_key: mimo-v2.6-flash                # entry in config/prices.yaml
     reasoning_passback: false                 # smoke 2026-10-28: "reasoning pass-back needed: no" (field reasoning_content exists but is not required)
     reasoning_field: reasoning_content
     params:
-      max_tokens: 4096
+      # The 4096 pilot (runs/mimo) hit the limit in 10/10 episodes, mid-reasoning.
+      # Max output 131K per third-party listings (OpenRouter, DeepInfra); not found on
+      # Xiaomi's own pages yet, so 32768 keeps well clear of it.
+      max_tokens: 32768
 
   # The local llama.cpp server (used by the recorded smoke run): free, so it is
   # the cheapest way to test the whole eval plumbing with no key at all.

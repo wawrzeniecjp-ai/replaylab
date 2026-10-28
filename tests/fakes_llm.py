@@ -19,8 +19,15 @@ def turn(
     calls: tuple[ToolCall, ...] = (),
     usage: Usage = DEFAULT_USAGE,
     reasoning: str | None = None,
+    finish_reason: str | None = None,
 ) -> AssistantTurn:
-    return AssistantTurn(content=content, tool_calls=tuple(calls), usage=usage, reasoning=reasoning)
+    return AssistantTurn(
+        content=content,
+        tool_calls=tuple(calls),
+        usage=usage,
+        reasoning=reasoning,
+        finish_reason=finish_reason,
+    )
 
 
 _counter = {"n": 0}

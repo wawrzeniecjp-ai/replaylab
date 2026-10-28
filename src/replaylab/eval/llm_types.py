@@ -40,3 +40,11 @@ class LLMError(Exception):
         super().__init__(message)
         self.attempts = attempts
         self.status = status
+
+
+class ResponseTruncated(LLMError):
+    """The reply was cut off by the output-token limit (``finish_reason == "length"``).
+
+    A cut-off reply is not a decision: an empty answer is not the agent ending the episode,
+    and tool-call arguments may be incomplete. The episode fails and is not recorded.
+    """

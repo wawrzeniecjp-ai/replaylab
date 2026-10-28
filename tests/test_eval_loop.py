@@ -10,7 +10,7 @@ from fakes_llm import HeuristicLLM, ScriptedLLM, call, turn
 from mcp.client import Client
 from toolbox_env import make_env, runtime_for
 
-from replaylab.eval.llm_types import LLMError, Usage
+from replaylab.eval.llm_types import LLMError, ResponseTruncated, Usage
 from replaylab.eval.loop import CampaignStatus, Limits, run_episode, unwrap
 from replaylab.eval.mcp_bridge import McpBridge
 from replaylab.eval.spend import Price, SpendCapReached, SpendGuard
@@ -177,6 +177,31 @@ def test_a_model_failure_propagates(env):
     llm = HeuristicLLM(fail_on_calls=(2,))
     with pytest.raises(LLMError):
         play(env, llm)
+
+
+def test_an_empty_reply_cut_off_by_the_token_limit_raises_instead_of_agent_ended(env):
+    # The mimo pilot: reasoning ate max_tokens, the answer was empty, the episode was
+    # logged as agent_ended after one round.
+    llm = ScriptedLLM([turn(content="", reasoning="long thoughts", finish_reason="length")])
+    with pytest.raises(ResponseTruncated, match="turn 1"):
+        play(env, llm)
+
+
+def test_tool_calls_cut_off_by_the_token_limit_raise_before_running(env):
+    llm = ScriptedLLM(
+        [turn(calls=(call("submit_batch", '{"design_ids": ["d00'),), finish_reason="length")]
+    )
+    with pytest.raises(ResponseTruncated):
+        play(env, llm)
+
+
+def test_a_truncated_reply_is_a_model_failure():
+    assert issubclass(ResponseTruncated, LLMError)  # the runner skips and does not record it
+
+
+def test_a_normal_stop_without_tool_calls_is_still_agent_ended(env):
+    trace, _ = play(env, ScriptedLLM([turn(content="Done.", finish_reason="stop")]))
+    assert trace.stop_reason == "agent_ended"
 
 
 def test_reasoning_is_passed_back_only_when_configured(env):
