@@ -133,7 +133,7 @@ kbd { font-family: var(--mono); font-size: 11px; border: 1px solid var(--line); 
     </section>
 
     <section class="panel">
-      <h2>Race against the scripted players <span class="tag">same seed</span></h2>
+      <h2>Race against the scripted players <span class="tag" id="racenote">same seed · per batch</span></h2>
       <svg id="race" viewBox="0 0 460 260" width="100%" role="img" aria-label="Cumulative hits by purchases"></svg>
       <div class="vs" id="vs"></div>
     </section>
@@ -328,14 +328,30 @@ window.REPLAY_DATA = /*__REPLAY_DATA__*/null;
     svg.append(svgEl("line", { x1: L, y1: T, x2: L, y2: H - B, stroke: "var(--line)" }));
     const lab = (x, y, t, a) => { const e = svgEl("text", { x, y, "text-anchor": a || "start" }); e.textContent = t; svg.append(e); return e; };
     lab(L, H - 8, "0", "middle"); lab(W - R, H - 8, budget + " bought", "middle"); lab(L - 6, sy(ymax - 2) + 4, String(ymax - 2), "end"); lab(L - 6, H - B + 4, "0", "end");
-    const pathOf = (pts) => pts.map((p, i) => (i ? "L" : "M") + sx(p[0]).toFixed(1) + "," + sy(p[1]).toFixed(1)).join("");
+    // Staircases at batch resolution: a batch's results arrive together, so the order inside
+    // a batch means nothing. Flat while buying, one jump when the results arrive.
+    const stairs = (pts) => {
+      const out = [pts[0]];
+      for (let i = 1; i < pts.length; i++) out.push([pts[i][0], pts[i - 1][1]], pts[i]);
+      return out;
+    };
+    const pathOf = (pts) => stairs(pts).map((p, i) => (i ? "L" : "M") + sx(p[0]).toFixed(1) + "," + sy(p[1]).toFixed(1)).join("");
+    const batch = (ep.campaign && ep.campaign.batch_size) || 1;
+    const delayed = ep.campaign && ep.campaign.delay_rounds;
+    $("racenote").textContent = "same seed · per batch" + (delayed ? " · ghosts by purchase, not by arrival" : "");
+    const atBatches = (curve) => {
+      const pts = [[0, 0]];
+      for (let k = batch; k < curve.length; k += batch) pts.push([k, curve[k - 1]]);
+      if (curve.length) pts.push([curve.length, curve[curve.length - 1]]);
+      return pts;
+    };
     const spent = st.bought.size;
     const vs = $("vs"); vs.innerHTML = "";
     const agentHits = steps[idx] ? steps[idx].hits : 0;
     const labels = [];
     ep.ghosts.forEach((g, gi) => {
       const color = GHOST_COLORS[gi % GHOST_COLORS.length];
-      const pts = [[0, 0]].concat(g.curve.map((h, k) => [k + 1, h]));
+      const pts = atBatches(g.curve);
       svg.append(svgEl("path", { d: pathOf(pts), fill: "none", stroke: color, "stroke-width": 1.5, "stroke-dasharray": "5 4", opacity: 0.85 }));
       const last = pts[pts.length - 1];
       labels.push({ x: sx(last[0]) + 6, y: sy(last[1]) + 4, text: `${g.name} ${g.hits}`, color });
