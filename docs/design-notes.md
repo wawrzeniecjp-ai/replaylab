@@ -780,3 +780,34 @@ condition such as an analysis tool, needs its own fresh block from 140 on).
 
 Extension, only if inconclusive: the same two commands with `--trials 40`
 (and `--n 40 --max-usd 3` for the pilot); existing episodes are skipped.
+
+**Results (evaluated 2026-10-29, gates first, then the primary as written).**
+`runs/confirm1`. Gates: (1) 20/20 B1 episodes recorded, no errors file;
+(2) 20x `finished`; (3) one config hash `b457e246517b`, played at `e9534a4`,
+`git diff --stat 940520b e9534a4 -- src prompts config` empty; (4) the four
+scripted policies on every trial 100-119. Flags: 4 tool errors. Cost $0.575.
+
+| B1 vs | mean diff | 90% CI | W/T/L |
+| --- | --- | --- | --- |
+| `learner_sim_purchased` (primary) | **-6.9** | **[-8.8, -4.95]** | 2/1/17 |
+| `learner` | +1.2 | [-0.8, +3.35] | 7/2/11 |
+| `learner_sim` | +5.05 | [+3.0, +7.0] | 18/0/2 |
+| `random` | +13.75 | [+12.0, +15.55] | 20/0/0 |
+
+Mean hits: B1 19.15, `learner_sim_purchased` 26.05, `learner` 17.95,
+`learner_sim` 14.10, `random` 5.40.
+
+* **Verdict: FAIL.** The interval lies wholly below -2; final at n = 20, so
+  the extension does not fire and trials 120-139 stay unplayed.
+* **The development estimate was optimistic.** Iteration 1 scored -1.6 on
+  trials 20-39 and -6.9 here, close to section 9's -6.2 on trials 0-19: the
+  20-39 block suited the agent, which is exactly what a fresh block guards
+  against.
+* **Behaviour as in development:** 77/80 batches built by hand,
+  `propose_batch` 0.6 calls per episode (`learner_sim` x10,
+  `learner_purchased` x1, never `learner_sim_purchased`), `query_pool` 12.9
+  calls per episode.
+* **Headline.** With the tuned descriptions, deepseek B1 plays at plain
+  `learner` level and about 7 hits short of the best scripted player, on
+  fresh seeds -- the same picture as section 9. Description tuning did not
+  change it, and neither did a stronger model (section 10).
