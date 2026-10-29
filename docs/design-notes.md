@@ -710,3 +710,73 @@ leaves about a 1-in-10 chance of an interval this far below zero by noise.
 base is iteration 1 again with its config hash `b457e246517b` (checked by a
 dry run) and its existing runs (tune1, control2) stay valid references.
 Trials 30-39 are used; the next iteration starts at 40.
+
+## 12. Pre-registration: confirmatory run of the frozen configuration (2026-10-29)
+
+Written at git `940520b`, **before any trial >= 40 has been played under any
+configuration** (checked over every records file in `runs/`). Nothing below
+may change once trial 100 is played. Same discipline as sections 8 and 9.
+
+**Disclosure.** The configuration was chosen after looking at development
+data (section 11). Known before writing: iteration 1 on trials 20-39 (tune1
+and control2) scored -1.6 [-4.2, +1.0] against `learner_sim_purchased` and
++6.75 [+4.15, +9.35] against `learner`; the untuned configuration did about as
+well on trials 20-29, and section 9's configuration scored -6.2 on trials
+0-19. Agent results vary a lot between seed blocks; that is why this run uses
+20 fresh trials from the start and pre-commits one extension.
+
+**Frozen configuration.** Tuning iteration 1: commit `53861c2`, whose `src`,
+`prompts` and `config` are identical to `940520b`'s; model `deepseek`
+(`deepseek-flash`, `config/models.yaml` as committed); config hash
+**`b457e246517b`**.
+
+**Scope.** N-dev, condition **B1**, model `deepseek`, trials **100-119**,
+judged against the four scripted policies played on the same trials in the
+same records file, paired per trial:
+
+    replaylab-eval compare --records runs/confirm1/episodes.jsonl --game N-dev \
+        --a B1 --b scripted:learner_sim_purchased --resamples 10000 --seed 0 --ci 0.9
+
+Condition A, mimo and Sonnet are not part of this test (A and mimo were not
+tuned; any later run of them on these trials is descriptive only).
+
+**Primary pass/fail: section 9's rule, unchanged.** Bar:
+`scripted:learner_sim_purchased`. From the 90% interval [low, high] of the
+paired difference (B1 - bar):
+
+* **PASS (matches):** low > -2 hits;
+* **Exceeds:** additionally, low > 0;
+* **FAIL:** high < -2;
+* **Inconclusive** (the interval contains -2) pre-commits **one** extension:
+  trials 100-139 (n = 40), same commands and configuration, only the spend
+  cap raised. The verdict is then read on 100-139. Still inconclusive at
+  n = 40: reported as inconclusive, nothing further is run.
+
+**Secondary (reported, never pass/fail):** B1 vs `scripted:learner`,
+`scripted:learner_sim` and `scripted:random`; the behaviour profile of section
+11 (calls per episode, policies chosen, batches built by hand).
+
+**Validity gates**, checked before any hit count is read; a run that fails
+one is fixed and replayed, never analysed:
+
+1. Failed episodes (no record) are at most 10% of the episodes; failed ones
+   are replayed by rerunning the same command.
+2. Every B1 episode ends `finished` or `agent_stopped`.
+3. Every B1 record carries config hash `b457e246517b`, and
+   `git diff --stat 940520b..<record git_sha> -- src prompts config` is empty.
+4. The four scripted policies are present for every trial judged.
+
+**Seeds.** Section 9's seed rules apply. Trials 100-139 are reserved for
+this test; trials 40-99 stay free for development (the next one, a new
+condition such as an analysis tool, needs its own fresh block from 140 on).
+
+**Commands** (from the main repo; each prints nothing until it ends):
+
+    replaylab-eval pilot --run-dir runs/confirm1 --model deepseek --games N-dev \
+        --conditions B1 --trials 20 --first-trial 100 --n 20 --max-usd 1.5
+    replaylab-eval scripted --run-dir runs/confirm1 --games N-dev \
+        --policies random,learner,learner_sim,learner_sim_purchased \
+        --trials 20 --first-trial 100
+
+Extension, only if inconclusive: the same two commands with `--trials 40`
+(and `--n 40 --max-usd 3` for the pilot); existing episodes are skipped.
