@@ -507,4 +507,44 @@ read, but gate 3 (the transcript pass) was not -- it is still pending below.
   [-5.1, +5.5]; mimo +4.5 [-1.3, +10.6]) -- descriptive only, per scope.
 * The pilot's "A ahead on deepseek" did not survive trials 5-9 (full-set
   B1 - A = -0.1): rule 4's sensitivity line earns its keep.
-* Awaiting: the extension results and the viewer transcript pass (gate 3).
+* Extension results: resolved below (2026-10-29). The viewer transcript pass
+  (gate 3) is still pending.
+
+**Extension results (n=20, evaluated 2026-10-29: gates first, `--ci 0.9`,
+10000 resamples, seed 0).** Gates: `runs/ds2` 40/40 episodes, 0 failures, 40x
+`finished`, 1 config hash, $1.153 spent (cap 1.5); `runs/mimo2` 40/40, 1/40
+failures (the replayed connection error), 40x `finished`, 1 config hash,
+$1.197 spent (cap 1.9); the git range since the pilot still lists only the
+replay viewer and the CLI options.
+
+| model | primary (B1 - `learner_sim_purchased`), n=20 | 90% CI | W/L/T | sensitivity 5-19 | verdict |
+| --- | --- | --- | --- | --- | --- |
+| deepseek | **-6.2** | [-9.0, -3.35] | 6/14/0 | -5.27 [-8.67, -1.8] | **FAIL** -- interval wholly below -2; the extension agrees |
+| mimo | **-2.45** | [-5.95, +1.0] | 10/10/0 | -3.27 [-7.6, +1.0] | **FAIL on the point rule; the straddle persists** -- see below |
+
+* **The straddle fired again for mimo at the planned maximum.** The
+  registration tied the straddle clause to "the only permitted escalation",
+  which is now exhausted -- no trials beyond 19 exist under this plan.
+  Reported honestly: the point estimate misses the margin (-2.45 < -2), while
+  the interval still includes non-inferior values up to +1.0, so the miss is
+  thin and is neither strengthened nor retracted. deepseek's miss is
+  unambiguous under either clause.
+
+**Secondary at n=20 (report only):**
+
+* vs `random`: decisive for both agents -- deepseek +14.25 [11.35, 17.3] and
+  mimo +18.0 [14.95, 21.05], each 20/20 (condition A: +11.8 and +11.2, also
+  20/20).
+* vs plain `learner`: mimo **+6.05 [2.8, 9.2]** (13/20 wins, decisive);
+  deepseek +2.3 [-0.4, +5.1] (parity).
+* B1 - A: mimo **+6.8 [2.6, 11.0]** (14/20) -- the advisor tools help mimo
+  decisively; deepseek +2.45 [-0.95, +5.85] -- suggestive only.
+* A vs the bar: -8.65 [-10.45, -6.8] and -9.25 [-11.25, -7.15] -- the
+  environment-only condition fails the bar on both models, decisively.
+
+**Headline.** Neither model matches the pre-registered best scripted player --
+decisively for deepseek, thinly (point rule only, interval straddling) for
+mimo. Both crush `random`. mimo clears plain `learner` and its advisor tools
+demonstrably help it; deepseek is at parity on both counts. The advisor effect
+is model-dependent, which is exactly why this note judged the models
+separately under one criterion.
