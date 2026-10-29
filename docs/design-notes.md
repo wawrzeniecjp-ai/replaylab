@@ -851,3 +851,85 @@ reported standard errors are its guard against reading noise).
 behaviour before hits: how often C calls `fit_custom_model`, which options it
 picks, and how many bought designs come from its rankings. A confirmatory
 pre-registration (fresh trials from 140) follows only if that looks worth it.
+
+**Go/no-go rule, set before the development run** (stated in the session that
+ran it, before any data): go on to a confirmatory run only if (1) at least a
+third of the designs C buys in rounds 2-4 come from `fit_custom_model`
+rankings, **and** (2) C - B1 has a mean of at least +2 hits; otherwise stop.
+
+**Development run** (`runs/condC1`, N-dev, deepseek, B1 and C on trials
+40-49, one records file). Gates: 10/10 episodes per condition, all
+`finished`, one config hash (`d103491a18c7`), the four scripted policies on
+every trial; $0.51.
+
+*Behaviour.* C called `fit_custom_model` 2.5 times per episode (B1:
+`fit_and_rank` 2.5). Of 25 calls: the similarity input in 18, C set to 0.3 or
+1 in about 12, a feature subset in 7, purchased scaling once, the optimistic
+bound never. Most fits beat the base-rate baseline by 2-6 standard errors
+(leave-one-out AUC mostly 0.8-0.96), and several episodes compared settings
+and kept the better one. Batches were still mixed by hand (37/40). Of the 450
+designs C bought in rounds 2-4, **47%** had appeared in a `fit_custom_model`
+ranking since the previous batch (B1: 20% in a `fit_and_rank` ranking);
+credited instead to the *last* tool that listed them, only 10% (the agent
+usually looks designs up by id before buying). Hit rates, descriptive: designs
+bought from inside the model's rankings 36% (B1: 22%), from outside 49% (both).
+
+*Hits* (90% paired interval):
+
+| comparison, trials 40-49 | mean diff | 90% CI | W/T/L |
+| --- | --- | --- | --- |
+| C - B1 | **+0.1** | [-6.7, +6.8] | 6/0/4 |
+| C - `learner_sim_purchased` | -3.0 | [-7.2, +1.1] | 5/0/5 |
+| B1 - `learner_sim_purchased` | -3.1 | [-6.8, +0.6] | 4/0/6 |
+| C - `learner` | +5.5 | [+1.4, +9.6] | 6/1/3 |
+
+Mean hits: C 23.3, B1 23.2.
+
+**Verdict: no-go.** Criterion (2) fails (+0.1 < +2). Criterion (1) depends on
+how "come from" is read: 47% by "appeared in a ranking since the last batch"
+(a pass), 10% by "last tool that listed the design" (a fail). *Disclosed:* the
+first reading was chosen after seeing the data; it does not change the
+verdict. No confirmatory run is played; trials 140 onwards stay unused.
+
+## 14. Closing the agent study (2026-10-29)
+
+The question (CLAUDE.md): does an LLM agent add anything over a ladder of
+scripted baselines on this task? Answer, from pre-registered tests on fresh
+seeds: **no, not over the best scripted player.**
+
+| test | configuration | trials | agent - `learner_sim_purchased` | verdict |
+| --- | --- | --- | --- | --- |
+| section 9 | deepseek B1, first drafts | 0-19 | -6.2 [-9.0, -3.35] | FAIL |
+| section 9 | mimo B1, first drafts | 0-19 | -2.45 [-5.95, +1.0] | FAIL on the point rule (interval straddles) |
+| section 12 | deepseek B1, tuned (iteration 1) | 100-119 | -6.9 [-8.8, -4.95] | FAIL |
+
+What else was learned, development or descriptive:
+
+* **The agent is a competent player, not a strong one.** Every configuration
+  beat `random` decisively and matched or beat plain `learner` (deepseek in
+  section 12: +1.2 [-0.8, +3.35]; mimo in section 9: +6.05 [+2.8, +9.2]).
+* **Capability was not the bottleneck** (section 10): Sonnet 5.5 scored no
+  better than the flash models; Opus 5.5 could not be tested (the provider
+  declined the requests).
+* **Wording did not move behaviour** (section 11): clearer `propose_batch`
+  options changed nothing; explaining the methods made the agent lean on the
+  pool-scaled model and lowered hits (-5.5 [-10.2, -1.1], reverted).
+* **A better tool was used, but did not pay** (section 13): given its own
+  configurable model, the agent fitted, validated and compared models
+  sensibly, but its hits matched B1's.
+* **The agent prefers its own judgment.** In every configuration it built
+  nearly every batch by hand and almost never bought a scripted proposal as
+  is, even though `propose_batch(policy="learner_sim_purchased")` would have
+  given it the bar's batch. Its hand-picking, mostly following the sequence
+  neighbours of its hits, produced both its best episodes (35-37 hits) and its
+  shortfall on average.
+* **Seed blocks matter for agents.** On trials 20-39 the agent was within the
+  margin (-1.6 [-4.2, +1.0]); on the fresh block 100-119 it was -6.9. The
+  scripted bar stayed near 26 on every block. Development estimates were
+  optimistic; only fresh blocks are evidence.
+
+Model spend recorded in `runs/*/spend.json`: **$6.15** in all (deepseek at
+its peak tariff, so an upper bound; Sonnet $1.28 with its smoke tests). Not
+recorded there: the declined Opus smoke test and the section 11 run that was
+not kept. Trials 120-139 (section 12's unused
+extension) and 140 onwards remain unplayed.
