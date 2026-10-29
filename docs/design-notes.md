@@ -933,3 +933,86 @@ its peak tariff, so an upper bound; Sonnet $1.28 with its smoke tests). Not
 recorded there: the declined Opus smoke test and the section 11 run that was
 not kept. Trials 120-139 (section 12's unused
 extension) and 140 onwards remain unplayed.
+
+## 15. Pre-registration: the frozen agent on the transfer set E (EGFR) (2026-10-29)
+
+Written after commit `dbff08e`, **before any agent episode on E** (every agent
+episode so far is N-dev, checked over every records file in `runs/`) and
+before any episode on E trials >= 100 (the only E episodes are the phase 6
+ladder and one load check of the four scripted players on trial 999, whose
+hits were not read). Nothing below may change once trial 100 is played on E.
+Same discipline as sections 9 and 12.
+
+**Why E.** The agent study (section 14) found no gain over the best scripted
+player on N-dev. On E the scripted ladder is weak and ordered differently:
+`learner_sim` 10.4, `random` 9.6, `learner` 7.4, both purchased variants 4.5
+(100 seeds, section 6). The model gate (2 hits, 8 purchases) holds in only one
+of four rounds, and E has two scoring features (`esmfold_plddt`,
+`proteinmpnn_score`) plus length and design class. If the agent's own
+judgment adds anything, a pool where the scripts are weak is where it should
+show. E is the transfer set: the agent is run **frozen**, nothing is tuned on
+it.
+
+**Frozen configuration.** The code at `dbff08e` (the N-dev configuration, plus
+the `query_pool` fix that reads a quoted number as a number); conditions **B1**
+and **C** (`config/conditions.yaml`); models **deepseek** (config hash
+`d103491a18c7`) and **mimo** (`1665298211ef`), as committed in
+`config/models.yaml`.
+
+**Scope.** Game E, trials **100-119**, both conditions, both models, each
+model's records in one file with the four scripted policies on the same trials:
+`runs/egfr-ds` and `runs/egfr-mimo`. Paired per trial:
+
+    replaylab-eval compare --records runs/egfr-ds/episodes.jsonl --game E \
+        --a B1 --b scripted:learner_sim --resamples 10000 --seed 0 --ci 0.9
+
+**Bar: `scripted:learner_sim`**, the best policy on E in the 100-seed ladder
+(not `learner_sim_purchased`, the N-dev bar, which is among the worst on E).
+
+**Primary pass/fail: section 9's rule, unchanged** (90% interval of B1 - bar):
+PASS low > -2; **Exceeds** additionally low > 0; FAIL high < -2; otherwise
+inconclusive. The 2-hit margin is kept for consistency although it is about
+20% of the bar on E; "Exceeds" is the outcome that would say the agent adds
+something.
+
+* **Headline:** deepseek B1 (the configuration of sections 9 and 12).
+* **Replications, same rule, reported separately:** deepseek C, mimo B1,
+  mimo C. Disagreements are reported, not resolved.
+* **Inconclusive** in any of the four cells pre-commits **one** extension of
+  all four cells to trials 100-139 (same commands, only caps raised); verdicts
+  are then read on 100-139 and are final.
+
+**Secondary (reported, never pass/fail):** C - B1 per model (does the custom
+model help where the fixed model is weak?); each agent cell against `random`,
+`learner` and `learner_sim_purchased`; the behaviour profile of sections 11
+and 13 (batches built by hand, `fit_custom_model` options, share of buys found
+in a model ranking).
+
+**Validity gates**, per model, checked before any hit count is read; a run
+that fails one is fixed and replayed, never analysed:
+
+1. Failed episodes (no record) are at most 10%; they are replayed by rerunning
+   the same command.
+2. Every agent episode ends `finished` or `agent_stopped`.
+3. Every agent record carries its model's config hash above, and
+   `git diff --stat <this section's commit>..<record git_sha> -- src prompts config`
+   is empty.
+4. The four scripted policies are present for every trial judged.
+
+**Seeds.** Section 9's rules. E trials 100-139 are reserved for this test;
+E trials 0-99 were played by the scripted ladder only.
+
+**Commands** (main repo; each prints nothing until it ends; about $1.1 per
+model):
+
+    replaylab-eval pilot --run-dir runs/egfr-ds --model deepseek --games E \
+        --conditions B1,C --trials 20 --first-trial 100 --n 40 --max-usd 3
+    replaylab-eval pilot --run-dir runs/egfr-mimo --model mimo --games E \
+        --conditions B1,C --trials 20 --first-trial 100 --n 40 --max-usd 3
+    replaylab-eval scripted --run-dir runs/egfr-ds --games E \
+        --policies random,learner,learner_sim,learner_sim_purchased --trials 20 --first-trial 100
+    replaylab-eval scripted --run-dir runs/egfr-mimo --games E \
+        --policies random,learner,learner_sim,learner_sim_purchased --trials 20 --first-trial 100
+
+Extension, only if triggered: the same commands with `--trials 40` (and
+`--n 80 --max-usd 6` for the pilots); existing episodes are skipped.
