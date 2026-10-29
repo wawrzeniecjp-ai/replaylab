@@ -664,3 +664,49 @@ play is hand-picking from `query_pool` and following `similar_designs`
 neighbours of hits; the next lever has to change how it picks (the system
 prompt's account of the workflow), judged the same way: paired control, at
 least 10 seeds, on a development block not used before (30 onwards).
+
+### Iteration 2 (2026-10-29): say what the methods compute -- reverted
+
+**Changes** (`44a6d99`, config `9d476dc1d5d2`). `fit_and_rank` described its
+inputs, orientation, pool standardization, L2 regularization (C = 0.1), its
+outputs and that a fit is a snapshot; each `propose_batch` bullet said what
+the policy computes (the same model as `fit_and_rank`, the exploration split,
+the similarity rank blend, standardization on delivered purchases recomputed
+every round). `describe_campaign` dropped "after every submit" (agents called
+it after 1 of 80 submits; `submit_batch` already returns rounds and results).
+All neutral: tests kept ranking words out.
+
+**Runs** (N-dev, B1, deepseek, trials 30-39, `--ci 0.9`, 10000 resamples,
+seed 0). `runs/tune2`: iteration 2, $0.28. `runs/control2`: iteration 1
+(`53861c2`, `b457e246517b`) from the worktree, $0.26. Gates: 10/10 each, all
+`finished`, one config hash per run.
+
+| comparison, trials 30-39 | mean diff | 90% CI | W/T/L |
+| --- | --- | --- | --- |
+| iteration 2 - iteration 1 | **-5.5** | [-10.2, -1.1] | 2/2/6 |
+| iteration 2 - `learner` | +1.1 | [-1.2, +3.7] | 4/2/4 |
+| iteration 1 - `learner` | +6.6 | [+3.3, +10.1] | 7/2/1 |
+| iteration 2 - `learner_sim_purchased` | -7.8 | [-10.4, -4.9] | 2/0/8 |
+| iteration 1 - `learner_sim_purchased` | -2.3 | [-5.8, +1.4] | 4/0/6 |
+
+Mean hits: iteration 2 19.2, iteration 1 24.7, `learner_sim_purchased` 27.0,
+`learner` 18.1. Iteration 2 lost the high-scoring episodes (iteration 1's 37,
+31 and 32 became 18, 17 and 14) and landed on `learner`.
+
+**Behaviour.** Still 40/40 batches built by hand. `propose_batch` 0.7 calls
+per episode (was 0.3), policies `learner_sim` x6 and `random` x1, no
+purchased variant. In rounds 3-4 more designs came straight from
+`fit_and_rank` rankings (43, was 25; 30% hits); neighbours from
+`similar_designs` hit less often (12/27, was 23/35). Hits per round fell in
+round 2 (8.6 to 6.4) and round 4 (6.3 to 3.6).
+
+**Reading (plausible, not proven).** Explaining the model made
+`fit_and_rank`, which offers pool scaling only, look authoritative; the agent
+leaned on its ranking and played like `learner`, where under iteration 1 it
+trusted its own hit-cluster follow-ups more. One paired comparison at 90%
+leaves about a 1-in-10 chance of an interval this far below zero by noise.
+
+**Decision: reverted in full**, the `describe_campaign` line included, so the
+base is iteration 1 again with its config hash `b457e246517b` (checked by a
+dry run) and its existing runs (tune1, control2) stay valid references.
+Trials 30-39 are used; the next iteration starts at 40.
