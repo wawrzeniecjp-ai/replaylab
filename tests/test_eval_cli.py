@@ -365,3 +365,91 @@ def test_an_anthropic_model_needs_a_cache_write_price(setup, tmp_path):
     args += ["--max-usd", "5", "--dry-run", *setup["common"], *setup["model"]]
     result = invoke(["pilot", *args])
     assert result.exit_code == 2 and "cache_write_per_mtok" in result.output
+
+
+# --- smoke: a short real episode through the real Anthropic adapter ------------------------
+
+
+def anthropic_script(cached_from_turn_2=1200):
+    from test_eval_llm_anthropic import Block, message
+
+    replies = []
+    for n, tool_name in enumerate(["describe_campaign", "get_history", "describe_campaign"], 1):
+        replies.append(
+            message(
+                Block(type="thinking", thinking=f"step {n}", signature=f"sig-{n}"),
+                Block(type="tool_use", id=f"tu_{n}", name=tool_name, input={}),
+                stop_reason="tool_use",
+                usage=dict(
+                    input_tokens=50,
+                    cache_creation_input_tokens=900,
+                    cache_read_input_tokens=0 if n == 1 else cached_from_turn_2,
+                    output_tokens=30,
+                ),
+            )
+        )
+    return replies
+
+
+def smoke_args(setup, run_dir):
+    prices = yaml.safe_load((setup["root"] / "prices.yaml").read_text())
+    prices["prices"]["p"]["cache_write_per_mtok"] = 1.25
+    (setup["root"] / "prices.yaml").write_text(yaml.safe_dump(prices))
+    return ["smoke", "--run-dir", str(run_dir), "--model", "m", "--game", "G",
+            "--condition", "A", "--max-usd", "5", *setup["common"], *setup["model"]]  # fmt: skip
+
+
+def test_smoke_plays_three_turns_passes_thinking_back_and_records_nothing(
+    setup, tmp_path, monkeypatch
+):
+    from test_eval_llm_anthropic import FakeAnthropic, no_sleep
+
+    from replaylab.eval.llm_anthropic import AnthropicClient
+
+    fake = FakeAnthropic(anthropic_script())
+    llm = AnthropicClient(fake, "claude-x", sleep=no_sleep)
+    monkeypatch.setattr(eval_cli, "_make_llm", lambda cfg: llm)
+    result = invoke(smoke_args(setup, tmp_path))
+    assert result.exit_code == 0, result.output
+    report = json.loads((tmp_path / "smoke.json").read_text())
+    assert report["ok"] and report["checks"]["turns_played"] == 3
+    assert report["checks"]["passback_accepted"] and report["checks"]["cache_reads"]
+    assert [t["tools"] for t in report["turns"]] == [
+        ["describe_campaign"],
+        ["get_history"],
+        ["describe_campaign"],
+    ]
+    # turn 3's request carried turn 1's signed thinking block, unchanged
+    first_assistant = fake.requests[2]["messages"][1]
+    assert first_assistant["content"][0] == {
+        "type": "thinking",
+        "thinking": "step 1",
+        "signature": "sig-1",
+    }
+    assert not (tmp_path / "episodes.jsonl").exists()
+    spend = json.loads((tmp_path / "spend.json").read_text())
+    assert spend["totals"]["calls"] == 3 and spend["totals"]["input_cache_write"] == 2700
+
+
+def test_smoke_fails_when_the_cache_is_never_read(setup, tmp_path, monkeypatch):
+    from test_eval_llm_anthropic import FakeAnthropic, no_sleep
+
+    from replaylab.eval.llm_anthropic import AnthropicClient
+
+    llm = AnthropicClient(FakeAnthropic(anthropic_script(0)), "claude-x", sleep=no_sleep)
+    monkeypatch.setattr(eval_cli, "_make_llm", lambda cfg: llm)
+    result = invoke(smoke_args(setup, tmp_path))
+    assert result.exit_code == 1
+    assert json.loads((tmp_path / "smoke.json").read_text())["checks"]["cache_reads"] is False
+
+
+def test_smoke_reports_a_failed_model_call(setup, tmp_path, monkeypatch):
+    from fakes_llm import StatusError
+    from test_eval_llm_anthropic import FakeAnthropic, no_sleep
+
+    from replaylab.eval.llm_anthropic import AnthropicClient
+
+    llm = AnthropicClient(FakeAnthropic([StatusError(400, "bad param")]), "x", sleep=no_sleep)
+    monkeypatch.setattr(eval_cli, "_make_llm", lambda cfg: llm)
+    result = invoke(smoke_args(setup, tmp_path))
+    assert result.exit_code == 1 and "bad param" in result.output

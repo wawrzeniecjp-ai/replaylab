@@ -7,6 +7,7 @@
     replaylab-eval run   ... --trials 20 --first-trial 100      # a fresh block: trials 100-119
     replaylab-eval compare --records runs/x/episodes.jsonl --game N-dev --a B1 --b A --ci 0.9 --trial-range 0-9
     replaylab-eval view --run-dir runs/x        # writes runs/x/replay.html
+    replaylab-eval smoke --model opus --run-dir runs/smoke --max-usd 1   # 3 real turns, no record
 
 Exit codes: 0 success, 1 the operation was refused or incomplete, 2 bad setup.
 """
@@ -25,6 +26,7 @@ import typer
 from replaylab.eval.conditions import identical_conditions, load_conditions
 from replaylab.eval.llm import OpenAICompatClient
 from replaylab.eval.llm_anthropic import AnthropicClient
+from replaylab.eval.llm_types import LLMError
 from replaylab.eval.loop import Limits
 from replaylab.eval.models import ModelConfig, ModelConfigError, load_models
 from replaylab.eval.prompts import USER_PROMPT, load_system_prompt, text_hash
@@ -33,6 +35,7 @@ from replaylab.eval.replay_view import PoolPaths, build_page, pool_view
 from replaylab.eval.runner import (
     RunnerDeps,
     expand_matrix,
+    run_llm_episode,
     run_matrix,
     run_pilot,
     run_scripted_matrix,
@@ -43,6 +46,7 @@ from replaylab.eval.spend import (
     BudgetRefused,
     PriceError,
     Projection,
+    SpendCapReached,
     SpendGuard,
     load_prices,
     refuse_if_over,
@@ -332,6 +336,95 @@ def pilot(
     payload = {**asdict(projection), "n_pilot": n, "spent_usd": deps.guard.total_usd}
     (run_dir / "pilot.json").write_text(json.dumps(payload, sort_keys=True, indent=2))
     _emit(payload)
+
+
+SMOKE_TRIAL = 999  # outside every block a pilot or run uses (0-19, 100-119)
+
+
+def smoke_report(record: Any, spent_usd: float) -> dict[str, Any]:
+    """What a short real episode shows about the provider plumbing, turn by turn.
+
+    * ``passback_accepted``: a turn after one with signed thinking blocks was answered, so the
+      blocks were sent back in a form the API accepts (None: no thinking came back to test);
+    * ``cache_reads``: every turn after the first read from the prompt cache;
+    * ``cost_matches_guard``: the episode's cost equals what the spend guard added.
+    """
+    assistants = [m for m in record.messages if m.get("role") == "assistant"]
+    turns = []
+    for index, usage in enumerate(record.usage):
+        blocks = assistants[index].get("provider_content") or [] if index < len(assistants) else []
+        turns.append(
+            {
+                **usage,
+                "tools": [c["name"] for c in record.tool_calls if c["turn"] == usage["turn"]],
+                "tool_errors": sum(
+                    1 for c in record.tool_calls if c["turn"] == usage["turn"] and not c["ok"]
+                ),
+                "thinking_blocks": sum(1 for b in blocks if b.get("type") == "thinking"),
+                "signed": all(b.get("signature") for b in blocks if b.get("type") == "thinking"),
+                "reasoning_chars": len(record.reasoning[index] or "")
+                if index < len(record.reasoning)
+                else 0,
+            }
+        )
+    thought_before_last = any(t["thinking_blocks"] for t in turns[:-1])
+    later = turns[1:]
+    checks = {
+        "turns_played": len(turns),
+        "passback_accepted": (len(turns) >= 2) if thought_before_last else None,
+        "cache_reads": bool(later) and all(t["input_cached"] > 0 for t in later),
+        "cost_matches_guard": abs(record.cost_usd - spent_usd) < 1e-9,
+    }
+    ok = (
+        len(turns) >= 2
+        and checks["passback_accepted"] is not False
+        and checks["cache_reads"]
+        and checks["cost_matches_guard"]
+    )
+    return {"ok": ok, "checks": checks, "cost_usd": record.cost_usd, "turns": turns}
+
+
+@app.command("smoke")
+def smoke(
+    run_dir: RunDir,
+    model: Annotated[str, typer.Option("--model")],
+    max_usd: Annotated[float, typer.Option("--max-usd", help="Hard spending cap.")],
+    game: Annotated[str, typer.Option("--game")] = "N-dev",
+    condition: Annotated[str, typer.Option("--condition")] = "B1",
+    turns: Annotated[int, typer.Option("--turns", min=2)] = 3,
+    tables: Tables = Path("data/processed"),
+    folds: Folds = Path("data/splits/folds.csv"),
+    clusters: Clusters = Path("data/splits/clusters.csv"),
+    games_config: GamesConfig = Path("config/games.yaml"),
+    features_config: FeaturesConfig = Path("config/features.yaml"),
+    conditions_config: ConditionsConfig = Path("config/conditions.yaml"),
+    system_prompt: SystemPrompt = Path("prompts/system.md"),
+    models_config: ModelsConfig = Path("config/models.yaml"),
+    prices_config: PricesConfig = Path("config/prices.yaml"),
+) -> None:
+    """Play the first turns of one real episode (trial 999) and check the provider plumbing.
+
+    Nothing is recorded in episodes.jsonl; the spend guard and its cap apply as in a run.
+    Writes smoke.json. Exit code 1 if a check fails or the model call fails.
+    """
+    deps, specs = _prepare(
+        model=model, games=game, conditions=condition, trials=1, first_trial=SMOKE_TRIAL,
+        max_usd=max_usd, concurrency=1, dry_run=False, run_dir=run_dir, tables=tables,
+        folds=folds, clusters=clusters, games_config=games_config,
+        features_config=features_config, conditions_config=conditions_config,
+        system_prompt=system_prompt, models_config=models_config, prices_config=prices_config,
+    )  # fmt: skip
+    deps.limits = Limits(max_turns=turns)
+    before = deps.guard.total_usd
+    try:
+        record = asyncio.run(run_llm_episode(specs[0], deps))
+    except (LLMError, SpendCapReached) as error:
+        raise _fail(f"{type(error).__name__}: {error}", 1) from None
+    report = smoke_report(record, deps.guard.total_usd - before)
+    (run_dir / "smoke.json").write_text(json.dumps(report, indent=2))
+    _emit(report)
+    if not report["ok"]:
+        raise typer.Exit(1)
 
 
 @app.command("run")
