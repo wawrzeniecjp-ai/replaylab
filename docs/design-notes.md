@@ -597,3 +597,70 @@ capability gap as the main cause. Not ruled out: that the strongest model
 would pass, since it could not be run. Next lever: how the agent understands
 and uses the tools (neutral descriptions only, tuned on development trials,
 judged on the fresh block 100-119).
+
+## 11. Tuning log (development trials 20-99; never the fresh block)
+
+Each iteration is a new configuration (new config hash), played with deepseek
+on development trials and judged against a **paired control**: the previous
+configuration on the same seeds, played from a git worktree at its commit.
+Without the control, a change of seeds looks like a tuning effect.
+
+### Iteration 1 (2026-10-29): propose_batch interface and status-tool wording
+
+**Changes.**
+* `da5c42b`: `policy` became an enum (`learner`, `learner_sim`,
+  `learner_purchased`, `learner_sim_purchased`, `random`, `fixed`), `fixed`
+  takes a separate `feature` parameter, every parameter has a description,
+  and the description lists one neutral bullet per policy plus the fallback
+  before a model can be fitted.
+* `53861c2`: the default policy is named in the schema only, no longer in
+  the text; `describe_campaign`, `get_history`, `pending_batches` and
+  `campaign_summary` each say what they return that the others do not.
+  Ideas came from asking deepseek to review the descriptions; points without
+  support in the transcripts were not taken (renaming `propose_batch`,
+  "use this when" hints, which would advise rather than describe, and the
+  `wait` wording: `wait` was never called on N-dev).
+
+**Runs** (N-dev, B1, deepseek, `--ci 0.9`, 10000 resamples, seed 0).
+
+| run | configuration | config hash | trials | mean hits |
+| --- | --- | --- | --- | --- |
+| `runs/control1` | before iteration 1 (`2391d10`, = section 9) | `da8b881a3af2` | 20-29 | 26.0 |
+| `runs/tune1` | after both commits (`53861c2`) | `b457e246517b` | 20-29 | 25.2 |
+| (not kept) | after `da5c42b` only | not recorded | 20-24 | 19.8 |
+
+Gates: 10/10 episodes recorded per run, all `finished`, one config hash per
+run; tune1 cost $0.26. The `da5c42b`-only run left no records on disk; its
+hits (36, 27, 11, 13, 12, trial order unknown) are from hand-kept notes
+and are reported for completeness only.
+
+| comparison, trials 20-29 | mean diff | 90% CI | W/T/L |
+| --- | --- | --- | --- |
+| tuned - old | -0.8 | [-5.6, +4.3] | 4/1/5 |
+| tuned - `learner_sim_purchased` | -0.9 | [-4.7, +3.0] | 4/1/5 |
+| old - `learner_sim_purchased` | -0.1 | [-3.9, +3.7] | 5/1/4 |
+| tuned - `learner` | +6.9 | [+3.0, +10.9] | 7/2/1 |
+
+**Result: no detectable effect.** The first 5 tuned trials (25.2 on 20-24)
+looked like a gain over section 9 (20.5 on 0-19), but the untuned
+configuration scores 26.0 on the same seeds while `learner_sim_purchased`
+stays near 26 on both blocks: trials 20-29 suit the agent's hand-picking
+better. On trials 20-24 the three configurations scored 23.2 (old), 19.8
+(`da5c42b` only) and 25.2 (both): run-to-run sampling on fixed seeds moves a
+5-trial mean by several hits, so "the cheap edits pulled their weight" is not
+supported.
+
+**Behaviour did not change either:**
+
+| per episode | old | tuned |
+| --- | --- | --- |
+| `propose_batch` calls | 0.4 | 0.3 |
+| batches built by hand (of 4) | 3.9 | 4.0 |
+| `query_pool` calls | 12.6 | 12.6 |
+| `learner_sim_purchased` chosen (whole run) | 0 | 1 |
+
+Edits to a tool the agent barely calls have little to act on. The agent's
+play is hand-picking from `query_pool` and following `similar_designs`
+neighbours of hits; the next lever has to change how it picks (the system
+prompt's account of the workflow), judged the same way: paired control, at
+least 10 seeds, on a development block not used before (30 onwards).
