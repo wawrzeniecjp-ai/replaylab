@@ -13,7 +13,12 @@ from toolbox_env import make_env, toolbox_for
 
 from replaylab.interfaces.policy_factory import POLICY_NAMES
 from replaylab.interfaces.server import REGISTERED_TOOLS, build_server
-from replaylab.interfaces.tools import ADVISOR_TOOLS, CAMPAIGN_TOOLS, TOOL_DESCRIPTIONS
+from replaylab.interfaces.tools import (
+    ADVISOR_TOOLS,
+    ANALYSIS_TOOLS,
+    CAMPAIGN_TOOLS,
+    TOOL_DESCRIPTIONS,
+)
 from replaylab.interfaces.tools import resolve_tool_selection as resolve
 
 SNAPSHOT = Path(__file__).parent / "snapshots" / "tools.json"
@@ -67,10 +72,11 @@ def test_tool_list_snapshot(env, request):
     assert current == json.loads(SNAPSHOT.read_text()), changed
 
 
-def test_all_fourteen_tools_are_registered(env):
+def test_all_fifteen_tools_are_registered(env):
     names = tool_names(build_server(toolbox_for(env)))
-    assert sorted(names) == sorted([*CAMPAIGN_TOOLS, *ADVISOR_TOOLS]) and len(names) == 14
-    assert list(REGISTERED_TOOLS) == [*CAMPAIGN_TOOLS, *ADVISOR_TOOLS]
+    everything = [*CAMPAIGN_TOOLS, *ADVISOR_TOOLS, *ANALYSIS_TOOLS]
+    assert sorted(names) == sorted(everything) and len(names) == 15
+    assert list(REGISTERED_TOOLS) == everything
 
 
 def test_tool_names_follow_the_function_name_pattern(env):
@@ -166,8 +172,8 @@ def test_input_schemas_describe_the_documented_parameters(env):
 @pytest.mark.parametrize(
     ("selection", "expected"),
     [
-        (None, [*CAMPAIGN_TOOLS, *ADVISOR_TOOLS]),
-        ("", [*CAMPAIGN_TOOLS, *ADVISOR_TOOLS]),
+        (None, [*CAMPAIGN_TOOLS, *ADVISOR_TOOLS, *ANALYSIS_TOOLS]),
+        ("", [*CAMPAIGN_TOOLS, *ADVISOR_TOOLS, *ANALYSIS_TOOLS]),
         ("campaign", list(CAMPAIGN_TOOLS)),  # condition A: environment tools only
         (
             "campaign,advisor",
@@ -345,3 +351,25 @@ def test_propose_batch_keeps_its_default_in_the_schema_not_the_text(env):
 def test_campaign_summary_points_to_the_other_status_tools():
     text = TOOL_DESCRIPTIONS["campaign_summary"]
     assert "get_history" in text and "describe_campaign" in text
+
+
+def test_fit_custom_model_offers_its_options_as_described_enums(env):
+    tools = {t.name: t.input_schema for t in run(listed(build_server(toolbox_for(env))))}
+    props = tools["fit_custom_model"]["properties"]
+    assert set(props) == {"features", "scaling", "penalty", "C", "similarity_feature", "rank_by",
+                          "kappa", "top_k"}  # fmt: skip
+    assert (
+        props["scaling"]["enum"] == ["pool", "purchased"] and props["scaling"]["default"] == "pool"
+    )
+    assert props["penalty"]["enum"] == ["l2", "l1"] and props["rank_by"]["enum"] == [
+        "mean",
+        "upper",
+    ]
+    assert props["C"]["default"] == 0.1 and props["similarity_feature"]["default"] is False
+    assert "required" not in tools["fit_custom_model"]  # the defaults are fit_and_rank's model
+    for name, spec in props.items():
+        assert len(spec.get("description", "")) >= 20, name
+    text = TOOL_DESCRIPTIONS["fit_custom_model"]
+    assert "same model as fit_and_rank" in text and "leave-one-out" in text
+    for word in ("best", "outperform", "recommend", "should"):
+        assert word not in text.lower(), word

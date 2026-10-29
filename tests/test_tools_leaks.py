@@ -15,7 +15,7 @@ from factories import NIPAH
 from toolbox_env import make_env, pool_sequences, toolbox_for
 
 from replaylab.interfaces import schemas as s
-from replaylab.interfaces.tools import ADVISOR_TOOLS, CAMPAIGN_TOOLS, Toolbox
+from replaylab.interfaces.tools import ADVISOR_TOOLS, ANALYSIS_TOOLS, CAMPAIGN_TOOLS, Toolbox
 
 OUTCOME_FIELDS = {"hit", "strength", "kd_molar"}
 
@@ -159,7 +159,7 @@ def test_the_tool_context_has_no_alias_mapping_or_outcome_source(env):
 
 def test_the_public_surface_is_exactly_the_documented_tools():
     public = {name for name in dir(Toolbox) if not name.startswith("_")}
-    assert public == set(CAMPAIGN_TOOLS) | set(ADVISOR_TOOLS)
+    assert public == set(CAMPAIGN_TOOLS) | set(ADVISOR_TOOLS) | set(ANALYSIS_TOOLS)
 
 
 # --- determinism ------------------------------------------------------------------------
@@ -231,6 +231,37 @@ def test_every_response_validates_against_its_schema(game):
         "stop_advice": s.StopAdviceResult,
         "campaign_summary": s.CampaignSummaryResult,
         "fit_and_rank": s.FitAndRankResult,
+        "fit_custom_model": s.FitCustomModelResult,
     }
     for name, text in calls:
         models[name].model_validate_json(text)
+
+
+def test_fit_custom_model_leaks_nothing_once_a_model_can_be_fitted(env):
+    # The shared play-through above may not reach a fit; this one buys until it can.
+    toolbox = toolbox_for(env)
+    state = toolbox._ctx.campaign.state()
+    by_score = sorted(
+        state.unpurchased_ids, key=lambda d: -state.designs[d].features.get("esmfold_plddt", 0)
+    )
+    while state.n_hits < 2 or len(state.outcomes) < 8:
+        assert state.rounds_left > 0, "the test game never reached two hits"
+        toolbox.submit_batch([d for d in by_score if d in state.unpurchased_ids][:5])
+        state = toolbox._ctx.campaign.state()
+    texts = [
+        toolbox.fit_custom_model(top_k=50, similarity_feature=True).model_dump_json(),
+        toolbox.fit_custom_model(scaling="purchased", rank_by="upper", top_k=50).model_dump_json(),
+        toolbox.fit_custom_model(penalty="l1", C=1.0, features=["esmfold_plddt"]).model_dump_json(),
+    ]
+    text = "\n".join(texts)
+    sequences = pool_sequences(env)
+    kmers = {seq[i : i + 8] for seq in sequences for i in range(len(seq) - 7)}
+    assert not [text[i : i + 8] for i in range(len(text) - 7) if text[i : i + 8] in kmers]
+    real_ids = env.tables.outcomes.loc[env.tables.outcomes["target"] == NIPAH, "design_id"]
+    assert not [d for d in real_ids if d in text] and "nip-" not in text
+    unpurchased = set(state.unpurchased_ids)
+    for doc in texts:
+        s.FitCustomModelResult.model_validate_json(doc)
+        for node in walk(json.loads(doc)):
+            if node.get("design_id") is not None:
+                assert node["design_id"] in unpurchased and not OUTCOME_FIELDS & set(node)

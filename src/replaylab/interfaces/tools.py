@@ -19,6 +19,7 @@ from typing import Any
 import numpy as np
 from scipy.stats import beta
 
+from replaylab.advisor.analysis import AnalysisSettings, analyse
 from replaylab.advisor.model import FittedModel, InsufficientData, fit_model
 from replaylab.advisor.preprocess import Preprocessor
 from replaylab.advisor.rates import estimate_hit_rate as rates_estimate
@@ -42,6 +43,7 @@ from replaylab.engine import (
 from replaylab.interfaces import schemas as s
 from replaylab.interfaces.policy_factory import UnknownPolicy, make_policy
 from replaylab.policies import make_rng
+from replaylab.policies.purchased import purchased_scale
 from replaylab.store import CampaignStore
 
 CAMPAIGN_TOOLS = (
@@ -62,8 +64,15 @@ ADVISOR_TOOLS = (
     "stop_advice",
     "campaign_summary",
 )
+# Condition C: the agent's own model, offered in place of fit_and_rank (section 13).
+ANALYSIS_TOOLS = ("fit_custom_model",)
 KNOWLEDGE_TOOLS: tuple[str, ...] = ()  # registered in phase 8
-TOOL_GROUPS = {"campaign": CAMPAIGN_TOOLS, "advisor": ADVISOR_TOOLS, "knowledge": KNOWLEDGE_TOOLS}
+TOOL_GROUPS = {
+    "campaign": CAMPAIGN_TOOLS,
+    "advisor": ADVISOR_TOOLS,
+    "analysis": ANALYSIS_TOOLS,
+    "knowledge": KNOWLEDGE_TOOLS,
+}
 
 OPERATORS = (">", ">=", "<", "<=", "==", "!=")
 DEFAULT_QUERY_LIMIT = 20
@@ -126,6 +135,24 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
     "fit_and_rank": (
         "Fit a regularized logistic model on delivered designs and rank unpurchased designs by predicted hit probability. "
         "Needs at least 2 hits and 8 delivered purchases, otherwise it returns insufficient_data. Use it to see which features matter."
+    ),
+    "fit_custom_model": (
+        "Fit your own logistic regression on the delivered results, with the options below, and rank the unpurchased designs. "
+        "It needs at least 2 hits and 8 delivered purchases, otherwise it returns insufficient_data; with the default options "
+        "it is the same model as fit_and_rank. "
+        "validation compares the model's leave-one-out log loss with a base-rate baseline (improvement above 0 means better "
+        "than the baseline; compare it with improvement_se) and gives the leave-one-out AUC with its standard error.\n"
+        "Options:\n"
+        "- features: the predicted-score features to use (default: all); length and design class are always inputs.\n"
+        "- scaling: pool standardizes each input with the mean and standard deviation of the whole pool; purchased, "
+        "with those of your delivered designs.\n"
+        "- penalty and C: l2 shrinks every weight toward zero, l1 can set weights to exactly zero; a smaller C "
+        "shrinks more (0.001 to 100).\n"
+        "- similarity_feature: adds each design's largest 3-mer sequence similarity to one of your hits as an input "
+        "(a design is never compared with itself).\n"
+        "- rank_by: mean ranks by predicted hit probability; upper by an optimistic bound, "
+        "sigmoid(log-odds + kappa x sd), from the model's uncertainty (l2 only; kappa 0 to 5).\n"
+        "- top_k: how many designs to return (at most 50)."
     ),
     "similar_designs": (
         "Find unpurchased designs whose sequences are most similar (3-mer cosine) to the designs you give, typically hits. "
@@ -201,6 +228,15 @@ class _PoolSimilarity:
         self._row = {d: i for i, d in enumerate(self._ids)}
         self._matrix = kmer_matrix([designs[d].sequence for d in self._ids])
 
+    def matrix(self, rows: Sequence[str], columns: Sequence[str]) -> np.ndarray:
+        """Cosine similarity of every row design to every column design (dense)."""
+        if not rows or not columns:
+            return np.zeros((len(rows), len(columns)))
+        return (
+            self._matrix[[self._row[r] for r in rows]]
+            @ self._matrix[[self._row[c] for c in columns]].T
+        ).toarray()
+
     def nearest(
         self, given: Sequence[str], candidates: Sequence[str], k: int
     ) -> list[tuple[str, float, str]]:
@@ -221,7 +257,7 @@ class _PoolSimilarity:
 
 
 class Toolbox:
-    """The 14 tools over one campaign, independent of any transport.
+    """The 15 tools over one campaign, independent of any transport.
 
     The MCP server and the CLI both call these methods, so what an agent sees is
     exactly what the tool tests check here. Every method reads the state fresh.
@@ -559,6 +595,24 @@ class Toolbox:
             )
         return fitted
 
+    def _preprocessor_for(self, state: CampaignState, features: list[str] | None) -> Preprocessor:
+        """The pool preprocessor, or one refitted on a subset of the features."""
+        if features is None:
+            return self._ctx.preprocessor
+        if not features:
+            raise ToolFailure("features must not be empty; omit it to use every feature")
+        unknown = [f for f in features if f not in self._fc.names]
+        if unknown:
+            raise ToolFailure(
+                f"unknown feature(s) {unknown}; valid features: {list(self._fc.names)}"
+            )
+        subset = FeatureConfig(
+            self._fc.target,
+            features[0],
+            tuple(spec for spec in self._fc.specs if spec.name in features),
+        )
+        return Preprocessor.fit(state.designs, subset)
+
     def propose_batch(
         self,
         k: int,
@@ -656,21 +710,7 @@ class Toolbox:
             raise ToolFailure("exploration must be between 0 and 1")
         top_k = min(top_k, MAX_RANK)
         state = self._state()
-        preprocessor = self._ctx.preprocessor
-        if features is not None:
-            if not features:
-                raise ToolFailure("features must not be empty; omit it to use every feature")
-            unknown = [f for f in features if f not in self._fc.names]
-            if unknown:
-                raise ToolFailure(
-                    f"unknown feature(s) {unknown}; valid features: {list(self._fc.names)}"
-                )
-            subset = FeatureConfig(
-                self._fc.target,
-                features[0],
-                tuple(spec for spec in self._fc.specs if spec.name in features),
-            )
-            preprocessor = Preprocessor.fit(state.designs, subset)
+        preprocessor = self._preprocessor_for(state, features)
         fitted = self._fitted(state, preprocessor)
 
         available = list(state.unpurchased_ids)
@@ -699,6 +739,86 @@ class Toolbox:
             top_weights=[s.Weight(feature=f, weight=_r6(w)) for f, w in fitted.top_weights(5)],
             ranked=ranked,
             exploration_ids=[remaining[i] for i in picks],
+        )
+
+    def fit_custom_model(
+        self,
+        features: list[str] | None = None,
+        scaling: str = "pool",
+        penalty: str = "l2",
+        C: float = 0.1,  # noqa: N803 - the name every reference uses for this parameter
+        similarity_feature: bool = False,
+        rank_by: str = "mean",
+        kappa: float = 1.0,
+        top_k: int = 20,
+    ) -> s.FitCustomModelResult:
+        """The agent's own logistic regression: options, leave-one-out validation, ranking."""
+        settings = AnalysisSettings(
+            penalty=penalty, C=C, similarity=similarity_feature, scaling=scaling,
+            rank_by=rank_by, kappa=kappa,
+        )  # fmt: skip
+        try:
+            settings.check()
+        except ValueError as error:
+            raise ToolFailure(str(error)) from None
+        if top_k < 1:
+            raise ToolFailure("top_k must be at least 1")
+        state = self._state()
+        preprocessor = self._preprocessor_for(state, features)
+        fitted = self._fitted(state, preprocessor)  # the same data gate as fit_and_rank
+        if scaling == "purchased":
+            preprocessor = purchased_scale(preprocessor, state)
+        delivered = sorted(d for d, o in state.outcomes.items() if o.hit is not None)
+        available = sorted(state.unpurchased_ids)
+        y = np.array([int(bool(state.outcomes[d].hit)) for d in delivered])
+        similarity = {}
+        if similarity_feature:
+            similarity = {
+                "s_train": self._pool_similarity.matrix(delivered, delivered),
+                "s_cand": self._pool_similarity.matrix(available, delivered),
+            }
+        try:
+            result = analyse(
+                preprocessor.transform(state.designs[d] for d in delivered),
+                y,
+                preprocessor.transform(state.designs[d] for d in available),
+                preprocessor.columns,
+                settings,
+                **similarity,
+            )
+        except ValueError as error:
+            raise ToolFailure(str(error)) from None
+        sds = result.coef_sd or (None,) * len(result.coef)
+        weights = sorted(
+            zip(result.columns, result.coef, sds, strict=True), key=lambda w: (-abs(w[1]), w[0])
+        )
+        return s.FitCustomModelResult(
+            penalty=penalty,
+            C=C,
+            scaling=scaling,
+            similarity_feature=similarity_feature,
+            rank_by=rank_by,
+            kappa=kappa,
+            n_train=fitted.n_train,
+            n_hits=fitted.n_hits,
+            converged=result.converged,
+            validation=s.Validation(
+                loo_log_loss=_r6(result.loo_log_loss),
+                baseline_log_loss=_r6(result.baseline_log_loss),
+                improvement=_r6(result.baseline_log_loss - result.loo_log_loss),
+                improvement_se=_r6(result.improvement_se),
+                loo_auc=_r6(result.loo_auc),
+                loo_auc_se=_r6(result.loo_auc_se),
+            ),
+            weights=[s.CustomWeight(feature=f, weight=_r6(w), sd=_r6(sd)) for f, w, sd in weights],
+            ranked=[
+                s.CustomRanked(
+                    design_id=available[i],
+                    score=_r6(result.mean[i]),
+                    upper=_r6(result.upper[i]) if result.upper is not None else None,
+                )
+                for i in result.order[: min(top_k, MAX_RANK)]
+            ],
         )
 
     def similar_designs(self, design_ids: list[str], k: int = 10) -> s.SimilarDesignsResult:

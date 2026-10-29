@@ -79,15 +79,18 @@ def test_condition_tool_sets_are_exact(conditions):
         "B3": campaign | advisor - {"fit_and_rank"},
         "B4": campaign | advisor - {"stop_advice"},
         "B": campaign | advisor,  # the knowledge tools arrive in phase 8; then B gains two tools
+        "C": campaign | advisor - {"fit_and_rank"} | {"fit_custom_model"},
     }
     assert {n: set(c.tools) for n, c in conditions.items()} == expected
     sizes = {n: len(c.tools) for n, c in conditions.items()}
-    assert sizes == {"A": 8, "B": 14, "B1": 14, "B2": 13, "B3": 13, "B4": 13}
+    assert sizes == {"A": 8, "B": 14, "B1": 14, "B2": 13, "B3": 13, "B4": 13, "C": 14}
 
 
 def test_conditions_resolve_to_names_in_registration_order(conditions):
     assert conditions["A"].tools == tuple(CAMPAIGN_TOOLS)
-    assert conditions["B2"].tools == tuple(t for t in REGISTERED_TOOLS if t != "similar_designs")
+    b1 = conditions["B1"].tools
+    assert conditions["B2"].tools == tuple(t for t in b1 if t != "similar_designs")
+    assert conditions["C"].tools[-1] == "fit_custom_model"  # registered after the advisor tools
     assert conditions["A"].tools_arg == ",".join(CAMPAIGN_TOOLS)
 
 

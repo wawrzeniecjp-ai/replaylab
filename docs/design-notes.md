@@ -811,3 +811,43 @@ Mean hits: B1 19.15, `learner_sim_purchased` 26.05, `learner` 17.95,
   `learner` level and about 7 hits short of the best scripted player, on
   fresh seeds -- the same picture as section 9. Description tuning did not
   change it, and neither did a stronger model (section 10).
+
+## 13. Condition C: the agent's own model (`fit_custom_model`) (2026-10-29)
+
+**Why.** Sections 9-12: the agent builds nearly every batch by hand and
+rarely delegates to `propose_batch`, but it does call `fit_and_rank` before
+most batches. Condition C gives that habit real options instead of a fixed
+model. It is the last direction tried: if C shows nothing interesting, the
+agent study ends with sections 9-12 as the result.
+
+**Condition.** `C = campaign + advisor + analysis - fit_and_rank`
+(`config/conditions.yaml`): B1 with `fit_and_rank` *replaced* by
+`fit_custom_model`, so C - B1 measures a better analysis tool, not more tools.
+B1's tools and descriptions are unchanged; adding the tool changes the config
+hash of every condition (`d103491a18c7`), so B1 and C are played together,
+from the same code, in one records file.
+
+**The tool** (`advisor/analysis.py`, `Toolbox.fit_custom_model`): a logistic
+regression on the delivered designs with options the agent sets --
+`features`; `scaling` pool or purchased (the bar's scaling, now in the tool the
+agent uses); `penalty` l2 or l1 and `C` in [0.001, 100]; `similarity_feature`
+(largest 3-mer similarity to a hit, never comparing a design with itself, and
+recomputed inside every validation fold so a hit's label never reaches its own
+input); `rank_by` mean or an optimistic bound from the Laplace posterior of the
+l2 model (`kappa` in [0, 5]). Every call reports leave-one-out log loss against
+a leave-one-out base-rate baseline (with the standard error of the
+difference), the leave-one-out AUC with its Hanley-McNeil standard error, every
+weight with its posterior sd (l2), and the ranking. Defaults give exactly
+`fit_and_rank`'s model (a test checks the ranking). With `scaling=purchased`,
+`similarity_feature=true` the agent can approximate the bar; the bar itself
+blends model and similarity ranks 50/50 with random exploration instead.
+
+Not offered, and why: other link functions and linear regression rank almost
+like the logistic model at 15-60 labelled designs; MLPs and deep trees overfit
+at that size. No cap on fits per round (the agent can try many settings; the
+reported standard errors are its guard against reading noise).
+
+**Plan.** A development run first (trials 40-49, B1 and C together), judged on
+behaviour before hits: how often C calls `fit_custom_model`, which options it
+picks, and how many bought designs come from its rankings. A confirmatory
+pre-registration (fresh trials from 140) follows only if that looks worth it.

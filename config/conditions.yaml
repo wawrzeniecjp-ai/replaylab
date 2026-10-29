@@ -9,3 +9,5 @@ conditions:
   B2: {include: [campaign, advisor], exclude: [similar_designs]}
   B3: {include: [campaign, advisor], exclude: [fit_and_rank]}
   B4: {include: [campaign, advisor], exclude: [stop_advice]}
+  # C: the agent's own model (fit_custom_model) in place of fit_and_rank; design-notes section 13.
+  C:  {include: [campaign, advisor, analysis], exclude: [fit_and_rank]}

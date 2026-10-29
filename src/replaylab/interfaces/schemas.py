@@ -217,6 +217,50 @@ class FitAndRankResult(_Model):
     exploration_ids: list[str]
 
 
+class Validation(_Model):
+    """Leave-one-out validation of a custom model against a base-rate baseline."""
+
+    loo_log_loss: float
+    baseline_log_loss: float
+    improvement: float  # baseline_log_loss - loo_log_loss; above 0: better than the baseline
+    improvement_se: float
+    loo_auc: float
+    loo_auc_se: float
+
+
+class CustomWeight(_Model):
+    """One input's weight, with its posterior sd (l2 only)."""
+
+    feature: str
+    weight: float
+    sd: float | None
+
+
+class CustomRanked(_Model):
+    """One ranked design: predicted probability, and the optimistic bound if requested."""
+
+    design_id: str
+    score: float
+    upper: float | None
+
+
+class FitCustomModelResult(_Model):
+    """The agent's model: its settings, validation, every weight and the ranking."""
+
+    penalty: str
+    C: float
+    scaling: str
+    similarity_feature: bool
+    rank_by: str
+    kappa: float
+    n_train: int
+    n_hits: int
+    converged: bool
+    validation: Validation
+    weights: list[CustomWeight]
+    ranked: list[CustomRanked]
+
+
 class Neighbor(_Model):
     """One nearest neighbour: the design, its 3-mer similarity and which given design it matched."""
 

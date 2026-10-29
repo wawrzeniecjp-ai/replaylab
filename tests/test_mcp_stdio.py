@@ -93,7 +93,7 @@ def test_stdout_contains_only_json_rpc_messages(env, tmp_path):
         assert "result" in init
         exchange({"jsonrpc": "2.0", "method": "notifications/initialized"}, None)
         listing = exchange({"jsonrpc": "2.0", "id": 2, "method": "tools/list"}, 2)
-        assert len(listing["result"]["tools"]) == 14
+        assert len(listing["result"]["tools"]) == 15
         call = exchange(
             {"jsonrpc": "2.0", "id": 3, "method": "tools/call",
              "params": {"name": "describe_campaign", "arguments": {}}},

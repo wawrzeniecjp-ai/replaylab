@@ -19,6 +19,7 @@ from pydantic import Field
 from replaylab.interfaces import schemas as s
 from replaylab.interfaces.tools import (
     ADVISOR_TOOLS,
+    ANALYSIS_TOOLS,
     CAMPAIGN_TOOLS,
     KNOWLEDGE_TOOLS,
     TOOL_DESCRIPTIONS,
@@ -27,7 +28,7 @@ from replaylab.interfaces.tools import (
     resolve_tool_selection,
 )
 
-REGISTERED_TOOLS = (*CAMPAIGN_TOOLS, *ADVISOR_TOOLS, *KNOWLEDGE_TOOLS)
+REGISTERED_TOOLS = (*CAMPAIGN_TOOLS, *ADVISOR_TOOLS, *ANALYSIS_TOOLS, *KNOWLEDGE_TOOLS)
 # propose_batch's policy enum: the factory's names plus "fixed", whose feature is a separate
 # parameter (an enum cannot hold "fixed:<feature>"). A test keeps it in step with POLICY_NAMES.
 ProposePolicy = Literal[
@@ -109,6 +110,48 @@ def build_server(toolbox: Toolbox, tools: str | None = None) -> MCPServer:
     ) -> s.FitAndRankResult:
         return _call(toolbox.fit_and_rank, features, top_k, exploration)
 
+    async def fit_custom_model(
+        features: Annotated[
+            list[str] | None,
+            Field(description="Predicted-score features to use; omit for all of them."),
+        ] = None,
+        scaling: Annotated[
+            Literal["pool", "purchased"],
+            Field(
+                description="Standardize the inputs over the whole pool or your delivered designs."
+            ),
+        ] = "pool",
+        penalty: Annotated[
+            Literal["l2", "l1"], Field(description="l2 shrinks all weights; l1 can zero some.")
+        ] = "l2",
+        C: Annotated[  # noqa: N803 - the conventional name
+            float,
+            Field(
+                description="Inverse regularization strength, 0.001 to 100; smaller shrinks more."
+            ),
+        ] = 0.1,
+        similarity_feature: Annotated[
+            bool,
+            Field(description="Add each design's largest 3-mer similarity to a hit as an input."),
+        ] = False,
+        rank_by: Annotated[
+            Literal["mean", "upper"],
+            Field(
+                description="Rank by predicted probability, or by the optimistic bound (l2 only)."
+            ),
+        ] = "mean",
+        kappa: Annotated[
+            float, Field(description="Width of the optimistic bound in posterior sds, 0 to 5.")
+        ] = 1.0,
+        top_k: Annotated[
+            int, Field(description="How many ranked designs to return, 1 to 50.")
+        ] = 20,
+    ) -> s.FitCustomModelResult:
+        return _call(
+            toolbox.fit_custom_model, features, scaling, penalty, C, similarity_feature,
+            rank_by, kappa, top_k,
+        )  # fmt: skip
+
     async def similar_designs(design_ids: list[str], k: int = 10) -> s.SimilarDesignsResult:
         return _call(toolbox.similar_designs, design_ids, k)
 
@@ -142,6 +185,7 @@ def build_server(toolbox: Toolbox, tools: str | None = None) -> MCPServer:
             estimate_hit_rate,
             stop_advice,
             campaign_summary,
+            fit_custom_model,
         )
     }
     for name in selected:

@@ -34,7 +34,7 @@ def test_tool_specs_are_openai_functions_with_the_schema_unchanged(env):
         return await bridge.tool_specs(), listing
 
     specs, listing = with_bridge(env, body)
-    assert len(specs) == 14
+    assert len(specs) == 15
     by_name = {t.name: t for t in listing}
     for spec in specs:
         assert spec["type"] == "function"
