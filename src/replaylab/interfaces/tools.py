@@ -194,6 +194,15 @@ def resolve_tool_selection(selection: str | None, registered: Sequence[str]) -> 
     return [name for name in registered if name in wanted]
 
 
+def _finite_number(text: str) -> float | None:
+    """The finite number a text spells, or None ("180" -> 180.0; "nan", "abc" -> None)."""
+    try:
+        value = float(text)
+    except ValueError:
+        return None
+    return value if math.isfinite(value) else None
+
+
 def _r6(value: float | None) -> float | None:
     return None if value is None else round(float(value), 6)
 
@@ -391,15 +400,21 @@ class Toolbox:
         if limit < 1:
             raise ToolFailure("limit must be at least 1")
         limit = min(limit, MAX_QUERY_LIMIT)
+        checked: list[s.Condition] = []
         for condition in where or []:
             self._check_column(condition.column)
             if condition.column == "design_class":
                 if condition.op not in ("==", "!=") or not isinstance(condition.value, str):
                     raise ToolFailure("design_class compares only with == or != and a text value")
             elif isinstance(condition.value, str):
-                raise ToolFailure(
-                    f"column {condition.column!r} is numeric; use a number as the value"
-                )
+                number = _finite_number(condition.value)  # a quoted number is read as one
+                if number is None:
+                    raise ToolFailure(
+                        f"column {condition.column!r} is numeric; use a number as the value"
+                    )
+                condition = condition.model_copy(update={"value": number})
+            checked.append(condition)
+        where = checked
         if sort_by is not None:
             self._check_column(sort_by)
 

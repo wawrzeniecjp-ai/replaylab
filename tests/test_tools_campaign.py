@@ -155,6 +155,20 @@ def test_query_pool_filters(conditions, expected):
     assert result.total_matching == len(expected)
 
 
+def test_a_number_sent_as_text_is_read_as_the_number():
+    # Agents sometimes quote numbers (length >= "180": about 1% of query_pool calls).
+    toolbox = mini_toolbox()
+    as_text = toolbox.query_pool(where=[cond("length", ">", "11"), cond("f1", ">=", " 2.0 ")])
+    as_number = toolbox.query_pool(where=[cond("length", ">", 11), cond("f1", ">=", 2.0)])
+    assert ids(as_text) == ids(as_number) and as_text.total_matching == as_number.total_matching
+
+
+@pytest.mark.parametrize("value", ["abc", "nan", "inf", "", "1e999"])
+def test_text_that_is_not_a_finite_number_is_still_refused(value):
+    with pytest.raises(ToolFailure, match="is numeric; use a number as the value"):
+        mini_toolbox().query_pool(where=[cond("length", ">", value)])
+
+
 @pytest.mark.parametrize(
     ("sort_by", "descending", "expected"),
     [
