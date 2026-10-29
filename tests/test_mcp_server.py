@@ -345,3 +345,43 @@ def test_propose_batch_keeps_its_default_in_the_schema_not_the_text(env):
 def test_campaign_summary_points_to_the_other_status_tools():
     text = TOOL_DESCRIPTIONS["campaign_summary"]
     assert "get_history" in text and "describe_campaign" in text
+
+
+# --- iteration 2: the descriptions say what the methods compute ---------------------------
+
+
+def test_fit_and_rank_describes_its_model_with_the_numbers_the_code_uses():
+    from replaylab.advisor.model import ModelConfig
+
+    config = ModelConfig()
+    text = TOOL_DESCRIPTIONS["fit_and_rank"]
+    for needle in ("logistic regression", "L2", f"C = {config.C}", "pool median",
+                   "standardized", "whole pool", "exploration_ids", "floor((1 - exploration)"):  # fmt: skip
+        assert needle in text, needle
+    assert f"at least {config.min_hits} hits and {config.min_purchases} delivered" in text
+
+
+def test_propose_batch_describes_the_scalings_similarity_and_exploration():
+    from replaylab.advisor.model import ModelConfig
+    from replaylab.policies import LearnerSim
+
+    config = ModelConfig()
+    text = TOOL_DESCRIPTIONS["propose_batch"]
+    assert LearnerSim.w == 0.5  # "the average of two ranks" below
+    for needle in ("average of two ranks", "3-mer", "delivered purchases, recomputed every round",
+                   "floor((1 - exploration) x k)", "same model as fit_and_rank"):  # fmt: skip
+        assert needle in text, needle
+    assert f"at least {config.min_hits} hits and {config.min_purchases} delivered" in text
+
+
+def test_the_method_descriptions_describe_and_never_rank_the_options():
+    for name in ("fit_and_rank", "propose_batch"):
+        text = TOOL_DESCRIPTIONS[name].lower()
+        for word in ("best", "outperform", "recommend", "should"):
+            assert word not in text, (name, word)
+
+
+def test_describe_campaign_no_longer_asks_for_a_call_after_every_submit():
+    # submit_batch already returns rounds_left and the results; agents skipped it (1 in 80).
+    text = TOOL_DESCRIPTIONS["describe_campaign"]
+    assert "after every submit" not in text and "submit_batch" in text

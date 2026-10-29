@@ -34,7 +34,7 @@
     "name": "column_summary"
   },
   {
-    "description": "Show the campaign's state: budget, rounds left, batch size, counts of purchased and pending designs, hits found, and the columns you can query. Call it first and after every submit. It never shows outcomes of designs you have not bought.",
+    "description": "Show the campaign's state: budget, rounds left, batch size, counts of purchased and pending designs, hits found, and the columns you can query. Call it first; submit_batch already returns the rounds left and the results. It never shows outcomes of designs you have not bought.",
     "input_schema": {
       "properties": {},
       "title": "describe_campaignArguments",
@@ -93,7 +93,7 @@
     "name": "estimate_hit_rate"
   },
   {
-    "description": "Fit a regularized logistic model on delivered designs and rank unpurchased designs by predicted hit probability. Needs at least 2 hits and 8 delivered purchases, otherwise it returns insufficient_data. Use it to see which features matter.",
+    "description": "Fit a logistic regression on your delivered results and rank the unpurchased designs by predicted hit probability. It needs at least 2 hits and 8 delivered purchases, otherwise it returns insufficient_data. A fit is a snapshot: it knows only the results delivered when it was called.\nHow it works:\n- Inputs: every predicted-score feature (or only those you pass), sequence length, and design class as 0/1 columns; a missing value takes the pool median.\n- Each feature is oriented so that higher is better, then standardized with the mean and standard deviation of the whole pool.\n- The regression is L2-regularized (C = 0.1): the weights are shrunk toward zero, and the fewer results, the stronger the shrinkage relative to the data.\n- score is the predicted hit probability; top_weights are the largest weights on the standardized inputs (positive means more likely a hit).\n- exploration_ids are drawn at random from the designs outside the top floor((1 - exploration) x top_k), so a batch can also test designs the model does not favour.",
     "input_schema": {
       "properties": {
         "exploration": {
@@ -146,7 +146,7 @@
     "name": "pending_batches"
   },
   {
-    "description": "Run a pre-registered scripted policy on your data so far and get the batch it would buy, with reasons. It spends nothing: to buy the batch, pass its design_ids to submit_batch. Until a model can be fitted (at least 2 hits and 8 delivered purchases), the model-based policies rank by a preset feature instead.\nPolicies:\n- learner: fits a model on your delivered results and ranks the pool by it, plus random exploration.\n- learner_sim: like learner, and also ranks by sequence similarity to your hits.\n- learner_purchased: like learner, but standardizes the features on your purchased designs, not the whole pool.\n- learner_sim_purchased: like learner_sim, but standardizes the features on your purchased designs, not the whole pool.\n- random: a uniformly random batch of unpurchased designs.\n- fixed: the top unpurchased designs by one feature, given as feature.",
+    "description": "Run a pre-registered scripted policy on your data so far and get the batch it would buy, with reasons. It spends nothing: to buy the batch, pass its design_ids to submit_batch. Until a model can be fitted (at least 2 hits and 8 delivered purchases), the model-based policies rank by a preset feature instead.\nPolicies:\n- learner: fits the same model as fit_and_rank (features standardized on the whole pool), takes the top floor((1 - exploration) x k) designs by predicted hit probability, and draws the rest at random from the other unpurchased designs.\n- learner_sim: like learner, but ranks by the average of two ranks: the model's, and each design's sequence similarity (3-mer cosine) to its closest hit so far.\n- learner_purchased: like learner, but standardizes each feature with the mean and standard deviation of your delivered purchases, recomputed every round, instead of the whole pool; the two scalings can rank designs differently.\n- learner_sim_purchased: like learner_sim, with the features standardized on your delivered purchases, recomputed every round.\n- random: a uniformly random batch of unpurchased designs.\n- fixed: the top unpurchased designs by one feature, given as feature.",
     "input_schema": {
       "properties": {
         "exploration": {
