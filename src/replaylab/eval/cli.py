@@ -345,7 +345,8 @@ def smoke_report(record: Any, spent_usd: float) -> dict[str, Any]:
     """What a short real episode shows about the provider plumbing, turn by turn.
 
     * ``passback_accepted``: a turn after one with signed thinking blocks was answered, so the
-      blocks were sent back in a form the API accepts (None: no thinking came back to test);
+      blocks were sent back in a form the API accepts. None (no thinking came back, so the
+      pass-back went untested) fails the smoke: rerun with more ``--turns`` or more effort;
     * ``cache_reads``: every turn after the first read from the prompt cache;
     * ``cost_matches_guard``: the episode's cost equals what the spend guard added.
     """
@@ -377,7 +378,7 @@ def smoke_report(record: Any, spent_usd: float) -> dict[str, Any]:
     }
     ok = (
         len(turns) >= 2
-        and checks["passback_accepted"] is not False
+        and checks["passback_accepted"] is True
         and checks["cache_reads"]
         and checks["cost_matches_guard"]
     )

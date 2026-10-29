@@ -548,3 +548,52 @@ mimo. Both crush `random`. mimo clears plain `learner` and its advisor tools
 demonstrably help it; deepseek is at parity on both counts. The advisor effect
 is model-dependent, which is exactly why this note judged the models
 separately under one criterion.
+
+## 10. Capability probe with a frontier model (2026-10-29)
+
+**Question.** Is section 9's NO-GO a limit of the models (capable, not
+frontier)? Descriptive only: no new criterion, and section 9's verdicts stand.
+
+**Plumbing.** `eval/llm_anthropic.py` (commit `87d99a0`) adds the Anthropic
+Messages API: streamed calls, assistant turns sent back exactly as returned
+(signed thinking blocks), cache writes billed at their own price, and no
+fallback model (a model switch mid-episode would spoil the episode).
+`replaylab-eval smoke` (commit `e81c149`) plays a few real turns of trial 999
+with no record and checks thinking pass-back, cache reads and cost.
+
+**Opus 5.5 could not be tested:** the provider declined the requests at the
+smoke stage. Decided before trying Sonnet: one more attempt only, Sonnet 5.5;
+it plays whole episodes or the hypothesis is reported as untested.
+
+**Sonnet 5.5** (`sonnet`, config hash `167e3086e8cd`): adaptive thinking,
+summarized, effort high (the model's default; at medium it did not think in
+the smoke run). Prices from the API reference, to be confirmed.
+
+**Results** (`runs/sonnet1`, N-dev B1, trials 0-9, `--ci 0.9`, 10000
+resamples, seed 0). Not confirmatory: trials 0-3 were inspected before the
+decision to extend. Gates: 10/10 recorded, 0 failures, 10x `finished`, 0 tool
+errors, one config hash; $1.24 in total.
+
+| Sonnet B1 vs | mean diff | 90% CI | W/T/L |
+| --- | --- | --- | --- |
+| `learner_sim_purchased` | **-10.4** | [-13.2, -7.0] | 1/0/9 |
+| `learner` | -1.8 | [-4.5, +1.5] | 3/0/7 |
+| `learner_sim` | +1.3 | [-0.9, +3.8] | 3/3/4 |
+| `random` | +10.7 | [+8.2, +13.4] | 10/0/0 |
+
+Mean hits on the same seeds: Sonnet 16.5, deepseek 17.7, mimo 21.7,
+`learner_sim_purchased` 26.9.
+
+**Observations.**
+* Trial 1 (31 hits, last batch 15/15) came from buying sequence neighbours of
+  a cluster of hits by hand. No other trial went above 19.
+* More thinking did not mean more hits (the two trials with the most thinking
+  scored 17 and 14).
+* Same habits as the flash models: never a purchased-scaling policy, one or
+  two `fit_and_rank` calls per episode, `propose_batch` dropped after round 2.
+
+**Reading.** A clearly stronger model did no better, which argues against a
+capability gap as the main cause. Not ruled out: that the strongest model
+would pass, since it could not be run. Next lever: how the agent understands
+and uses the tools (neutral descriptions only, tuned on development trials,
+judged on the fresh block 100-119).

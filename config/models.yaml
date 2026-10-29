@@ -62,6 +62,20 @@ models:
       output_config: {effort: medium}
       cache_control: {type: ephemeral}
 
+  sonnet:
+    api: anthropic
+    base_url: "https://api.anthropic.com"
+    model: "claude-sonnet-5-5"
+    api_key_env: ANTHROPIC_API_KEY
+    price_key: claude-sonnet-5-5
+    params:
+      max_tokens: 64000                       # model max output 128K; a cut-off reply fails the episode
+      thinking: {type: adaptive, display: summarized}
+      # high = Sonnet 5.5's own default. Its effort levels are recalibrated, so they do not
+      # match Opus's; at medium the smoke run (runs/sonnet-smoke) did not think at all.
+      output_config: {effort: high}
+      cache_control: {type: ephemeral}
+
   # The local llama.cpp server (used by the recorded smoke run): free, so it is
   # the cheapest way to test the whole eval plumbing with no key at all.
   local-qwen:

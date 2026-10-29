@@ -370,14 +370,15 @@ def test_an_anthropic_model_needs_a_cache_write_price(setup, tmp_path):
 # --- smoke: a short real episode through the real Anthropic adapter ------------------------
 
 
-def anthropic_script(cached_from_turn_2=1200):
+def anthropic_script(cached_from_turn_2=1200, thinking=True):
     from test_eval_llm_anthropic import Block, message
 
     replies = []
     for n, tool_name in enumerate(["describe_campaign", "get_history", "describe_campaign"], 1):
+        thought = Block(type="thinking", thinking=f"step {n}", signature=f"sig-{n}")
         replies.append(
             message(
-                Block(type="thinking", thinking=f"step {n}", signature=f"sig-{n}"),
+                *([thought] if thinking else []),
                 Block(type="tool_use", id=f"tu_{n}", name=tool_name, input={}),
                 stop_reason="tool_use",
                 usage=dict(
@@ -453,3 +454,18 @@ def test_smoke_reports_a_failed_model_call(setup, tmp_path, monkeypatch):
     monkeypatch.setattr(eval_cli, "_make_llm", lambda cfg: llm)
     result = invoke(smoke_args(setup, tmp_path))
     assert result.exit_code == 1 and "bad param" in result.output
+
+
+def test_smoke_fails_when_no_thinking_came_back_to_test_the_pass_back(setup, tmp_path, monkeypatch):
+    # runs/sonnet-smoke at effort medium: 3 turns, no thinking, so pass-back went untested
+    from test_eval_llm_anthropic import FakeAnthropic, no_sleep
+
+    from replaylab.eval.llm_anthropic import AnthropicClient
+
+    script = anthropic_script(thinking=False)
+    llm = AnthropicClient(FakeAnthropic(script), "claude-x", sleep=no_sleep)
+    monkeypatch.setattr(eval_cli, "_make_llm", lambda cfg: llm)
+    result = invoke(smoke_args(setup, tmp_path))
+    assert result.exit_code == 1
+    report = json.loads((tmp_path / "smoke.json").read_text())
+    assert report["checks"]["passback_accepted"] is None and not report["ok"]
