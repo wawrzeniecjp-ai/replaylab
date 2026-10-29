@@ -11,7 +11,10 @@ from typing import Any
 
 import yaml
 
-RESERVED_PARAMS = ("model", "messages", "tools")
+RESERVED_PARAMS = ("model", "messages", "tools", "system")
+# Which wire protocol the endpoint speaks: OpenAI chat completions (the default) or the
+# Anthropic Messages API.
+APIS = ("openai_chat", "anthropic")
 
 
 class ModelConfigError(ValueError):
@@ -28,6 +31,7 @@ class ModelConfig:
     reasoning_passback: bool = False
     reasoning_field: str = "reasoning_content"
     params: dict[str, Any] = field(default_factory=dict)
+    api: str = "openai_chat"
 
 
 def load_models(path: Path | str) -> dict[str, ModelConfig]:
@@ -35,7 +39,7 @@ def load_models(path: Path | str) -> dict[str, ModelConfig]:
     if not isinstance(data, dict) or set(data) != {"version", "models"} or data["version"] != 1:
         raise ModelConfigError("models file needs exactly the keys version (1) and models")
     required = {"base_url", "model", "api_key_env", "price_key"}
-    optional = {"reasoning_passback", "reasoning_field", "params"}
+    optional = {"reasoning_passback", "reasoning_field", "params", "api"}
     models: dict[str, ModelConfig] = {}
     for key, body in (data["models"] or {}).items():
         where = f"model {key}"
@@ -49,6 +53,9 @@ def load_models(path: Path | str) -> dict[str, ModelConfig]:
             raise ModelConfigError(f"{where}: missing key(s) {missing}")
         if not isinstance(body.get("reasoning_passback", False), bool):
             raise ModelConfigError(f"{where}: reasoning_passback must be true or false")
+        api = body.get("api", "openai_chat")
+        if api not in APIS:
+            raise ModelConfigError(f"{where}: api must be one of {list(APIS)}")
         params = body.get("params") or {}
         if not isinstance(params, dict):
             raise ModelConfigError(f"{where}: params must be a mapping")
@@ -66,6 +73,7 @@ def load_models(path: Path | str) -> dict[str, ModelConfig]:
             reasoning_passback=bool(body.get("reasoning_passback", False)),
             reasoning_field=str(body.get("reasoning_field", "reasoning_content")),
             params=dict(params),
+            api=str(api),
         )
     if not models:
         raise ModelConfigError("no models defined")

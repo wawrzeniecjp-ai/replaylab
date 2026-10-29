@@ -34,6 +34,8 @@ def assistant_message(
             {"id": c.id, "type": "function", "function": {"name": c.name, "arguments": c.arguments}}
             for c in turn.tool_calls
         ]
+    if turn.provider_content:
+        message["provider_content"] = list(turn.provider_content)
     if passback_reasoning and turn.reasoning:
         message[reasoning_field] = turn.reasoning
     return message

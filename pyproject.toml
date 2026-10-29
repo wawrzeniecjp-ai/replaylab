@@ -24,10 +24,13 @@ replaylab = "replaylab.interfaces.cli:app"
 replaylab-eval = "replaylab.eval.cli:app"
 
 [project.optional-dependencies]
-# openai is only needed to actually *run* the eval: the adapter takes an injected
-# async client (AsyncOpenAI or anything with chat.completions.create), so the
-# library and its tests never import it. Install with `uv sync --extra eval`.
-eval = ["openai>=3.37.0"]
+# openai and anthropic are only needed to actually *run* the eval: the adapters take an
+# injected async client (AsyncOpenAI / AsyncAnthropic, or a fake), so the library and its
+# tests never import them. Install with `uv sync --extra eval`.
+eval = [
+    "anthropic>=1.0",
+    "openai>=3.37.0",
+]
 # documentation site: `uv sync --extra docs`, then `great-docs init` / `great-docs build`
 # (great-docs also needs Quarto installed system-wide: https://quarto.org,
 #  and the `d2` binary for diagrams: https://d2lang.com)

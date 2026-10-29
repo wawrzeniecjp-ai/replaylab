@@ -24,6 +24,7 @@ import typer
 
 from replaylab.eval.conditions import identical_conditions, load_conditions
 from replaylab.eval.llm import OpenAICompatClient
+from replaylab.eval.llm_anthropic import AnthropicClient
 from replaylab.eval.loop import Limits
 from replaylab.eval.models import ModelConfig, ModelConfigError, load_models
 from replaylab.eval.prompts import USER_PROMPT, load_system_prompt, text_hash
@@ -191,14 +192,40 @@ def _model_setup(
     cfg = models[model]
     if cfg.price_key not in prices:
         raise _fail(f"no entry {cfg.price_key!r} in {prices_config}", 2)
+    if cfg.api == "anthropic" and prices[cfg.price_key].cache_write_per_mtok is None:
+        raise _fail(
+            f"{cfg.price_key!r} in {prices_config} needs cache_write_per_mtok: "
+            "the Anthropic API bills cache writes apart",
+            2,
+        )
     guard = SpendGuard(run_dir, prices[cfg.price_key], cfg.key, max_usd=max_usd)
     return cfg, guard, prices[cfg.price_key]
 
 
-def _make_llm(cfg: ModelConfig) -> OpenAICompatClient:
+def _hashed(item: Any) -> dict[str, Any]:
+    """A config dataclass for the config hash, without fields left at a newer default.
+
+    Fields added later (``api``, ``cache_write_per_mtok``) are left out while unset, so the
+    configurations of runs already played keep their hash.
+    """
+    unset = {"api": "openai_chat", "cache_write_per_mtok": None}
+    return {k: v for k, v in asdict(item).items() if not (k in unset and v == unset[k])}
+
+
+def _make_llm(cfg: ModelConfig) -> OpenAICompatClient | AnthropicClient:
     key = os.environ.get(cfg.api_key_env)
     if not key:
         raise _fail(f"environment variable {cfg.api_key_env} is not set", 2)
+    if cfg.api == "anthropic":
+        try:
+            from anthropic import AsyncAnthropic
+        except ModuleNotFoundError:
+            raise _fail(
+                "the anthropic package is not installed: pip install anthropic", 2
+            ) from None
+        # streamed, so the timeout bounds the gap between events, not the whole reply
+        client = AsyncAnthropic(api_key=key, base_url=cfg.base_url, max_retries=0, timeout=300.0)
+        return AnthropicClient(client, cfg.model, params=cfg.params)
     try:
         from openai import AsyncOpenAI
     except ModuleNotFoundError:
@@ -220,8 +247,8 @@ def _prepare(
         prompt_text = load_system_prompt(system_prompt)
         cfg_hash = config_hash(
             {
-                "model": asdict(cfg),
-                "price": asdict(price),
+                "model": _hashed(cfg),
+                "price": _hashed(price),
                 "system_prompt": text_hash(prompt_text),
                 "user_prompt": text_hash(USER_PROMPT),
                 "conditions": Path(conditions_config).read_text(),

@@ -139,3 +139,38 @@ def test_a_run_projected_over_the_cap_is_refused():
     refuse_if_over(projection, 50.0)  # exactly at the cap is allowed
     with pytest.raises(BudgetRefused, match="above the cap 49.00"):
         refuse_if_over(projection, 49.0)
+
+
+# --- cache writes (Anthropic bills them apart: 1.25x input for the 5-minute TTL) ---------
+
+
+WRITE_PRICE = Price("USD", "2026-01-01", "s", 4.0, 0.2, 20.0, cache_write_per_mtok=5.0)
+
+
+def test_cache_writes_are_billed_at_their_own_price():
+    usage = Usage(input_miss=1000, input_cached=2000, output=500, input_cache_write=3000)
+    expected = (1000 * 4.0 + 2000 * 0.2 + 500 * 20.0 + 3000 * 5.0) / 1_000_000
+    assert WRITE_PRICE.cost(usage) == pytest.approx(expected, abs=1e-12)
+
+
+def test_cache_writes_without_a_write_price_refuse_to_be_counted_as_free():
+    # never guess a price: a provider that reports writes needs cache_write_per_mtok
+    with pytest.raises(PriceError, match="cache_write_per_mtok"):
+        PRICE.cost(Usage(input_cache_write=1))
+    assert PRICE.cost(Usage(input_miss=10)) == pytest.approx(10 * 0.14 / 1e6)
+
+
+def test_the_write_price_is_optional_in_the_file_and_checked_when_given(tmp_path):
+    prices = load_prices(write_prices(tmp_path, {"m": {**GOOD_ENTRY, "cache_write_per_mtok": 5}}))
+    assert prices["m"].cache_write_per_mtok == 5.0
+    assert load_prices(write_prices(tmp_path, {"m": GOOD_ENTRY}))["m"].cache_write_per_mtok is None
+    with pytest.raises(PriceError, match="non-negative"):
+        load_prices(write_prices(tmp_path, {"m": {**GOOD_ENTRY, "cache_write_per_mtok": -1}}))
+
+
+def test_the_guard_totals_cache_writes(tmp_path):
+    guard = SpendGuard(tmp_path, WRITE_PRICE, "m")
+    guard.record_call(Usage(input_cache_write=1_000_000))
+    saved = json.loads((tmp_path / "spend.json").read_text())
+    assert saved["totals"]["input_cache_write"] == 1_000_000
+    assert guard.total_usd == pytest.approx(5.0)

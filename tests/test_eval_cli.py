@@ -339,3 +339,29 @@ def test_compare_refuses_a_malformed_trial_range(setup, tmp_path, bad):
     args = ["compare", "--records", str(path), "--game", "G", "--a", "A", "--b", "B1"]
     result = invoke([*args, "--trial-range", bad])
     assert result.exit_code == 2 and "trial range" in result.output
+
+
+def test_the_config_hash_of_an_openai_model_is_what_it_was_before_the_anthropic_fields():
+    from dataclasses import asdict
+
+    from replaylab.eval.models import ModelConfig
+    from replaylab.eval.spend import Price
+
+    cfg = ModelConfig("m", "http://x", "id", "KEY", "p")
+    price = Price("USD", "d", "s", 1.0, 0.1, 2.0)
+    old_cfg = {k: v for k, v in asdict(cfg).items() if k != "api"}
+    old_price = {k: v for k, v in asdict(price).items() if k != "cache_write_per_mtok"}
+    assert eval_cli._hashed(cfg) == old_cfg and eval_cli._hashed(price) == old_price
+    anthropic = ModelConfig("m", "http://x", "id", "KEY", "p", api="anthropic")
+    assert eval_cli._hashed(anthropic)["api"] == "anthropic"
+    assert eval_cli._hashed(Price("USD", "d", "s", 1, 0.1, 2, 5.0))["cache_write_per_mtok"] == 5.0
+
+
+def test_an_anthropic_model_needs_a_cache_write_price(setup, tmp_path):
+    models = yaml.safe_load((setup["root"] / "models.yaml").read_text())
+    models["models"]["m"]["api"] = "anthropic"
+    (setup["root"] / "models.yaml").write_text(yaml.safe_dump(models))
+    args = ["--run-dir", str(tmp_path), "--model", "m", "--games", "G", "--conditions", "A"]
+    args += ["--max-usd", "5", "--dry-run", *setup["common"], *setup["model"]]
+    result = invoke(["pilot", *args])
+    assert result.exit_code == 2 and "cache_write_per_mtok" in result.output

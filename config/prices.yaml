@@ -20,6 +20,18 @@ prices:
     cached_input_per_mtok: 0.0028
     output_per_mtok: 0.28
 
+  claude-opus-5-5:
+    currency: USD
+    date: "2026/10/29"
+    # From the Claude API reference (models overview and prompt-caching pages): $4 in,
+    # $20 out, cache reads $0.20, 5-minute cache writes 1.25x input. Confirm on
+    # the pricing page before a paid run, then keep this note or replace the source.
+    source: "https://platform.claude.com/docs/en/about-claude/pricing"
+    input_per_mtok: 4.0
+    cached_input_per_mtok: 0.20
+    cache_write_per_mtok: 5.0
+    output_per_mtok: 20.0
+
   local-free:
     currency: USD
     date: "n/a"

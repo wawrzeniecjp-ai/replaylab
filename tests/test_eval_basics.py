@@ -235,6 +235,10 @@ def test_models_file_loads_with_defaults_and_the_shipped_example_parses(tmp_path
         "reasoning_content",
         {},
     )
+    assert cfg.api == "openai_chat"
+    assert load_models(write_models(tmp_path, {"a": {**GOOD, "api": "anthropic"}}))["a"].api == (
+        "anthropic"
+    )
     example = load_models(ROOT / "config" / "models.yaml.example")
     assert {"deepseek-v4-flash", "local-qwen"} <= set(example)
     assert example["deepseek-v4-flash"].reasoning_passback is True
@@ -249,6 +253,8 @@ def test_models_file_loads_with_defaults_and_the_shipped_example_parses(tmp_path
         ({"a": {**GOOD, "params": {"tools": []}}}, "must not contain"),
         ({"a": {**GOOD, "params": [1]}}, "params must be a mapping"),
         ({"a": {**GOOD, "reasoning_passback": "yes"}}, "true or false"),
+        ({"a": {**GOOD, "api": "gemini"}}, "api must be one of"),
+        ({"a": {**GOOD, "params": {"system": "x"}}}, "must not contain"),
         ({}, "no models"),
     ],
 )

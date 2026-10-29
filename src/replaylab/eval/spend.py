@@ -19,6 +19,8 @@ import yaml
 from replaylab.eval.llm_types import Usage
 
 PRICE_FIELDS = ("input_per_mtok", "cached_input_per_mtok", "output_per_mtok")
+# Optional: only a provider that bills cache writes apart (Anthropic) needs it.
+WRITE_FIELD = "cache_write_per_mtok"
 
 
 class PriceError(ValueError):
@@ -41,12 +43,19 @@ class Price:
     input_per_mtok: float
     cached_input_per_mtok: float
     output_per_mtok: float
+    cache_write_per_mtok: float | None = None
 
     def cost(self, usage: Usage) -> float:
+        if usage.input_cache_write and self.cache_write_per_mtok is None:
+            raise PriceError(
+                "the provider reported cache writes but the price has no cache_write_per_mtok; "
+                "add it from the provider's pricing page"
+            )
         return (
             usage.input_miss * self.input_per_mtok
             + usage.input_cached * self.cached_input_per_mtok
             + usage.output * self.output_per_mtok
+            + usage.input_cache_write * (self.cache_write_per_mtok or 0.0)
         ) / 1_000_000
 
 
@@ -65,7 +74,8 @@ def load_prices(path: Path | str) -> dict[str, Price]:
             raise PriceError(
                 f"{where}: missing or empty {missing}; copy them from the provider's pricing page"
             )
-        for field_name in PRICE_FIELDS:
+        optional = (WRITE_FIELD,) if body.get(WRITE_FIELD) is not None else ()
+        for field_name in (*PRICE_FIELDS, *optional):
             value = body[field_name]
             if isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0:
                 raise PriceError(f"{where}: {field_name} must be a non-negative number")
@@ -76,6 +86,7 @@ def load_prices(path: Path | str) -> dict[str, Price]:
             input_per_mtok=float(body["input_per_mtok"]),
             cached_input_per_mtok=float(body["cached_input_per_mtok"]),
             output_per_mtok=float(body["output_per_mtok"]),
+            cache_write_per_mtok=float(body[WRITE_FIELD]) if optional else None,
         )
     return prices
 
@@ -99,6 +110,7 @@ class SpendGuard:
             "input_miss": 0,
             "input_cached": 0,
             "output": 0,
+            "input_cache_write": 0,
         }
         if self._path.exists():
             self._state.update(json.loads(self._path.read_text()).get("totals", {}))
@@ -126,6 +138,7 @@ class SpendGuard:
         self._state["input_miss"] += usage.input_miss
         self._state["input_cached"] += usage.input_cached
         self._state["output"] += usage.output
+        self._state["input_cache_write"] += usage.input_cache_write
         self._persist()
         return cost
 

@@ -18,6 +18,7 @@ class Usage:
     input_miss: int = 0  # prompt tokens that were not served from the provider's cache
     input_cached: int = 0  # prompt tokens served from the cache (cheaper)
     output: int = 0  # completion tokens; reasoning tokens are billed as output and included here
+    input_cache_write: int = 0  # prompt tokens written to the cache (Anthropic bills them apart)
 
 
 @dataclass(frozen=True)
@@ -27,6 +28,9 @@ class AssistantTurn:
     usage: Usage
     reasoning: str | None = None
     finish_reason: str | None = None
+    # The reply's content blocks exactly as the provider returned them, for a provider that
+    # needs them sent back unchanged (Anthropic: signed thinking blocks). None elsewhere.
+    provider_content: tuple[dict, ...] | None = None
 
 
 class LLMClient(Protocol):

@@ -108,6 +108,7 @@ async def run_episode(
                 "input_miss": reply.usage.input_miss,
                 "input_cached": reply.usage.input_cached,
                 "output": reply.usage.output,
+                "input_cache_write": reply.usage.input_cache_write,
                 "cost_usd": cost,
             }
         )

@@ -43,6 +43,25 @@ models:
       # Xiaomi's own pages yet, so 32768 keeps well clear of it.
       max_tokens: 32768
 
+  # Claude Opus 5.5 through the Anthropic Messages API (eval/llm_anthropic.py). Thinking is
+  # always on for this model (a thinking budget or type "disabled" is a 400), so effort is
+  # the only depth control: pinned here to the model's default, medium, so the setting is
+  # in the config hash. display "summarized" returns readable thinking for the records (the
+  # default is empty text). Signed thinking blocks are always passed back unchanged by the
+  # adapter, so reasoning_passback does not apply. Top-level cache_control caches the
+  # growing conversation; the pilot's spend.json shows whether reads happen.
+  opus:
+    api: anthropic
+    base_url: "https://api.anthropic.com"
+    model: "claude-opus-5-5"
+    api_key_env: ANTHROPIC_API_KEY
+    price_key: claude-opus-5-5
+    params:
+      max_tokens: 64000                       # model max output 128K; a cut-off reply fails the episode
+      thinking: {type: adaptive, display: summarized}
+      output_config: {effort: medium}
+      cache_control: {type: ephemeral}
+
   # The local llama.cpp server (used by the recorded smoke run): free, so it is
   # the cheapest way to test the whole eval plumbing with no key at all.
   local-qwen:
