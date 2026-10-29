@@ -333,3 +333,15 @@ def test_the_advisor_round_trip_through_the_protocol(env):
         submitted.structured_content["batch_id"] == proposal["batch_id"]
     )  # the proposal was reused
     assert advice.structured_content["purchases"] == 5
+
+
+def test_propose_batch_keeps_its_default_in_the_schema_not_the_text(env):
+    # Named in the text, the default became the agents' near-only choice (learner_sim).
+    assert "default" not in TOOL_DESCRIPTIONS["propose_batch"].lower()
+    tools = {t.name: t.input_schema for t in run(listed(build_server(toolbox_for(env))))}
+    assert tools["propose_batch"]["properties"]["policy"]["default"] == "learner_sim"
+
+
+def test_campaign_summary_points_to_the_other_status_tools():
+    text = TOOL_DESCRIPTIONS["campaign_summary"]
+    assert "get_history" in text and "describe_campaign" in text

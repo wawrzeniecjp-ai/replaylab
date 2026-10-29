@@ -76,8 +76,8 @@ _Z90 = 1.6448536269514722  # 95th percentile of the standard normal
 
 TOOL_DESCRIPTIONS: dict[str, str] = {
     "describe_campaign": (
-        "Show the budget, rounds left, batch size, counts of purchased and pending designs, hits found, "
-        "and the columns you can query. Call it first and after every submit. It never shows outcomes "
+        "Show the campaign's state: budget, rounds left, batch size, counts of purchased and pending designs, "
+        "hits found, and the columns you can query. Call it first and after every submit. It never shows outcomes "
         "of designs you have not bought."
     ),
     "column_summary": (
@@ -95,16 +95,16 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
         "Do not use it to explore: every call spends a round."
     ),
     "pending_batches": (
-        "List batches that were submitted but whose results have not arrived. "
-        "Use it when results are delayed. It does not advance time."
+        "List batches that were submitted but whose results have not arrived; "
+        "this happens only in games with a result delay. It does not advance time."
     ),
     "wait": (
         "Advance one round without buying and return any results that arrive. "
         "Use it only when something is pending. It fails if nothing is pending."
     ),
     "get_history": (
-        "Return every purchased design whose result has arrived, with its features and outcome. "
-        "Use it to review what you have learned. Pending designs are not listed."
+        "Return one row per delivered purchase, with its features and outcome. "
+        "Use it to study which of your designs hit and why. Pending designs are not listed."
     ),
     "stop": (
         "End the campaign with a reason; no further batches can be submitted. "
@@ -114,8 +114,8 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
         "Run a pre-registered scripted policy on your data so far and get the batch it would buy, with reasons. "
         "It spends nothing: to buy the batch, pass its design_ids to submit_batch. "
         "Until a model can be fitted (at least 2 hits and 8 delivered purchases), the model-based policies "
-        "rank by a default feature instead.\n"
-        "Policies (default learner_sim):\n"
+        "rank by a preset feature instead.\n"
+        "Policies:\n"
         "- learner: fits a model on your delivered results and ranks the pool by it, plus random exploration.\n"
         "- learner_sim: like learner, and also ranks by sequence similarity to your hits.\n"
         "- learner_purchased: like learner, but standardizes the features on your purchased designs, not the whole pool.\n"
@@ -140,8 +140,9 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
         "Use it before deciding to stop. The decay rule is noisy and often fires by chance, so treat it as weak evidence."
     ),
     "campaign_summary": (
-        "Summarize progress: rounds used, hits, best affinity, the cumulative hit curve, hit rate by design class, and predicted against realized rates. "
-        "Use it for a status review. It covers delivered results only."
+        "Summarize progress as totals and trends, with no per-design rows: rounds used, hits, best affinity, the cumulative hit curve, "
+        "hit rate by design class, and predicted against realized rates. "
+        "Use it for a status review; per-design outcomes are in get_history, budget and rounds in describe_campaign."
     ),
 }
 
