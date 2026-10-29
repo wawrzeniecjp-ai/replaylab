@@ -198,3 +198,12 @@ def test_the_view_command_writes_one_html_file(env, tmp_path):
     assert outcome.exit_code == 0, outcome.output
     page = run_dir / "replay.html"
     assert page.exists() and "submit_batch" in page.read_text()
+
+
+def test_a_fixed_proposal_is_summarized_with_its_feature():
+    messages = [
+        assistant(("c1", "propose_batch", {"k": 2, "policy": "fixed", "feature": "boltz2_ipsae"})),
+        tool("c1", {"design_ids": ["d0001", "d0002"]}),
+    ]
+    (step,) = timeline(record(messages))
+    assert step["summary"] == "fixed:boltz2_ipsae: 2 designs proposed"

@@ -146,20 +146,44 @@
     "name": "pending_batches"
   },
   {
-    "description": "Run a pre-registered scripted policy on the data so far and record the proposed batch with reasons; it spends nothing, so submit the batch yourself with submit_batch. Policies: learner (a model fitted on your results, plus random exploration), learner_sim (learner plus sequence similarity to your hits), learner_purchased and learner_sim_purchased (the same two, with features standardized on your purchased designs instead of the whole pool), random, and fixed:<feature> (top designs by one feature). The default is learner_sim.",
+    "description": "Run a pre-registered scripted policy on your data so far and get the batch it would buy, with reasons. It spends nothing: to buy the batch, pass its design_ids to submit_batch. Until a model can be fitted (at least 2 hits and 8 delivered purchases), the model-based policies rank by a default feature instead.\nPolicies (default learner_sim):\n- learner: fits a model on your delivered results and ranks the pool by it, plus random exploration.\n- learner_sim: like learner, and also ranks by sequence similarity to your hits.\n- learner_purchased: like learner, but standardizes the features on your purchased designs, not the whole pool.\n- learner_sim_purchased: like learner_sim, but standardizes the features on your purchased designs, not the whole pool.\n- random: a uniformly random batch of unpurchased designs.\n- fixed: the top unpurchased designs by one feature, given as feature.",
     "input_schema": {
       "properties": {
         "exploration": {
           "default": 0.2,
+          "description": "Share of the batch, 0 to 1, that the model-based policies pick at random instead of by rank.",
           "title": "Exploration",
           "type": "number"
         },
+        "feature": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The feature to rank by; only with policy fixed, and required there.",
+          "title": "Feature"
+        },
         "k": {
+          "description": "How many designs to propose, from 1 to the batch size.",
           "title": "K",
           "type": "integer"
         },
         "policy": {
           "default": "learner_sim",
+          "description": "The scripted policy to run (see the tool description).",
+          "enum": [
+            "learner",
+            "learner_sim",
+            "learner_purchased",
+            "learner_sim_purchased",
+            "random",
+            "fixed"
+          ],
           "title": "Policy",
           "type": "string"
         }

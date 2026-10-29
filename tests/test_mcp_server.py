@@ -82,19 +82,64 @@ def sentences(text: str) -> list[str]:
     return [part for part in re.split(r"(?<=[.!?])\s+", text.strip()) if part]
 
 
+def prose(description: str) -> str:
+    """The description without a trailing bulleted list and the label line before it."""
+    lines = description.split("\n- ", 1)[0].splitlines()
+    return " ".join(line for line in lines if not line.endswith(":"))
+
+
 def test_descriptions_have_at_most_three_sentences_and_say_something(env):
     for tool in run(listed(build_server(toolbox_for(env)))):
         assert tool.description == TOOL_DESCRIPTIONS[tool.name]
-        assert 1 <= len(sentences(tool.description)) <= 3, tool.name
+        assert 1 <= len(sentences(prose(tool.description))) <= 3, tool.name
         assert len(tool.description) >= 40, tool.name
 
 
-def test_propose_batch_names_every_policy_it_accepts():
-    # The phase-7 pilots never found learner_sim_purchased: the names were only in an error.
-    description = TOOL_DESCRIPTIONS["propose_batch"]
-    for name in POLICY_NAMES:
-        assert re.search(rf"(?<![\w:]){name}(?!\w)", description), name
-    assert "fixed:<feature>" in description
+PROPOSE_POLICIES = ["learner", "learner_sim", "learner_purchased", "learner_sim_purchased",
+                    "random", "fixed"]  # fmt: skip
+
+
+def test_propose_batch_lists_every_policy_as_its_own_bullet():
+    # The pilots never chose a purchased variant; they shared one clause of a sentence.
+    assert sorted(PROPOSE_POLICIES) == sorted([*POLICY_NAMES, "fixed"])
+    bullets = [line for line in TOOL_DESCRIPTIONS["propose_batch"].splitlines() if line[:2] == "- "]
+    assert [line[2:].split(":", 1)[0] for line in bullets] == PROPOSE_POLICIES
+    assert all(len(line) >= 30 for line in bullets)  # each says what the policy does
+
+
+def test_propose_batch_offers_the_policies_as_an_enum_with_described_parameters(env):
+    tools = {t.name: t.input_schema for t in run(listed(build_server(toolbox_for(env))))}
+    schema = tools["propose_batch"]
+    policy = schema["properties"]["policy"]
+    assert policy["enum"] == PROPOSE_POLICIES and policy["default"] == "learner_sim"
+    assert set(schema["properties"]) == {"k", "policy", "feature", "exploration"}
+    assert schema["required"] == ["k"]
+    for name, spec in schema["properties"].items():
+        assert len(spec.get("description", "")) >= 20, name
+
+
+def test_propose_batch_fixed_takes_its_feature_as_a_parameter(env):
+    toolbox = toolbox_for(env)
+    feature = "boltz2_ipsae"  # a ranking feature of the test pool (length is a column, not one)
+    server = build_server(toolbox)
+
+    async def go():
+        async with Client(server) as client:
+            return [
+                await call(client, "propose_batch", k=3, policy="fixed", feature=feature),
+                await call(client, "propose_batch", k=3, policy="fixed"),
+                await call(client, "propose_batch", k=3, policy="fixed", feature="length"),
+                await call(client, "propose_batch", k=3, policy="learner", feature=feature),
+                await call(client, "propose_batch", k=3, policy=f"fixed:{feature}"),
+            ]
+
+    fixed, no_feature, not_ranking, stray_feature, old_form = run(go())
+    assert fixed.is_error is False and len(fixed.structured_content["design_ids"]) == 3
+    for failed in (no_feature, not_ranking):
+        assert failed.is_error and feature in text_of(failed) and "fixed:" not in text_of(failed)
+    assert "unknown feature 'length'" in text_of(not_ranking)
+    assert stray_feature.is_error and "only with policy fixed" in text_of(stray_feature)
+    assert old_form.is_error
 
 
 def test_input_schemas_describe_the_documented_parameters(env):

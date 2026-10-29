@@ -81,6 +81,8 @@ def _summary(name: str, arguments: Mapping[str, Any], content: str, data: Any) -
         return f"{bought}{len(results)} results, {hits} hits"
     if name == "propose_batch" and isinstance(data, dict):
         policy = arguments.get("policy", "learner_sim")
+        if policy == "fixed" and arguments.get("feature"):
+            policy = f"fixed:{arguments['feature']}"
         return f"{policy}: {len(data.get('design_ids', []))} designs proposed"
     if name == "describe_campaign" and isinstance(data, dict):
         return (

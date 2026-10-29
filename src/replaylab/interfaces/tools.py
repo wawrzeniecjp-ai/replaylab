@@ -111,13 +111,17 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
         "Use it when more purchases are unlikely to pay off. It cannot be undone, but pending results can still arrive."
     ),
     "propose_batch": (
-        "Run a pre-registered scripted policy on the data so far and record the proposed batch with reasons; "
-        "it spends nothing, so submit the batch yourself with submit_batch. "
-        "Policies: learner (a model fitted on your results, plus random exploration), "
-        "learner_sim (learner plus sequence similarity to your hits), "
-        "learner_purchased and learner_sim_purchased (the same two, with features standardized on your purchased designs "
-        "instead of the whole pool), random, and fixed:<feature> (top designs by one feature). "
-        "The default is learner_sim."
+        "Run a pre-registered scripted policy on your data so far and get the batch it would buy, with reasons. "
+        "It spends nothing: to buy the batch, pass its design_ids to submit_batch. "
+        "Until a model can be fitted (at least 2 hits and 8 delivered purchases), the model-based policies "
+        "rank by a default feature instead.\n"
+        "Policies (default learner_sim):\n"
+        "- learner: fits a model on your delivered results and ranks the pool by it, plus random exploration.\n"
+        "- learner_sim: like learner, and also ranks by sequence similarity to your hits.\n"
+        "- learner_purchased: like learner, but standardizes the features on your purchased designs, not the whole pool.\n"
+        "- learner_sim_purchased: like learner_sim, but standardizes the features on your purchased designs, not the whole pool.\n"
+        "- random: a uniformly random batch of unpurchased designs.\n"
+        "- fixed: the top unpurchased designs by one feature, given as feature."
     ),
     "fit_and_rank": (
         "Fit a regularized logistic model on delivered designs and rank unpurchased designs by predicted hit probability. "
@@ -555,9 +559,26 @@ class Toolbox:
         return fitted
 
     def propose_batch(
-        self, k: int, policy: str = "learner_sim", exploration: float = 0.2
+        self,
+        k: int,
+        policy: str = "learner_sim",
+        exploration: float = 0.2,
+        feature: str | None = None,
     ) -> s.ProposeBatchResult:
-        """Ask a scripted policy for a batch and record the proposal with reasons; spends nothing."""
+        """Ask a scripted policy for a batch and record the proposal with reasons; spends nothing.
+
+        Policy ``fixed`` ranks by ``feature``; ``fixed:<feature>`` in one string also works here
+        (``run-scripted`` uses it), but the MCP tool offers only the separate form.
+        """
+        if policy == "fixed":
+            valid = ", ".join(self._fc.names)
+            if not feature:
+                raise ToolFailure(f"policy fixed needs feature, one of: {valid}")
+            if feature not in self._fc.names:
+                raise ToolFailure(f"unknown feature {feature!r} for policy fixed; one of: {valid}")
+            policy = f"fixed:{feature}"
+        elif feature is not None:
+            raise ToolFailure("feature is used only with policy fixed")
         state = self._state()
         if not 1 <= k <= state.config.batch_size:
             raise ToolFailure(f"k must be between 1 and the batch size {state.config.batch_size}")

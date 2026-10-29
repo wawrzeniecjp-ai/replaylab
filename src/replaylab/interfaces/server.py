@@ -10,10 +10,11 @@ from __future__ import annotations
 import logging
 import sys
 from collections.abc import Callable
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
+from pydantic import Field
 
 from replaylab.interfaces import schemas as s
 from replaylab.interfaces.tools import (
@@ -27,6 +28,11 @@ from replaylab.interfaces.tools import (
 )
 
 REGISTERED_TOOLS = (*CAMPAIGN_TOOLS, *ADVISOR_TOOLS, *KNOWLEDGE_TOOLS)
+# propose_batch's policy enum: the factory's names plus "fixed", whose feature is a separate
+# parameter (an enum cannot hold "fixed:<feature>"). A test keeps it in step with POLICY_NAMES.
+ProposePolicy = Literal[
+    "learner", "learner_sim", "learner_purchased", "learner_sim_purchased", "random", "fixed"
+]
 
 
 def _call(method: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
@@ -75,9 +81,28 @@ def build_server(toolbox: Toolbox, tools: str | None = None) -> MCPServer:
         return _call(toolbox.stop, reason)
 
     async def propose_batch(
-        k: int, policy: str = "learner_sim", exploration: float = 0.2
+        k: Annotated[
+            int, Field(description="How many designs to propose, from 1 to the batch size.")
+        ],
+        policy: Annotated[
+            ProposePolicy,
+            Field(description="The scripted policy to run (see the tool description)."),
+        ] = "learner_sim",
+        feature: Annotated[
+            str | None,
+            Field(
+                description="The feature to rank by; only with policy fixed, and required there."
+            ),
+        ] = None,
+        exploration: Annotated[
+            float,
+            Field(
+                description="Share of the batch, 0 to 1, that the model-based policies pick at "
+                "random instead of by rank."
+            ),
+        ] = 0.2,
     ) -> s.ProposeBatchResult:
-        return _call(toolbox.propose_batch, k, policy, exploration)
+        return _call(toolbox.propose_batch, k, policy, exploration, feature)
 
     async def fit_and_rank(
         features: list[str] | None = None, top_k: int = 20, exploration: float = 0.2
