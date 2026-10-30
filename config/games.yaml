@@ -14,6 +14,18 @@ games:
   # default ladder, frozen_v1 and every decision rule.
   E-long:
     {target: egfr, split: all, rounds: 8, batch_size: 15, budget: 120, exploratory: true}
+  # The Anthropic binder release, pooled over the 15 targets that carry a binder call
+  # (design-notes section 18). final_test: played once, by the runner with --final-run,
+  # against --tables data/processed/anthropic. Shape fixed before any hit rate was read:
+  # 4 rounds, budget at most 20% of the 1,320-design pool (240 is 18.2%).
+  AB-final:
+    {target: anthropic-binders-pooled, split: all, rounds: 4, batch_size: 60, budget: 240,
+     final_test: true}
+  # The rehearsal copy of AB-final: identical shape, shuffled feature names and drawn
+  # labels (scripts/build_anthropic.py --rehearsal), so the pipeline can be exercised
+  # without spending the test. Nothing measured here says anything about the real pool.
+  AB-rehearsal:
+    {target: anthropic-binders-pooled, split: all, rounds: 4, batch_size: 60, budget: 240}
   N-dev-delay2:
     {target: nipah-glycoprotein-g, split: dev, rounds: 6, batch_size: 10, budget: 60, delay_rounds: 2}
   S-human-serum-albumin:
