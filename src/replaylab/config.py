@@ -116,6 +116,10 @@ class GameConfig:
     ``exploratory`` games exist to answer a pre-registered question (design-notes
     section 8): they are excluded from the default ladder, from ``frozen_v1`` and
     from every decision rule, and are only run when asked for explicitly.
+
+    A ``final_test`` game is the pre-registered final test (CLAUDE.md, direction A): it is
+    never served, laddered or replayed, and only the runner plays it, once, under a permit
+    from :mod:`replaylab.eval.final_run`.
     """
 
     id: str
@@ -127,6 +131,7 @@ class GameConfig:
     delay_rounds: int = 0
     kind: str = "rank"
     exploratory: bool = False
+    final_test: bool = False
 
     def __post_init__(self) -> None:
         if not self.id:
@@ -138,6 +143,10 @@ class GameConfig:
             raise ConfigError(f"{where}: unknown kind {self.kind!r}; expected one of {KINDS}")
         if not isinstance(self.exploratory, bool):
             raise ConfigError(f"{where}: exploratory must be a boolean, got {self.exploratory!r}")
+        if not isinstance(self.final_test, bool):
+            raise ConfigError(f"{where}: final_test must be a boolean, got {self.final_test!r}")
+        if self.final_test and (self.exploratory or self.split == "heldout"):
+            raise ConfigError(f"{where}: a final_test game cannot be exploratory or held-out")
         if self.rounds < 1:
             raise ConfigError(f"{where}: rounds must be at least 1")
         if self.batch_size < 1:
@@ -193,7 +202,7 @@ def parse_games(data: Any) -> dict[str, GameConfig]:
         _check_keys(
             body,
             {"target", "split", "rounds", "batch_size", "budget"},
-            {"delay_rounds", "kind", "exploratory"},
+            {"delay_rounds", "kind", "exploratory", "final_test"},
             where,
         )
         result[str(game_id)] = GameConfig(
@@ -206,6 +215,7 @@ def parse_games(data: Any) -> dict[str, GameConfig]:
             delay_rounds=_require_int(body.get("delay_rounds", 0), where, "delay_rounds"),
             kind=body.get("kind", "rank"),
             exploratory=_require_bool(body.get("exploratory", False), where, "exploratory"),
+            final_test=_require_bool(body.get("final_test", False), where, "final_test"),
         )
     return result
 

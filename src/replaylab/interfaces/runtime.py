@@ -19,7 +19,8 @@ from replaylab.interfaces.tools import ToolContext
 
 
 class SetupError(Exception):
-    """The requested game cannot be served (unknown game, held-out split, missing config)."""
+    """The requested game cannot be served (unknown game, held-out split, final test without
+    its permit, missing config)."""
 
 
 @dataclass
@@ -55,11 +56,16 @@ def build_runtime(
     tables_dir: Path | str,
     folds_path: Path | str | None = None,
     clusters_path: Path | str | None = None,
+    final_run: bool = False,
 ) -> Runtime:
     """Load a game, resume or create its store, and fit this seed's advisors.
 
+    ``final_run`` is passed only by the runner, under a final-run permit; ``serve`` and the
+    campaign CLI never pass it, so they never serve a final-test game.
+
     Raises:
-        SetupError: unknown game, held-out split, or no feature config for the target.
+        SetupError: unknown game, held-out split, a final-test game without ``final_run``,
+            or no feature config for the target.
     """
     games = load_games(games_path)
     if game_id not in games:
@@ -69,6 +75,11 @@ def build_runtime(
         raise SetupError(
             f"game {game_id!r} uses the held-out split, which is never served interactively; "
             "it is run once, by the final-run script"
+        )
+    if game.final_test and not final_run:
+        raise SetupError(
+            f"game {game_id!r} is the final test, which is never served interactively; "
+            "only the runner plays it, once, with --final-run"
         )
     feature_configs = load_feature_config(features_path)
     if game.target not in feature_configs:
@@ -86,6 +97,7 @@ def build_runtime(
         folds_path=folds,
         clusters_path=clusters,
         store_path=store_path,
+        final_run=final_run,
     )
     designs = env.campaign.state().designs
     return Runtime(

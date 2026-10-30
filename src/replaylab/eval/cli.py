@@ -5,6 +5,7 @@
     replaylab-eval pilot --model deepseek-v4-flash --games N-dev --conditions A,B1 --trials 5 --max-usd 3 --run-dir runs/x
     replaylab-eval run   --model deepseek-v4-flash --games N-dev --conditions A,B1 --trials 5 --max-usd 20 --run-dir runs/x
     replaylab-eval run   ... --trials 20 --first-trial 100      # a fresh block: trials 100-119
+    replaylab-eval run   ... --games <final-test game> --final-run   # once; see eval/final_run.py
     replaylab-eval compare --records runs/x/episodes.jsonl --game N-dev --a B1 --b A --ci 0.9 --trial-range 0-9
     replaylab-eval view --run-dir runs/x        # writes runs/x/replay.html
     replaylab-eval smoke --model opus --run-dir runs/smoke --max-usd 1   # 3 real turns, no record
@@ -23,7 +24,17 @@ from typing import Annotated, Any
 
 import typer
 
+from replaylab.config import load_feature_config, load_games
 from replaylab.eval.conditions import identical_conditions, load_conditions
+from replaylab.eval.final_run import (
+    SCRIPTED_LEG,
+    FinalLeg,
+    FinalRunPermit,
+    FinalRunRefused,
+    acquire,
+    dirty_paths,
+    frozen_hash,
+)
 from replaylab.eval.llm import OpenAICompatClient
 from replaylab.eval.llm_anthropic import AnthropicClient
 from replaylab.eval.llm_types import LLMError
@@ -33,6 +44,7 @@ from replaylab.eval.prompts import USER_PROMPT, load_system_prompt, text_hash
 from replaylab.eval.records import config_hash, git_info, read_records
 from replaylab.eval.replay_view import PoolPaths, build_page, pool_view
 from replaylab.eval.runner import (
+    EpisodeSpec,
     RunnerDeps,
     expand_matrix,
     run_llm_episode,
@@ -78,6 +90,16 @@ FirstTrial = Annotated[
         min=0,
         help="Play trials first..first+trials-1 (fresh seeds for a new block).",
     ),
+]
+FinalRun = Annotated[
+    bool,
+    typer.Option(
+        "--final-run",
+        help="Play a final-test game: once, from a clean commit, recorded in the lock file.",
+    ),
+]
+LockDir = Annotated[
+    Path, typer.Option("--lock-dir", help="Folder of the final-test lock files (commit them).")
 ]
 
 
@@ -147,6 +169,51 @@ def _deps(
     )
 
 
+def _final_permit(
+    deps: RunnerDeps,
+    specs: list[EpisodeSpec],
+    *,
+    leg: str,
+    records: Path,
+    lock_dir: Path,
+    conditions_config: Path,
+    check_only: bool,
+) -> FinalRunPermit:
+    """Check the frozen state and take (or, for a dry run, only check) the final-run lock."""
+    games = load_games(deps.games_path)
+    names = sorted({s.game for s in specs})
+    if len(names) != 1 or names[0] not in games or not games[names[0]].final_test:
+        raise FinalRunRefused(f"--final-run plays exactly one final-test game, got {names}")
+    game = games[names[0]]
+    dirty = dirty_paths()
+    if dirty:
+        raise FinalRunRefused(
+            "the final run needs a committed src, prompts and config; uncommitted: "
+            + "; ".join(dirty)
+        )
+    trials = sorted({s.trial for s in specs})
+    frozen = frozen_hash(
+        system_prompt=deps.system_prompt,
+        user_prompt=deps.user_prompt,
+        conditions_text=Path(conditions_config).read_text(),
+        tool_descriptions=TOOL_DESCRIPTIONS,
+        limits=asdict(deps.limits),
+        game=game,
+        feature_config=load_feature_config(deps.features_path)[game.target],
+    )
+    final_leg = FinalLeg.make(
+        game=game.id,
+        leg=leg,
+        config_hash=deps.config_hash,
+        records=records,
+        first_trial=trials[0],
+        trials=len(trials),
+        conditions=sorted({s.condition for s in specs}),
+    )
+    sha, _ = git_info()
+    return acquire(lock_dir, final_leg, frozen=frozen, git_sha=sha or "", check_only=check_only)
+
+
 @app.command("scripted")
 def scripted(
     run_dir: RunDir,
@@ -161,6 +228,8 @@ def scripted(
     features_config: FeaturesConfig = Path("config/features.yaml"),
     conditions_config: ConditionsConfig = Path("config/conditions.yaml"),
     system_prompt: SystemPrompt = Path("prompts/system.md"),
+    final_run: FinalRun = False,
+    lock_dir: LockDir = Path("reports/final-test"),
 ) -> None:
     """Play scripted policies on the same episode seeds as the LLM episodes."""
     try:
@@ -170,6 +239,14 @@ def scripted(
             system_prompt=system_prompt, llm=None, model=None,
             cfg_hash=config_hash({"scripted": _split(policies)}),
         )  # fmt: skip
+        if final_run:
+            specs = expand_matrix(
+                _split(games), [f"scripted:{p}" for p in _split(policies)], trials, first_trial
+            )
+            deps.final_permit = _final_permit(
+                deps, specs, leg=SCRIPTED_LEG, records=run_dir / "episodes.jsonl",
+                lock_dir=lock_dir, conditions_config=conditions_config, check_only=False,
+            )  # fmt: skip
         summary = run_scripted_matrix(
             _split(games),
             _split(policies),
@@ -243,6 +320,7 @@ def _make_llm(cfg: ModelConfig) -> OpenAICompatClient | AnthropicClient:
 def _prepare(
     *, model, games, conditions, trials, first_trial, max_usd, concurrency, dry_run, run_dir, tables, folds, clusters,
     games_config, features_config, conditions_config, system_prompt, models_config, prices_config,
+    final_run=False, lock_dir=Path("reports/final-test"),
 ):  # fmt: skip
     if not 1 <= concurrency <= MAX_CONCURRENCY:
         raise _fail(f"--concurrency must be between 1 and {MAX_CONCURRENCY}", 2)
@@ -269,10 +347,30 @@ def _prepare(
             store_dir=run_dir / "stores",
         )  # fmt: skip
         specs = expand_matrix(_split(games), _split(conditions), trials, first_trial)
+        if final_run:
+            # check only: the lock is written just before the first episode is played
+            deps.final_permit = _final_permit(
+                deps, specs, leg=str(deps.model), records=run_dir / "episodes.jsonl",
+                lock_dir=lock_dir, conditions_config=conditions_config, check_only=True,
+            )  # fmt: skip
         validate_specs(specs, deps)
     except (SetupError, OSError, ValueError) as error:
         raise _fail(str(error), 2) from None
     return deps, specs
+
+
+def _take_final_lock(
+    deps: RunnerDeps, specs: list[EpisodeSpec], *, run_dir: Path, lock_dir: Path,
+    conditions_config: Path,
+) -> None:  # fmt: skip
+    """Write this leg into the lock, just before its first episode is played."""
+    try:
+        deps.final_permit = _final_permit(
+            deps, specs, leg=str(deps.model), records=run_dir / "episodes.jsonl",
+            lock_dir=lock_dir, conditions_config=conditions_config, check_only=False,
+        )  # fmt: skip
+    except (SetupError, OSError, ValueError) as error:
+        raise _fail(str(error), 2) from None
 
 
 def _plan(specs, deps) -> dict[str, Any]:
@@ -307,6 +405,8 @@ def pilot(
     system_prompt: SystemPrompt = Path("prompts/system.md"),
     models_config: ModelsConfig = Path("config/models.yaml"),
     prices_config: PricesConfig = Path("config/prices.yaml"),
+    final_run: FinalRun = False,
+    lock_dir: LockDir = Path("reports/final-test"),
 ) -> None:
     """Run the first episodes, then write a cost projection for the whole matrix (pilot.json)."""
     deps, specs = _prepare(
@@ -316,10 +416,15 @@ def pilot(
         clusters=clusters, games_config=games_config, features_config=features_config,
         conditions_config=conditions_config, system_prompt=system_prompt,
         models_config=models_config, prices_config=prices_config,
+        final_run=final_run, lock_dir=lock_dir,
     )  # fmt: skip
     if dry_run:
         _emit({"dry_run": True, "pilot_episodes": min(n, len(specs)), **_plan(specs, deps)})
         return
+    if final_run:
+        _take_final_lock(
+            deps, specs, run_dir=run_dir, lock_dir=lock_dir, conditions_config=conditions_config
+        )
     try:
         projection = asyncio.run(
             run_pilot(
@@ -451,6 +556,8 @@ def run(
     system_prompt: SystemPrompt = Path("prompts/system.md"),
     models_config: ModelsConfig = Path("config/models.yaml"),
     prices_config: PricesConfig = Path("config/prices.yaml"),
+    final_run: FinalRun = False,
+    lock_dir: LockDir = Path("reports/final-test"),
 ) -> None:
     """Play every missing episode of the matrix. Needs a pilot first; refuses a run projected over the cap."""
     deps, specs = _prepare(
@@ -460,6 +567,7 @@ def run(
         clusters=clusters, games_config=games_config, features_config=features_config,
         conditions_config=conditions_config, system_prompt=system_prompt,
         models_config=models_config, prices_config=prices_config,
+        final_run=final_run, lock_dir=lock_dir,
     )  # fmt: skip
     pilot_file = run_dir / "pilot.json"
     projection: Projection | None = None
@@ -481,6 +589,10 @@ def run(
         projected = None if projection is None else projection.projected_usd
         _emit({"dry_run": True, "projected_usd": projected, **_plan(specs, deps)})
         return
+    if final_run:
+        _take_final_lock(
+            deps, specs, run_dir=run_dir, lock_dir=lock_dir, conditions_config=conditions_config
+        )
     summary = asyncio.run(
         run_matrix(
             specs,

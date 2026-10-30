@@ -6,6 +6,8 @@
   unrecorded; running the same command again plays exactly the missing episodes.
 * The campaign state of an episode lives in memory (or in ``store_dir`` for inspection); a
   half-played store is deleted, never resumed, because the model conversation is gone.
+* A final-test game is played only under ``deps.final_permit`` (see
+  :mod:`replaylab.eval.final_run`), on its own, and only inside the permitted leg.
 """
 
 from __future__ import annotations
@@ -20,6 +22,7 @@ from mcp.client import Client
 
 from replaylab.config import load_games
 from replaylab.eval.conditions import Condition
+from replaylab.eval.final_run import FinalRunPermit, FinalRunRefused
 from replaylab.eval.llm_types import LLMClient
 from replaylab.eval.loop import CampaignStatus, Limits, run_episode, unwrap
 from replaylab.eval.mcp_bridge import McpBridge
@@ -75,6 +78,7 @@ class RunnerDeps:
     passback_reasoning: bool = False
     reasoning_field: str = "reasoning_content"
     store_dir: Path | None = None
+    final_permit: FinalRunPermit | None = None
 
 
 @dataclass
@@ -86,8 +90,13 @@ class RunSummary:
     total_usd: float | None = None
 
 
-def _check_games(games: Sequence[str], games_path: Path) -> None:
+def _check_games(
+    games: Sequence[str], games_path: Path, permit: FinalRunPermit | None = None
+) -> None:
     configured = load_games(games_path)
+    finals = sorted(g for g in set(games) if g in configured and configured[g].final_test)
+    if finals and set(games) != {finals[0]}:
+        raise FinalRunRefused(f"the final test {finals[0]!r} is played on its own")
     for game in sorted(set(games)):
         if game not in configured:
             raise SetupError(f"unknown game {game!r}; valid games: {sorted(configured)}")
@@ -95,14 +104,43 @@ def _check_games(games: Sequence[str], games_path: Path) -> None:
             raise SetupError(
                 f"game {game!r} uses the held-out split, which this runner never plays"
             )
+        if configured[game].final_test and permit is None:
+            raise SetupError(
+                f"game {game!r} is the final test: it is played once, with --final-run"
+            )
+        if permit is not None and permit.game != game:
+            raise FinalRunRefused(f"the final-run permit is for {permit.game!r}, not {game!r}")
+
+
+def _check_permit(
+    specs: Sequence[EpisodeSpec], permit: FinalRunPermit | None, records_path: Path
+) -> None:
+    """Every episode of a final run lies inside the permitted leg, and lands in its file."""
+    if permit is None:
+        return
+    leg = permit.leg
+    if str(records_path.resolve()) != leg.records:
+        raise FinalRunRefused(
+            f"the final-run permit records into {leg.records}, not {records_path.resolve()}"
+        )
+    outside = [
+        s.key for s in specs if s.trial not in leg.trial_range or s.condition not in leg.conditions
+    ]
+    if outside:
+        raise FinalRunRefused(
+            f"{len(outside)} episode(s) lie outside the permitted leg {leg.leg!r} "
+            f"(trials {leg.first_trial}-{leg.first_trial + leg.trials - 1}, "
+            f"conditions {list(leg.conditions)}), e.g. {outside[0]}"
+        )
 
 
 def validate_specs(specs: Sequence[EpisodeSpec], deps: RunnerDeps) -> None:
-    """Refuse unknown conditions and held-out games before anything runs."""
+    """Refuse unknown conditions, held-out games and an unpermitted final test before
+    anything runs."""
     unknown = sorted({s.condition for s in specs if s.condition not in deps.conditions})
     if unknown:
         raise ValueError(f"unknown condition(s) {unknown}; valid: {sorted(deps.conditions)}")
-    _check_games([s.game for s in specs], deps.games_path)
+    _check_games([s.game for s in specs], deps.games_path, deps.final_permit)
 
 
 def _store_path(store_dir: Path | None, name: str) -> str:
@@ -125,6 +163,7 @@ def _runtime(game: str, seed: int, store: str, deps: RunnerDeps):
         tables_dir=deps.tables_dir,
         folds_path=deps.folds_path,
         clusters_path=deps.clusters_path,
+        final_run=deps.final_permit is not None and deps.final_permit.game == game,
     )
 
 
@@ -198,6 +237,7 @@ async def run_matrix(
     """Play every spec that has no record yet. Safe to run again after any interruption."""
     validate_specs(specs, deps)
     records_path = Path(records_path)
+    _check_permit(specs, deps.final_permit, records_path)
     done = completed_keys(read_records(records_path))
     todo = [s for s in specs if s.key not in done]
     summary = RunSummary(skipped=len(specs) - len(todo))
@@ -267,7 +307,8 @@ def run_scripted_matrix(
     """Scripted policies on the LLM episodes' seeds (condition ``scripted:<policy>``)."""
     records_path = Path(records_path)
     specs = expand_matrix(games, [f"scripted:{p}" for p in policies], trials, first_trial)
-    _check_games(games, deps.games_path)
+    _check_games(games, deps.games_path, deps.final_permit)
+    _check_permit(specs, deps.final_permit, records_path)
     done = completed_keys(read_records(records_path))
     summary = RunSummary()
     for spec in specs:
