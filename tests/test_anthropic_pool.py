@@ -1,4 +1,4 @@
-"""The Anthropic pooled pool (design-notes section 18): crosswalk, labels, pin, rehearsal.
+"""The Anthropic per-target pools (docs/prereg-anthropic.md): crosswalk, labels, pin, games.
 
 Everything here runs on synthetic frames of the release's shape, except the few checks
 marked ``data``, which need the real release under ``data/raw/anthropic/``.
@@ -15,14 +15,15 @@ import pytest
 from replaylab.config import load_feature_config, load_games
 from replaylab.datasets.anthropic import (
     CROSSWALK,
+    GAME_TARGETS,
     PINNED_SHA256,
-    POOLED_TARGET,
     PinMismatch,
     build_designs,
     build_outcomes,
     build_tables,
     seed_best,
     sha256_file,
+    target_slug,
     verify_files,
     write_tables,
 )
@@ -32,7 +33,9 @@ from replaylab.policies.core import RandomPolicy
 
 ROOT = Path(__file__).resolve().parents[1]
 RELEASE = ROOT / "data/raw/anthropic/anthropic_binders_core/data/tables"
+REHEARSAL_TABLES = ROOT / "data/processed/anthropic-rehearsal"
 FEATURES = [name for name, _, _ in CROSSWALK]
+FINAL_GAMES = ("AB-nipah", "AB-egfr", "AB-bbf14")
 
 
 def cofold_rows(uuid, target="T", model="boltz2", rows=((0, 0.5, 0.4, 70.0),), **extra):
@@ -78,9 +81,38 @@ def release(designs):
 
 
 TWO = [
-    ("u1", "T", True, ((0, 0.5, 0.4, 70.0), (1, 0.9, 0.8, 90.0)), ((0, 0.3, 0.2, 60.0),)),
-    ("u2", "T", False, ((0, 0.1, 0.1, 50.0),), ((0, 0.2, 0.1, 40.0),)),
+    ("u1", "Nipah-G", True, ((0, 0.5, 0.4, 70.0), (1, 0.9, 0.8, 90.0)), ((0, 0.3, 0.2, 60.0),)),
+    ("u2", "Nipah-G", False, ((0, 0.1, 0.1, 50.0),), ((0, 0.2, 0.1, 40.0),)),
 ]
+
+
+# --- target ids ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("code", "slug"),
+    [
+        ("Nipah-G", "ab-nipah-g"),
+        ("EGFR", "ab-egfr"),
+        ("BBF-14", "ab-bbf-14"),
+        ("IL-7Ra", "ab-il-7ra"),
+        ("Latent GDF-8", "ab-latent-gdf-8"),
+        ("15-PGDH", "ab-15-pgdh"),
+    ],
+)
+def test_release_target_codes_become_prefixed_slugs(code, slug):
+    # the prefix keeps them apart from the Proteinbase targets of the same name, whose
+    # features differ; the biological target stays named (caveats.md entry 2)
+    assert target_slug(code) == slug
+
+
+def test_a_slug_carries_no_leading_or_trailing_separator():
+    assert target_slug("(TrkA)") == "ab-trka"
+    assert target_slug("PD-L1 ") == "ab-pd-l1"
+
+
+def test_the_three_games_are_the_pre_registered_targets():
+    assert GAME_TARGETS == ("Nipah-G", "EGFR", "BBF-14")
 
 
 # --- the seed-best rule -------------------------------------------------------------------
@@ -129,37 +161,23 @@ def test_the_crosswalk_maps_the_four_columns_under_their_proteinbase_names():
     assert list(designs.columns) == ["design_id", "sequence", "design_class", "length", *FEATURES]
     assert list(designs.design_id) == ["u1", "u2"]
     assert designs.design_class.tolist() == ["RFdiffusion", "RFdiffusion"]  # not the target
-    assert "target" not in designs.columns
+    assert designs.length.tolist() == [10, 10]  # the binder length, which is always visible
+    assert "target" not in designs.columns  # the target lives in outcomes, as in Proteinbase
 
 
-def test_features_are_z_scored_inside_each_target():
-    designs = [
-        ("u1", "A", True, ((0, 0.2, 0.4, 70.0),), ((0, 0.1, 0.1, 10.0),)),
-        ("u2", "A", False, ((0, 0.4, 0.8, 90.0),), ((0, 0.1, 0.1, 30.0),)),
-        ("u3", "B", True, ((0, 20.0, 0.4, 70.0),), ((0, 0.1, 0.1, 50.0),)),
-        ("u4", "B", False, ((0, 40.0, 0.8, 90.0),), ((0, 0.1, 0.1, 70.0),)),
-    ]
-    frame = build_designs(*release(designs)).set_index("design_id")
-    # within each target the two designs sit at -1 and +1, so the targets become comparable
-    # even though B's raw ipSAE is a hundred times A's
-    assert frame.loc["u1", "boltz2_min_ipsae"] == pytest.approx(-1.0)
-    assert frame.loc["u3", "boltz2_min_ipsae"] == pytest.approx(-1.0)
-    assert frame.loc["u4", "boltz2_min_ipsae"] == pytest.approx(1.0)
-
-
-def test_a_constant_feature_inside_a_target_becomes_zero_not_a_division_by_zero():
-    # Cas9's ipSAE is exactly zero for most of its designs (DATA_NOTES.md note 20)
-    designs = [
-        ("u1", "A", True, ((0, 0.0, 0.4, 70.0),), ((0, 0.1, 0.1, 10.0),)),
-        ("u2", "A", False, ((0, 0.0, 0.8, 90.0),), ((0, 0.1, 0.1, 30.0),)),
-    ]
-    frame = build_designs(*release(designs))
-    assert frame.boltz2_min_ipsae.tolist() == [0.0, 0.0]
-    assert frame.boltz2_iptm.notna().all()
+def test_feature_values_are_the_published_ones_of_the_winning_seed():
+    # D7: raw, unscaled, not orientation-flipped. Within one target the release's metrics
+    # are comparable as published, so there is nothing to rescale.
+    frame = build_designs(*release(TWO)).set_index("design_id")
+    assert frame.loc["u1", "boltz2_min_ipsae"] == 0.9
+    assert frame.loc["u1", "boltz2_iptm"] == 0.8
+    assert frame.loc["u1", "boltz2_plddt"] == 90.0
+    assert frame.loc["u1", "esmfold_plddt"] == 60.0
+    assert frame.loc["u2", "boltz2_min_ipsae"] == 0.1
 
 
 def test_unlabelled_designs_are_dropped_from_both_frames():
-    designs = [*TWO, ("u3", "T", None, ((0, 0.5, 0.4, 70.0),), ((0, 0.3, 0.2, 60.0),))]
+    designs = [*TWO, ("u3", "Nipah-G", None, ((0, 0.5, 0.4, 70.0),), ((0, 0.3, 0.2, 60.0),))]
     summary, cofold = release(designs)
     assert list(build_designs(summary, cofold).design_id) == ["u1", "u2"]
     assert list(build_outcomes(summary).design_id) == ["u1", "u2"]
@@ -181,9 +199,11 @@ def test_a_design_with_no_cofold_row_is_an_error():
 # --- the outcomes frame -------------------------------------------------------------------
 
 
-def test_the_hit_is_the_releases_own_binder_call_under_one_pooled_target():
-    outcomes = build_outcomes(release(TWO)[0]).set_index("design_id")
-    assert set(outcomes.target) == {POOLED_TARGET}
+def test_the_hit_is_the_releases_own_binder_call_under_the_targets_own_slug():
+    designs = [TWO[0], ("u2", "EGFR", False, ((0, 0.1, 0.1, 50.0),), ((0, 0.2, 0.1, 40.0),))]
+    outcomes = build_outcomes(release(designs)[0]).set_index("design_id")
+    assert outcomes.loc["u1", "target"] == "ab-nipah-g"
+    assert outcomes.loc["u2", "target"] == "ab-egfr"
     assert outcomes.hit.tolist() == [True, False]
     assert outcomes.loc["u1", "kd_molar"] == 7.0 * 1e-9  # exact, never rounded
     assert math.isnan(outcomes.loc["u2", "kd_molar"])
@@ -235,45 +255,62 @@ def test_the_pin_covers_the_two_input_files_and_fails_loudly(tmp_path):
 
 
 def test_the_built_tables_are_what_the_engine_reads(tmp_path):
-    designs, outcomes = build_designs(*release(TWO)), build_outcomes(release(TWO)[0])
-    write_tables(designs, outcomes, tmp_path)
-    game = load_games(ROOT / "config/games.yaml")["AB-rehearsal"]
-    feature_config = load_feature_config(ROOT / "config/features.yaml")[POOLED_TARGET]
+    summary, cofold = release(TWO)
+    write_tables(build_designs(summary, cofold), build_outcomes(summary), tmp_path)
+    game = load_games(ROOT / "config/games.yaml")["AB-nipah"]
+    feature_config = load_feature_config(ROOT / "config/features.yaml")["ab-nipah-g"]
     pool = load_pool(tmp_path, game, feature_config)
     assert sorted(pool.designs) == ["u1", "u2"]
     assert set(pool.designs["u1"].features) == set(FEATURES)
     assert pool.designs["u1"].design_class == "RFdiffusion"
-    assert sorted(load_outcomes(tmp_path, game)) == ["u1", "u2"]
+    # the outcomes of a final-test game stay shut until its own final run
+    with pytest.raises(FinalTestAccessError):
+        load_outcomes(tmp_path, game)
+    assert sorted(load_outcomes(tmp_path, game, final_run=True)) == ["u1", "u2"]
 
 
 # --- the game configuration ---------------------------------------------------------------
 
 
-def test_the_final_game_is_guarded_and_the_rehearsal_game_is_not():
+def test_every_anthropic_game_is_guarded_except_the_rehearsal():
     games = load_games(ROOT / "config/games.yaml")
-    final, rehearsal = games["AB-final"], games["AB-rehearsal"]
-    assert final.final_test and not rehearsal.final_test
-    # the rehearsal copy must be the same shape, or it rehearses something else
-    assert (final.rounds, final.batch_size, final.budget) == (
-        rehearsal.rounds,
-        rehearsal.batch_size,
-        rehearsal.budget,
-    )
-    assert final.target == rehearsal.target == POOLED_TARGET
+    assert all(games[name].final_test for name in FINAL_GAMES)
+    assert not games["AB-rehearsal"].final_test
+    assert {name for name, game in games.items() if game.final_test} == set(FINAL_GAMES)
 
 
-def test_the_budget_stays_inside_the_pre_registered_share_of_the_pool():
-    # section 18's rule, fixed before any hit rate was read: 4 rounds, at most 20%
-    final = load_games(ROOT / "config/games.yaml")["AB-final"]
-    assert final.rounds == 4
-    assert final.budget <= 0.20 * 1320
+def test_the_three_games_and_the_rehearsal_share_one_shape():
+    games = load_games(ROOT / "config/games.yaml")
+    shapes = {
+        name: (games[name].rounds, games[name].batch_size, games[name].budget)
+        for name in (*FINAL_GAMES, "AB-rehearsal")
+    }
+    assert set(shapes.values()) == {(4, 8, 32)}, shapes
+    # the shape is pre-registered: 4 rounds, and a batch of 8 so that the scripted fit gate
+    # (2 hits and 8 purchases) can open in round 2 rather than staying shut
+    assert games["AB-nipah"].batch_size >= 8
+    assert games["AB-nipah"].budget <= 0.40 * 90
 
 
-def test_the_features_are_exactly_the_crosswalk():
-    feature_config = load_feature_config(ROOT / "config/features.yaml")[POOLED_TARGET]
-    assert sorted(feature_config.names) == sorted(FEATURES)
-    assert all(spec.higher_is_better for spec in feature_config.specs)
-    assert feature_config.first_column == "boltz2_min_ipsae"
+def test_each_game_points_at_its_own_target_and_the_rehearsal_at_a_separate_one():
+    games = load_games(ROOT / "config/games.yaml")
+    assert [games[name].target for name in FINAL_GAMES] == [
+        target_slug(code) for code in GAME_TARGETS
+    ]
+    # its own target id, which the real tables do not contain, so the rehearsal game cannot
+    # be pointed at them
+    assert games["AB-rehearsal"].target == "ab-rehearsal"
+    assert games["AB-rehearsal"].target not in {target_slug(c) for c in GAME_TARGETS}
+
+
+def test_every_anthropic_target_has_the_crosswalk_features():
+    feature_configs = load_feature_config(ROOT / "config/features.yaml")
+    games = load_games(ROOT / "config/games.yaml")
+    for name in (*FINAL_GAMES, "AB-rehearsal"):
+        feature_config = feature_configs[games[name].target]
+        assert sorted(feature_config.names) == sorted(FEATURES), name
+        assert all(spec.higher_is_better for spec in feature_config.specs), name
+        assert feature_config.first_column == "boltz2_min_ipsae", name
 
 
 # --- the real release ---------------------------------------------------------------------
@@ -288,34 +325,33 @@ def test_the_real_release_still_hashes_to_the_pin():
 @pytest.mark.data
 @pytest.mark.slow
 @pytest.mark.skipif(not RELEASE.exists(), reason="needs data/raw/anthropic")
-def test_the_real_release_builds_the_pooled_pool():
+def test_the_real_release_builds_one_pool_per_target():
     designs, outcomes = build_tables(RELEASE)
     assert len(designs) == len(outcomes) == 1320
-    assert list(designs.columns) == ["design_id", "sequence", "design_class", "length", *FEATURES]
-    assert set(outcomes.target) == {POOLED_TARGET}
-    # per-target z-scores: pooled, the features are centred and scaled, which is what makes
-    # the 15 targets comparable
-    for name in FEATURES:
-        assert abs(float(designs[name].mean())) < 0.05
     assert designs.design_id.is_unique
+    assert list(designs.columns) == ["design_id", "sequence", "design_class", "length", *FEATURES]
+    sizes = outcomes.target.value_counts()
+    assert len(sizes) == 15  # the 120 mature GDF-8 designs carry no call
+    # the three games are the modal pool size, which is what makes them one shape
+    for code in GAME_TARGETS:
+        assert sizes[target_slug(code)] == 90, code
 
 
 @pytest.mark.data
 @pytest.mark.skipif(
-    not (ROOT / "data/processed/anthropic-rehearsal/designs.parquet").exists(),
+    not (REHEARSAL_TABLES / "designs.parquet").exists(),
     reason="needs scripts/build_anthropic.py --rehearsal",
 )
-def test_the_rehearsal_copy_plays_end_to_end():
+def test_the_rehearsal_copy_plays_end_to_end_and_cannot_reach_the_real_pools():
     games = load_games(ROOT / "config/games.yaml")
-    feature_config = load_feature_config(ROOT / "config/features.yaml")[POOLED_TARGET]
+    feature_config = load_feature_config(ROOT / "config/features.yaml")["ab-rehearsal"]
     card = run_game(
         games["AB-rehearsal"],
         RandomPolicy(),
         0,
-        tables_dir=ROOT / "data/processed/anthropic-rehearsal",
+        tables_dir=REHEARSAL_TABLES,
         feature_config=feature_config,
     )
-    assert card.purchases == 240
-    # and the guarded game is refused on the very same tables
-    with pytest.raises(FinalTestAccessError):
-        load_outcomes(ROOT / "data/processed/anthropic-rehearsal", games["AB-final"])
+    assert card.purchases == 32
+    with pytest.raises(ValueError, match="no designs for target ab-rehearsal"):
+        load_pool(ROOT / "data/processed/anthropic", games["AB-rehearsal"], feature_config)

@@ -40,21 +40,25 @@ targets:
       - {name: shape_complimentarity_boltz2_binder_ss}
       - {name: esmfold_plddt}
       - {name: proteinmpnn_score, higher_is_better: false}
-  # The Anthropic pooled pool (design-notes section 18). Pre-registered by column
+  # The Anthropic release (docs/prereg-anthropic.md section 3). Pre-registered by column
   # availability alone: these are the four Proteinbase feature columns that also exist in
   # the Anthropic release, under their Proteinbase names and their Proteinbase orientation
   # (all higher-is-better). proteinmpnn_score and the shape complementarity have no
-  # counterpart there and are left out. Values are per-target z-scores, because the release
-  # states its metrics are not comparable across targets (docs/INSILICO.md section 4).
+  # counterpart there and are left out. Values are as published: within one target the
+  # release's metrics are comparable, so nothing is rescaled (D7).
   # first_column follows N-dev's choice (the Boltz-2 ipSAE), which here exists only as the
-  # min-direction variant.
-  anthropic-binders-pooled:
+  # min-direction variant. The ab- prefix keeps these targets distinct from the Proteinbase
+  # targets of the same name, whose features differ.
+  ab-nipah-g: &anthropic_features
     first_column: boltz2_min_ipsae
     features:
       - {name: boltz2_min_ipsae}
       - {name: boltz2_iptm}
       - {name: boltz2_plddt}
       - {name: esmfold_plddt}
+  ab-egfr: *anthropic_features
+  ab-bbf-14: *anthropic_features
+  ab-rehearsal: *anthropic_features
   human-tnfa: &stop_game_features
     first_column: esmfold_plddt
     features:

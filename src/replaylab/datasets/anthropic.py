@@ -1,4 +1,4 @@
-"""The Anthropic binder release as one pooled replaylab pool (the final test).
+"""The Anthropic binder release as per-target replaylab pools (the final test).
 
 The release holds 1,440 designs against 16 targets, with a binder call from two vendors.
 This module turns the two tables it needs into the same ``designs.parquet`` /
@@ -6,21 +6,17 @@ This module turns the two tables it needs into the same ``designs.parquet`` /
 ladder and the agent conditions play it unchanged (the final run passes
 ``--tables data/processed/anthropic``).
 
-**Pre-registered choices** (``docs/design-notes.md`` section 18; fixed by column
-availability and the release's own documentation, never by looking at outcomes):
+**Pre-registered choices** (``docs/prereg-anthropic.md``; fixed by column availability and
+the release's own documentation, never by looking at outcomes):
 
-* **One pooled target.** Every design carries the target id :data:`POOLED_TARGET`, so one
-  game spans the 15 targets that have a binder call. The 120 mature GDF-8 designs are
-  dropped because ``binder_final`` is blank for all of them (the release says the wet-lab
-  results were inconclusive and are not included).
+* **One game per target**, not one pooled game. A target's designs are its own pool, which is
+  what a real campaign selects from, and it keeps the target name meaningful. The three
+  games are chosen by :data:`GAME_TARGETS`'s rule.
 * **Features: the crosswalk** :data:`CROSSWALK` -- the four Proteinbase feature columns that
   also exist here, under their Proteinbase names. ``proteinmpnn_score`` and the shape
   complementarity have no counterpart in the release and are left out.
-* **Per-target z-scores.** ``docs/INSILICO.md`` section 4 says the metrics are "not
-  comparable across targets, stoichiometries or predictors", so each feature is centred and
-  scaled within its own target before the targets are pooled. This uses feature values
-  only. Orientation is still never applied here (D7): all four features are
-  higher-is-better, so the z-score keeps their direction.
+* **Raw values** (D7). Within one target the release's metrics are comparable as published,
+  so nothing is rescaled here; the advisor standardizes later, as it does for every game.
 * **Seed-best rows.** ``design_summary`` reports, per predictor, the highest ``ipsae_min``
   over the five seeds at the design-complex stoichiometry on the design target. ipTM and
   pLDDT of that same seed come from ``cofold_predictions`` by reproducing that rule
@@ -28,11 +24,13 @@ availability and the release's own documentation, never by looking at outcomes):
   ``design_summary`` rather than trusting it.
 * **Hit label:** ``binder_final``, the release's own call on the human target from both
   vendors and a standardized re-fit. ``kd_nM_final`` becomes ``kd_molar`` exactly (no
-  rounding, per the rules of engagement).
-* **The target identity is not exposed.** ``design_class`` carries ``generator`` (the design
-  method, which is what Proteinbase's ``design_class`` holds), not the target. The
-  z-scores make the features comparable without it, and the targets are public, so naming
-  them could hand a model remembered results instead of a prediction.
+  rounding, per the rules of engagement). The 120 mature GDF-8 designs have no call and are
+  dropped.
+* **Target ids** are the release's own codes under an ``ab-`` prefix
+  (:func:`target_slug`): the prefix keeps them distinct from the Proteinbase targets of the
+  same name, which carry different features. The biological target stays named on purpose --
+  ``describe_campaign`` names it, as it did in every N-dev and E episode, so hiding it here
+  would make this a different game rather than a safer one (``docs/caveats.md`` entry 2).
 
 The input files are pinned by sha256 (:data:`PINNED_SHA256`, the publisher's own values from
 ``data/MANIFEST.sha256``) and :func:`verify_files` fails loudly if either file changes.
@@ -41,12 +39,28 @@ The input files are pinned by sha256 (:data:`PINNED_SHA256`, the publisher's own
 from __future__ import annotations
 
 import hashlib
+import re
 from collections.abc import Mapping
 from pathlib import Path
 
 import pandas as pd
 
-POOLED_TARGET = "anthropic-binders-pooled"
+SLUG_PREFIX = "ab-"
+
+#: The three games of the final test, as release target codes. The rule, applied to the
+#: release's documented columns and nothing else (``docs/prereg-anthropic.md`` section 2):
+#:
+#: * 90 designs carrying a binder call -- the modal pool size, so the three games are the
+#:   same size (drops 15-PGDH at 30, Latent GDF-8 at 60, TNFa at 150, mature GDF-8 at 0);
+#: * ``1to1`` stoichiometry, as Nipah-G and EGFR are (drops VEGF-A's dimer and the Cas9
+#:   ribonucleoprotein);
+#: * no cofactor in the co-folds (``INSILICO.md`` section 3 -- drops RBX1's three zinc ions);
+#: * Nipah-G and EGFR because Proteinbase has the same two targets, so the same target can be
+#:   compared across two different design campaigns;
+#: * one further target that Proteinbase does **not** have, so that a result on the first two
+#:   cannot be explained by target familiarity alone. Seven candidates pass the filters
+#:   (BBF-14, BHRF1, IL-7Ra, MBP, PD-L1, TREM2, TrkA) and the first alphabetically is taken.
+GAME_TARGETS: tuple[str, ...] = ("Nipah-G", "EGFR", "BBF-14")
 
 #: Stoichiometries of a design complex: the forms ``design_summary`` reports (INSILICO.md
 #: section 3). ``2to2`` / ``3to3`` rows score one binder copy per protomer and are excluded.
@@ -75,12 +89,13 @@ PINNED_SHA256: Mapping[str, str] = {
 
 #: ``vendor_agreement`` -> (vendors that tested the design, vendors that called it a binder,
 #: whether the two disagreed). The classes are defined in ``docs/WETLAB.md`` section 6.
+#: A count of ``-1`` binders means "the one vendor's call is ``binder_final``".
 VENDOR_AGREEMENT: Mapping[str, tuple[int, int, bool]] = {
     "both_bind": (2, 2, False),
     "neither_bind": (2, 0, False),
     "adaptyv_only_bind": (2, 1, True),
     "twist_only_bind": (2, 1, True),
-    "adaptyv_only_tested": (1, -1, False),  # -1: the one vendor's call is binder_final
+    "adaptyv_only_tested": (1, -1, False),
     "twist_only_tested": (1, -1, False),
     "not_tested_either": (0, 0, False),
 }
@@ -97,6 +112,12 @@ def sha256_file(path: Path | str) -> str:
         for block in iter(lambda: handle.read(1 << 20), b""):
             digest.update(block)
     return digest.hexdigest()
+
+
+def target_slug(code: str) -> str:
+    """The replaylab target id of a release target code: ``Nipah-G`` -> ``ab-nipah-g``."""
+    slug = re.sub(r"[^a-z0-9]+", "-", str(code).lower()).strip("-")
+    return SLUG_PREFIX + slug
 
 
 def verify_files(tables_dir: Path | str, pinned: Mapping[str, str] = PINNED_SHA256) -> None:
@@ -139,40 +160,30 @@ def seed_best(cofold: pd.DataFrame) -> pd.DataFrame:
     return rows.groupby(["uuid", "cofolding_model"], as_index=False).first()
 
 
-def _zscore_within_target(frame: pd.DataFrame, columns: list[str], group: str) -> pd.DataFrame:
-    """Centre and scale each column inside its group; a constant group becomes zeros."""
-    out = frame.copy()
-    for column in columns:
-        grouped = out.groupby(group)[column]
-        centred = out[column] - grouped.transform("mean")
-        # population sd: one rule for every group size. A constant group (Cas9's ipSAE is
-        # exactly zero for most of its designs) keeps the centred value, which is 0, rather
-        # than dividing by zero.
-        sd = grouped.transform("std", ddof=0)
-        out[column] = (centred / sd).where(sd > 0, centred)
-    return out
+def _labelled(summary: pd.DataFrame) -> pd.DataFrame:
+    return summary[summary["binder_final"].notna()]
 
 
 def build_designs(summary: pd.DataFrame, cofold: pd.DataFrame) -> pd.DataFrame:
-    """The ``designs.parquet`` frame: visible features as per-target z-scores.
+    """The ``designs.parquet`` frame: the crosswalk features, as published.
 
     Raises:
         ValueError: a seed-best ``ipsae_min`` disagrees with ``design_summary``, so the seed
             rule of :func:`seed_best` no longer reproduces the release.
     """
     best = seed_best(cofold)
-    labelled = summary[summary["binder_final"].notna()]
-    frame = labelled[["uuid", "sequence", "generator", "target", "binder_length"]].copy()
+    labelled = _labelled(summary)
+    frame = labelled[["uuid", "sequence", "generator", "binder_length"]].copy()
     for predictor, column in sorted(IPSAE_CHECK.items()):
         rows = best[best["cofolding_model"] == predictor].set_index("uuid")["ipsae_min"]
-        joined = labelled.set_index("uuid")[column]
-        shared = joined.index.intersection(rows.index)
-        missing = joined.index.difference(rows.index)
+        published = labelled.set_index("uuid")[column]
+        missing = published.index.difference(rows.index)
         if len(missing):
             raise ValueError(
                 f"{len(missing)} design(s) have no {predictor} design-complex co-fold row"
             )
-        difference = (rows.loc[shared] - joined.loc[shared]).abs().max()
+        shared = published.index.intersection(rows.index)
+        difference = (rows.loc[shared] - published.loc[shared]).abs().max()
         if not difference == 0:
             raise ValueError(
                 f"predictor {predictor}: the seed-best ipsae_min differs from "
@@ -181,21 +192,20 @@ def build_designs(summary: pd.DataFrame, cofold: pd.DataFrame) -> pd.DataFrame:
     for name, predictor, column in CROSSWALK:
         values = best[best["cofolding_model"] == predictor].set_index("uuid")[column]
         frame[name] = frame["uuid"].map(values)
-    names = [name for name, _, _ in CROSSWALK]
-    frame = _zscore_within_target(frame, names, "target")
     frame = frame.rename(columns={"uuid": "design_id", "generator": "design_class"})
     frame["length"] = frame["binder_length"].astype(int)
+    names = [name for name, _, _ in CROSSWALK]
     columns = ["design_id", "sequence", "design_class", "length", *names]
     return frame[columns].sort_values("design_id").reset_index(drop=True)
 
 
 def build_outcomes(summary: pd.DataFrame) -> pd.DataFrame:
-    """The ``outcomes.parquet`` frame: the release's own binder call, under one target."""
-    labelled = summary[summary["binder_final"].notna()]
+    """The ``outcomes.parquet`` frame: the release's own binder call, per target."""
+    labelled = _labelled(summary)
     frame = pd.DataFrame(
         {
             "design_id": labelled["uuid"].astype(str),
-            "target": POOLED_TARGET,
+            "target": [target_slug(code) for code in labelled["target"]],
             "hit": labelled["binder_final"].astype(bool),
             "kd_molar": labelled["kd_nM_final"] * 1e-9,
         }
