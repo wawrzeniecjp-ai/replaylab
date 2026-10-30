@@ -155,3 +155,72 @@ Then the same three with `--run-dir runs/orient-mimo --model mimo`, and:
 replaylab-eval compare --records runs/orient-ds/episodes.jsonl --game E \
     --a B1 --b B1ctl --ci 0.9 --resamples 10000 --seed 0 --trial-range 140-159
 ```
+
+
+---
+
+# Result (2026-10-30): no headroom measured, because the manipulation failed
+
+Played as registered: E trials 140-159, 20 trials per arm per model, both models.
+
+## Gates: all pass
+
+80 of 80 agent episodes `finished`; 20 distinct trials per arm; `config_hash` constant within
+each arm and different between arms (deepseek `aa5e128a6755` / `e2ef0758ac42` exactly as
+registered; mimo's pair, `d4651dd4bbff` / `3429038d2521`, was not registered in advance
+because the model key enters the hash, and was verified against fresh dry runs of both arms);
+the scripted rows identical across the two run directories (80 of 80); both working trees
+clean in `src`, `prompts` and `config`. Non-zero flags over all 80 episodes: 5 tool errors and
+2 bad-JSON replies, no truncation, no fabricated calls.
+
+## The manipulation check: FAILED
+
+The worst-first rate did not fall. Paired per episode, fixed minus control:
+
+| model | worst-first calls/episode | 90% CI | episodes touched, fixed vs control |
+| --- | --- | --- | --- |
+| deepseek | **+0.25** | [-0.25, +0.80] | 9/20 vs 8/20 |
+| mimo | **+0.25** | [-0.25, +0.85] | 8/20 vs 6/20 |
+
+Both intervals straddle zero and if anything point the wrong way. **The fix did not change
+the behaviour it targets**, so section 4's rule applies: whatever the hits do, this block
+cannot say whether the orientation surface matters.
+
+## The primary outcome: null, and uninterpretable as headroom
+
+| cell | fixed - control | 90% CI | W/L/T |
+| --- | --- | --- | --- |
+| deepseek | +2.60 | [-2.00, +7.05] | 12/8/0 |
+| mimo | -2.25 | [-5.50, +0.90] | 6/13/1 |
+| **pooled, 40 pairs** | **+0.17** | **[-2.70, +3.00]** | 18/21/1 |
+
+Dead null, with the two models pointing opposite ways. Per the registered rule this is **not**
+evidence that the tool surface does not matter. The headroom caveat 4 claims remains
+**unmeasured**.
+
+## Why the manipulation failed, and why that is my error
+
+The pre-fix description already read: *"Metric values are raw, so a lower ProteinMPNN score is
+better."* E's one inverted column **is** `proteinmpnn_score`. So the control arm already
+carried a correct, specific warning naming exactly the column in play, and the fix added
+generality (true for any pool and any inverted column) plus structured `higher_is_better`
+fields -- neither of which adds *information* on this particular pool.
+
+The experiment therefore compared "specific warning" against "general warning plus structured
+fields" on the one pool where the specific warning applies. That is a badly targeted test, and
+it was foreseeable: caveat 4 quotes that very sentence. A test of what caveat 4 worries about
+-- a pool whose inverted column no prose warning names -- needs a pool with a *different*
+inverted column, which none of the played games has, or an arm with the warning removed
+entirely. Either needs its own pre-registration and a fresh block; trials 140-159 are now used.
+
+## Two things worth keeping
+
+**A finding about tool design, not about this fix.** Roughly 20% of sorts on the inverted
+column ask for the worst designs *in both arms* -- that is, with an explicit, correctly named
+warning sitting in the tool description. A prose warning in a description does not reliably
+change what an agent does. Recorded as `docs/caveats.md` entry 5.
+
+**An independent replication of section 15.** On a fresh seed block, both arms and both models
+clear the bar again by a wide margin: deepseek +11.75 [+8.70, +14.65] and +9.15 [+6.95,
++11.35], mimo +13.50 [+11.35, +15.50] and +15.75 [+13.60, +17.80] against
+`scripted:learner_sim`. E's EXCEEDS was not a property of trials 100-119.

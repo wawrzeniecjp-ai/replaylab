@@ -135,3 +135,28 @@ What is **not** established is how many hits it cost: the overlap shows the rows
 from, not that every such purchase was a mistake, since a returned row carries all its
 features and the agent may have chosen within the set on another column. A counterfactual run
 would be needed, and it would need its own fresh trial block.
+
+
+## 5. A warning in a tool description does not reliably change what the agent does
+(2026-10-30)
+
+**What.** `docs/prereg-orientation.md` played 80 episodes on E across two arms whose only
+difference was how clearly the toolkit described feature orientation. In **both** arms about
+20% of the `query_pool` calls that sorted on the lower-is-better column asked for the worst
+designs -- including the arm whose description said, in plain words, *"Metric values are raw,
+so a lower ProteinMPNN score is better"*, naming the exact column in play. Paired, the
+difference between the arms was +0.25 calls per episode [-0.25, +0.80] on both models: no
+detectable change.
+
+**Why it matters.** The natural fix for an agent misusing a tool is to explain the tool
+better, and the natural evidence is that the explanation is now correct and complete. This
+block is a counterexample: the explanation was already correct and specific, and the behaviour
+did not move. Guidance that a model must read, remember and apply at the right moment competes
+with everything else in a long context.
+
+**What the write-up should say.** That the project tried the documentation fix and measured
+no behavioural change, so the orientation hazard is better removed than described -- by making
+the hazardous call impossible or self-correcting (for example, refusing a descending sort on
+an inverted column unless it is asked for explicitly, or returning the direction in the rows
+themselves) rather than by warning about it. And that this is one block on one pool: it shows
+a warning *can* fail to land, not that documentation never works.
