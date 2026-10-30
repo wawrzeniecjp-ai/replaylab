@@ -154,7 +154,7 @@ that deviation is recorded here rather than quietly taken.
 
 **Pooling results, not designs.** Each game is compared on its own (paired by seed, as
 always), and the four games' paired differences are also pooled, giving 4 x *trials* paired
-episodes. Which is reported as the headline is section 6's call.
+episodes. The pooled difference is the headline (section 6).
 
 ### The bar: `scripted:learner_sim`
 
@@ -242,20 +242,69 @@ What this does and does not affect:
   assistant without being written here first. Section 6 lists what is still open, and those
   belong to the author.
 
-## 6. What is still open (the author's call, before the run)
+## 6. The run, fixed (the author's decision, 2026-10-30, before any episode)
 
-The bar is fixed (section 5). What remains:
+Everything below is frozen. Nothing here may be changed once the first episode of a game is
+played: the lock file records the model, the trial block **and the condition set**, and an
+otherwise-identical rerun with a different condition set is refused as a second draw
+(section 8). So a condition cannot be added to a game later -- it would need its own game or
+its own fresh block.
 
-1. **How the four games combine.** Whether the headline is the pooled paired difference over
-   the four games (which section 5 shows is the version with enough precision) or a per-game
-   verdict, and whether all four are played at once or the two Proteinbase targets first.
-2. **Which conditions and how many trials.** A and B1 at minimum, to repeat the section 16
-   split between the model's own judgment and the tools; C and B2 if the budget allows. 20
-   trials per game is what section 5's arithmetic supports. The trial block starts at 0 for
-   these games: they have never been played. Whatever is chosen is fixed before the first
-   episode, and any extension needs its rule written here first.
-3. **The cost.** One pilot episode, then the usual projection and cap. These pools are
-   90 designs rather than 1,320, so transcripts and costs should be well below E's.
+| | decision |
+| --- | --- |
+| games | all four, played together: `AB-nipah`, `AB-egfr`, `AB-bbf14`, `AB-bhrf1` |
+| conditions | **A, B1, B2** |
+| models | `deepseek` and `mimo`, each in its own run directory |
+| trials | 20 per game, per condition, per model: block **0-19** (these games have never been played) |
+| headline | the **pooled** paired difference over the four games |
+| caps | 6 USD for the deepseek run directory, 4 USD for mimo |
+
+**Why pooled, and not per game.** Section 5's arithmetic: at 20 trials one game resolves to a
+90% half-width of about 1.8 hits, so a per-game verdict would need a true effect of ~2.9 hits
+to clear the 1.07-hit margin -- four likely-inconclusive answers. Pooled over four games (80
+pairs per model) the half-width is about 0.9, so an effect of ~2.0 hits clears. The per-game
+numbers are still reported beside the pooled one, descriptively, with no threshold attached.
+
+**Why A, B1, B2 and not C.** A and B1 repeat section 16's split between the model's own
+judgment and the tools. B2 (B1 without `similar_designs`) is the one that carries new
+information: on E the advisor's entire measurable contribution was that single tool
+(B1-B2 +7.15 ds / +3.85 mimo, while B2-A straddled zero on both models), and only a fresh
+pool can say whether that is a property of E or of the method. C is dropped because it has
+never separated from B1 -- +0.1 on N-dev (section 13) and +0.1 on E (section 15).
+
+**Why 20 trials.** It is what the pooled arithmetic above assumes. Fewer loses the
+resolution; more buys little against a 1.07-hit margin. **No extension is registered**: if the
+pooled interval straddles the margin the result is reported as inconclusive, because an
+extension decided after seeing the numbers is optional stopping.
+
+**Cost.** 240 episodes per model. At the per-episode rates measured on E (deepseek 0.0172,
+mimo 0.0109 USD) that projects to 4.13 and 2.62 USD, and the caps above leave headroom. Those
+rates are an **upper bound**: these pools hold 90 designs against E's 1,340, so tool results
+and transcripts are shorter. The caps are hard limits, checked before every model call.
+
+**Registered configuration hashes**, from a dry run of the registered command (the game does
+not enter this hash, so one value per model covers all four games). A run whose records carry
+anything else fails the gate:
+
+| model | `config_hash` |
+| --- | --- |
+| `deepseek` | `0fecb4a7e74a` |
+| `mimo` | `c2c8dac7e136` |
+
+Verified at the same time: the command is refused without `--final-run`; with it, a dry run
+plans 60 episodes per game (3 conditions x 20 trials) with A at 8 tools, B1 at 14 and B2 at
+13; and a dry run writes **no** lock, so planning does not consume the test.
+
+**The scripted ladder** is played on the same seeds, in the same run directories, at the same
+time -- it is free, and these pools' ladder numbers cannot be computed any earlier than the
+final run itself (section 2).
+
+### What this run can and cannot say
+
+Four games are **four targets from one design campaign, not four independent replications**.
+Pooling them measures the method across targets within this release; it does not measure it
+across campaigns, and the write-up must not read it as the latter. The targets also share a
+single generator mix, a single scoring pipeline and a single pair of vendors.
 
 ## 7. The configuration these games run on
 
@@ -321,3 +370,42 @@ What the rehearsal has already exercised, before any real episode:
   finished, 0 invalid tool arguments;
 * the guard itself, both halves -- a final-test game refuses its own outcomes, and the
   rehearsal game cannot reach the real pools.
+
+## 10. The commands, as registered
+
+Played once per model. The condition set and trial block below are what the lock records; a
+rerun must repeat them exactly, and does nothing but fill in episodes that are missing.
+
+The scripted ladder first (free, no key, and the only time these numbers can be computed):
+
+```bash
+for g in AB-nipah AB-egfr AB-bbf14 AB-bhrf1; do
+  replaylab-eval scripted --run-dir runs/ab-ds --games $g \
+      --policies random,learner,learner_sim,learner_purchased,learner_sim_purchased \
+      --trials 20 --final-run
+done
+```
+
+Then the agent, one game at a time (each game has its own lock):
+
+```bash
+for g in AB-nipah AB-egfr AB-bbf14 AB-bhrf1; do
+  replaylab-eval run --run-dir runs/ab-ds --model deepseek --games $g \
+      --conditions A,B1,B2 --trials 20 --max-usd 6 --final-run
+done
+```
+
+Then both again with `--run-dir runs/ab-mimo --model mimo --max-usd 4`. Finally, per model:
+
+```bash
+replaylab-eval compare --records runs/ab-ds/episodes.jsonl --game AB-nipah \
+    --a B1 --b scripted:learner_sim --ci 0.9 --resamples 10000 --seed 0 --trial-range 0-19
+```
+
+The pooled headline is the same paired bootstrap over all four games at once, pairing on
+`(game, trial)` rather than on `trial`.
+
+**Gates before any hit count is read** (section 5 of `docs/prereg-orientation.md` is the
+worked example): every episode `finished`; one `config_hash` per model, equal to the frozen
+hash the lock recorded; the scripted rows present on every game; and no uncommitted change in
+`src`, `prompts` or `config` in the tree that played them.

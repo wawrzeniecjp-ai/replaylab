@@ -320,6 +320,23 @@ def test_every_anthropic_target_has_the_crosswalk_features():
 # --- the pre-registered bar ---------------------------------------------------------------
 
 
+def test_the_registered_run_matches_the_configuration_it_will_be_played_with():
+    """The conditions and trial count fixed in section 6 must exist and be playable."""
+    from replaylab.eval.conditions import load_conditions
+    from replaylab.interfaces.server import REGISTERED_TOOLS
+
+    prereg = (ROOT / "docs/prereg-anthropic.md").read_text()
+    assert "| conditions | **A, B1, B2** |" in prereg
+    assert "block **0-19**" in prereg
+    conditions = load_conditions(ROOT / "config/conditions.yaml", REGISTERED_TOOLS)
+    for name in ("A", "B1", "B2"):
+        assert name in conditions, name
+    # B2 is B1 without the neighbour search: that difference is the point of including it
+    assert set(conditions["B1"].tools) - set(conditions["B2"].tools) == {"similar_designs"}
+    # C was dropped; if it is ever added back the registered table has to change with it
+    assert "| conditions | **A, B1, B2, C** |" not in prereg
+
+
 def test_the_pre_registered_bar_is_a_policy_that_exists():
     """The bar named in the pre-registration has to be a policy the ladder can play."""
     from replaylab.interfaces.policy_factory import POLICY_NAMES
