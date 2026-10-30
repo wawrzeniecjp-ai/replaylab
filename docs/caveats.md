@@ -117,6 +117,16 @@ them inverted, so the inverted one carries half the signal. Those queries fed pu
 batches were submitted directly after one, and on average **22.9%** of such a batch was drawn
 from the worst-first rows (11 batches more than half, one entirely).
 
+**Fixed, for everything played from here on** (commit on `final-test-plumbing`, before any
+Anthropic episode): `describe_campaign` and `column_summary` report each column's
+`higher_is_better`; the fit tools report weights in the raw-value direction, so a positive
+weight means a higher raw value goes with binding; `query_pool`'s description states the
+hazard without naming a column; the system prompt says the scores do not all point the same
+way. D7 is untouched -- the values shown are still raw. **Nothing was replayed:** the N-dev
+and E results stand as results about the configuration they were played on, and the fix
+changes the prompt and tool-description hashes, so the Anthropic games carry a different
+`config_hash` (`docs/prereg-anthropic.md` section 7).
+
 **What the write-up should say.** That the toolkit, not the model, is at fault here, and in
 which direction it cuts: buying designs selected for the worst score **hurts** the agent, so
 E's result (section 15, agent exceeds on all four cells) was obtained *despite* this and

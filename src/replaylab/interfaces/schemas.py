@@ -31,11 +31,14 @@ class Condition(_Model):
 
 
 class ColumnInfo(_Model):
-    """A queryable column: name, value type and share of the pool that has a value."""
+    """A queryable column: name, value type, coverage and which direction is the good one."""
 
     name: str
     type: Literal["integer", "category", "number"]
     coverage: float
+    # True when a higher raw value is the better one, False when a lower one is; None for
+    # length and design_class, which have no pre-registered direction.
+    higher_is_better: bool | None = None
 
 
 class DescribeCampaign(_Model):
@@ -59,6 +62,9 @@ class DescribeCampaign(_Model):
 class NumericSummary(_Model):
     """min, median, max and missing share of one numeric column over the whole pool."""
 
+    # True when a higher raw value is the better one, False when a lower one is; None when
+    # the column has no pre-registered direction.
+    higher_is_better: bool | None = None
     min: float | None
     median: float | None
     max: float | None
@@ -192,7 +198,11 @@ class ProposeBatchResult(_Model):
 
 
 class Weight(_Model):
-    """One logistic-model coefficient."""
+    """One logistic-model coefficient, in the raw-value direction.
+
+    A positive weight means a higher **raw** value of the column goes with binding, so the
+    sign can be read directly against the values ``query_pool`` returns.
+    """
 
     feature: str
     weight: float
@@ -229,7 +239,7 @@ class Validation(_Model):
 
 
 class CustomWeight(_Model):
-    """One input's weight, with its posterior sd (l2 only)."""
+    """One input's weight, in the raw-value direction, with its posterior sd (l2 only)."""
 
     feature: str
     weight: float

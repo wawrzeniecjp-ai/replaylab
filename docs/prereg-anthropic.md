@@ -257,7 +257,33 @@ The bar is fixed (section 5). What remains:
 3. **The cost.** One pilot episode, then the usual projection and cap. These pools are
    90 designs rather than 1,320, so transcripts and costs should be well below E's.
 
-## 7. The guard
+## 7. The configuration these games run on
+
+The orientation defect of `docs/caveats.md` entry 4 was **fixed before any of these games was
+played**, and this is the one respect in which their configuration differs from the one that
+produced the N-dev and E results:
+
+* `describe_campaign` and `column_summary` now report each column's `higher_is_better`
+  (`None` for `length` and `design_class`, which have no pre-registered direction);
+* `fit_and_rank` and `fit_custom_model` report each weight in the **raw-value direction**, so
+  a positive weight means a higher raw value goes with binding. Magnitudes, the ranking and
+  which weights l1 sets to zero are unchanged -- only the reported sign is re-expressed;
+* `query_pool`'s description states the hazard without naming a column, so it stays true for
+  any pool; the system prompt says the scores do not all point the same way, without naming a
+  tool (it has to hold for every condition).
+
+Nothing about D7 changed: the values the player sees are still raw and still never
+reoriented. The fix describes the orientation, it does not apply it.
+
+This changes the prompt and tool-description hashes, so these four games do not share a
+`config_hash` with the played N-dev and E blocks. That is accepted rather than avoided: the
+Anthropic games already differ in pool, features, target set, shape and margin, so the
+comparison was never a paired one, and running the final test through a surface known to
+mislead would have been the worse trade. The played results stand as results about the
+configuration they were played on; **nothing is replayed** (`docs/caveats.md` entry 4 says why
+the direction of the defect means neither verdict is at risk).
+
+## 8. The guard
 
 `AB-nipah`, `AB-egfr`, `AB-bbf14` and `AB-bhrf1` are each marked `final_test: true` in
 `config/games.yaml`, so:
@@ -272,7 +298,7 @@ The bar is fixed (section 5). What remains:
 
 Each game has its own lock, so playing one game does not consume the others.
 
-## 8. The rehearsal
+## 9. The rehearsal
 
 `AB-rehearsal` is the same shape on a same-shape copy built by
 `scripts/build_anthropic.py --rehearsal`, which takes one game-sized slice of the real

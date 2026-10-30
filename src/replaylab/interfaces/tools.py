@@ -90,13 +90,16 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
         "of designs you have not bought."
     ),
     "column_summary": (
-        "Summarize each column over the whole pool (min, median, max and share missing; counts for classes). "
-        "Use it to pick thresholds before querying. It says nothing about which designs are hits."
+        "Summarize each column over the whole pool (min, median, max, share missing and higher_is_better; counts for classes). "
+        "higher_is_better says which direction is the good one, since values are raw; use it to pick thresholds "
+        "before querying. It says nothing about which designs are hits."
     ),
     "query_pool": (
         "List unpurchased designs with their raw metric values, optionally filtered and sorted (at most 50 rows). "
         "Use it to look at candidates before buying, or pass design_ids to look up specific designs (purchased ones included). "
-        "Metric values are raw, so a lower ProteinMPNN score is better."
+        "Values are raw and never reoriented, so for some columns a LOWER value is better and sorting "
+        "descending returns the worst designs: check the column's higher_is_better, which describe_campaign "
+        "and column_summary report."
     ),
     "submit_batch": (
         "Buy up to batch_size designs that are not yet purchased or pending, within budget. "
@@ -134,10 +137,13 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
     ),
     "fit_and_rank": (
         "Fit a regularized logistic model on delivered designs and rank unpurchased designs by predicted hit probability. "
-        "Needs at least 2 hits and 8 delivered purchases, otherwise it returns insufficient_data. Use it to see which features matter."
+        "Needs at least 2 hits and 8 delivered purchases, otherwise it returns insufficient_data. "
+        "Use it to see which features matter: each weight is in the raw-value direction, so positive means a "
+        "higher raw value of that column goes with binding."
     ),
     "fit_custom_model": (
-        "Fit your own logistic regression on the delivered results, with the options below, and rank the unpurchased designs. "
+        "Fit your own logistic regression on the delivered results, with the options below, and rank the unpurchased "
+        "designs; each reported weight is in the raw-value direction, so positive means a higher raw value goes with binding. "
         "It needs at least 2 hits and 8 delivered purchases, otherwise it returns insufficient_data; with the default options "
         "it is the same model as fit_and_rank. "
         "validation compares the model's leave-one-out log loss with a base-rate baseline (improvement above 0 means better "
@@ -334,7 +340,12 @@ class Toolbox:
                 else "number"
             )
             columns.append(
-                s.ColumnInfo(name=name, type=kind, coverage=_r6(present / n if n else 0.0))
+                s.ColumnInfo(
+                    name=name,
+                    type=kind,
+                    coverage=_r6(present / n if n else 0.0),
+                    higher_is_better=self._higher_is_better(name),
+                )
             )
         config = state.config
         return s.DescribeCampaign(
@@ -352,6 +363,17 @@ class Toolbox:
             stopped=self._campaign.stopped,
             columns=columns,
         )
+
+    def _higher_is_better(self, name: str) -> bool | None:
+        """Whether a higher raw value of this column is the better one, or None if undefined.
+
+        ``length`` and ``design_class`` have no pre-registered direction, so they get None
+        rather than a guess.
+        """
+        for spec in self._fc.specs:
+            if spec.name == name:
+                return spec.higher_is_better
+        return None
 
     def column_summary(self, columns: list[str] | None = None) -> s.ColumnSummary:
         """min/median/max and missing share (or class counts) per column, whole pool."""
@@ -374,6 +396,7 @@ class Toolbox:
                 )
             elif present:
                 summary[name] = s.NumericSummary(
+                    higher_is_better=self._higher_is_better(name),
                     min=_r6(min(present)),
                     median=_r6(statistics.median(present)),
                     max=_r6(max(present)),
@@ -610,6 +633,18 @@ class Toolbox:
             )
         return fitted
 
+    def _raw_direction(self, feature: str) -> float:
+        """+1 or -1: the sign that turns an oriented weight into the raw-value direction.
+
+        The model fits on oriented features (D7: every column flipped so that higher means
+        more likely to bind), but every value the tools show is raw. Reporting an oriented
+        weight beside raw values invites reading a lower-is-better column backwards, so the
+        reported weight is multiplied by the column's orientation and a positive weight then
+        means "a higher **raw** value goes with binding". Magnitudes, and which weights l1
+        set to zero, are unchanged.
+        """
+        return float(self._ctx.preprocessor.orientation.get(feature, 1.0))
+
     def _preprocessor_for(self, state: CampaignState, features: list[str] | None) -> Preprocessor:
         """The pool preprocessor, or one refitted on a subset of the features."""
         if features is None:
@@ -751,7 +786,10 @@ class Toolbox:
             n_train=fitted.n_train,
             n_hits=fitted.n_hits,
             converged=fitted.converged,
-            top_weights=[s.Weight(feature=f, weight=_r6(w)) for f, w in fitted.top_weights(5)],
+            top_weights=[
+                s.Weight(feature=f, weight=_r6(w * self._raw_direction(f)))
+                for f, w in fitted.top_weights(5)
+            ],
             ranked=ranked,
             exploration_ids=[remaining[i] for i in picks],
         )
@@ -825,7 +863,10 @@ class Toolbox:
                 loo_auc=_r6(result.loo_auc),
                 loo_auc_se=_r6(result.loo_auc_se),
             ),
-            weights=[s.CustomWeight(feature=f, weight=_r6(w), sd=_r6(sd)) for f, w, sd in weights],
+            weights=[
+                s.CustomWeight(feature=f, weight=_r6(w * self._raw_direction(f)), sd=_r6(sd))
+                for f, w, sd in weights
+            ],
             ranked=[
                 s.CustomRanked(
                     design_id=available[i],
