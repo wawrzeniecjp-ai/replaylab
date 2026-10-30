@@ -1016,3 +1016,67 @@ model):
 
 Extension, only if triggered: the same commands with `--trials 40` (and
 `--n 80 --max-usd 6` for the pilots); existing episodes are skipped.
+
+
+**Results (2026-10-30: gates before hit counts).** All four gates pass per
+model: 0/40 failures, 40/40 `finished`, config hashes `d103491a18c7` (ds) and
+`1665298211ef` (mimo) exactly as registered, `git diff dbff08e..4672c20 --
+src prompts config` empty, four scripted policies complete on all 20 trials.
+
+| cell | agent - `learner_sim` (bar) | 90% CI | W/L/T | §15 verdict |
+| --- | --- | --- | --- | --- |
+| deepseek B1 (headline) | **+12.25** | [8.85, 15.55] | 17/3/0 | **EXCEEDS** (low > 0) |
+| deepseek C | +12.35 | [9.2, 15.25] | 17/2/1 | **EXCEEDS** |
+| mimo B1 | **+13.7** | [12.05, 15.35] | 20/0/0 | **EXCEEDS** |
+| mimo C | +11.85 | [9.1, 14.5] | 18/1/1 | **EXCEEDS** |
+
+**All four cells exceed the bar outright** -- nothing is inconclusive, so the
+extension never triggers and the verdicts are **final on trials 100-119**.
+This is the outcome §15 named as the one that would say the agent adds
+something: a frozen configuration, a transfer set, a fresh block.
+
+* Secondary (registered): vs `random` +12.5 to +14.35, vs `learner` +14.85 to
+  +16.7, vs `learner_sim_purchased` +17.75 to +19.6 -- every interval above
+  zero. C - B1: +0.1 [-4.85, 4.75] (ds), -1.85 [-5.65, 1.7] (mimo) -- the
+  custom model neither helps nor hurts, consistent with section 13.
+* Behaviour profile (registered secondary): 24-28 tool calls per episode,
+  dominated by `query_pool` (214-228 calls per 20 episodes); `submit_batch`
+  always full; batches are hand-built (`propose_batch` only 12-29 calls);
+  errors rare (1-3 per 20 episodes). `fit_custom_model` chose
+  `similarity_feature: true` in 24-29 of 30-32 calls per model pair.
+* **Mechanism (round profile vs the bar):** mean deltas by round -- ds B1
+  [0.2, +5.8, +9.2, +12.2], ds C [-0.1, +4.0, +9.8, +12.3], mimo B1
+  [-0.2, +4.5, +11.1, +13.7], mimo C [-0.2, +3.9, +9.7, +11.8]. Round 1 is a
+  wash (~1 hit each: both start blind). The lead is **built in round 2, when
+  no model can fit for anyone** -- the agent's hand-rolled `query_pool` /
+  `column_summary` filtering finds 4-6 hits where the scripted fallback finds
+  ~0, and those hits open the agent's own model gate a full round early
+  (section 8: the scripted gate only opens in round 4). Rounds 3-4 compound.
+  Mean hits 22.4-24.2 against a bar at 10.4: a ~38-40% hit rate on a
+  16%-rate pool with two features, length and class.
+
+## 16. Amendment: condition A on the transfer set (2026-10-30)
+
+Written **before any condition-A episode on E exists** (checked: the E records
+hold only B1 and C, trials 100-119). §15's cells are judged and final; this
+adds a **descriptive ablation** -- no pass/fail claim attaches to it, and
+nothing in §15 is re-judged.
+
+* **Question:** is E's gain produced by campaign-side judgement (filters,
+  class/threshold queries) or by the advisor tools? §15's mechanism says the
+  lead opens in round 2, before any model can fit; `A` (campaign tools only)
+  tests that directly. Expected shapes: A ~= B1 (judgement carries it) or
+  B1 > A (advisor compounds from round 3).
+* **Setup:** condition `A`, game E, trials 100-119, both models, the same
+  frozen `dbff08e` tree. The A cell carries its own config hash (conditions
+  are hashed) -- expected, and confined to that cell.
+* **Comparisons, same settings** (`--ci 0.9 --resamples 10000 --seed 0
+  --trial-range 100-119`): A vs `scripted:learner_sim`, then B1 - A and
+  C - A per model. Intervals reported; no threshold registered -- this is
+  description, not a claim.
+
+    replaylab-eval pilot --run-dir runs/egfr-ds --model deepseek --games E \
+        --conditions A --trials 20 --first-trial 100 --n 20 --max-usd 1
+    replaylab-eval pilot --run-dir runs/egfr-mimo --model mimo --games E \
+        --conditions A --trials 20 --first-trial 100 --n 20 --max-usd 1
+    # the four scripted rows for trials 100-119 already exist in both files
