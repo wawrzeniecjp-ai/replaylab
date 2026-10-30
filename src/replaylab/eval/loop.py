@@ -8,6 +8,12 @@ order. An episode ends with exactly one ``stop_reason``:
 * ``agent_ended``: the model replied without any tool call while the campaign was still open;
 * ``max_turns``: the turn limit was reached.
 
+On ``finished`` and ``agent_stopped`` the loop asks the model once more, without tools, for
+the plain-text summary the system prompt promises; until this existed the agent never got the
+turn in which to write it (every recorded episode ended on a tool result). The epilogue is
+best effort: the campaign is already over, so a failure only raises the
+``closing_summary_failed`` flag and the finished episode is recorded as it is.
+
 A spend cap or a model failure raises (``SpendCapReached`` / ``LLMError``): such an episode has
 no result and is not recorded, so a resumed run plays it again. A reply cut off by the
 output-token limit is such a failure (``ResponseTruncated``), never ``agent_ended``.
@@ -20,10 +26,10 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
-from replaylab.eval.llm_types import LLMClient, ResponseTruncated
+from replaylab.eval.llm_types import LLMClient, LLMError, ResponseTruncated
 from replaylab.eval.mcp_bridge import McpBridge
 from replaylab.eval.messages import assistant_message, initial_messages, tool_message
-from replaylab.eval.spend import SpendGuard
+from replaylab.eval.spend import SpendCapReached, SpendGuard
 
 
 @dataclass(frozen=True)
@@ -56,6 +62,7 @@ class EpisodeTrace:
             "fabricated_tool_calls": 0,
             "tool_errors": 0,
             "truncated_outputs": 0,
+            "closing_summary_failed": 0,
         }
     )
 
@@ -77,6 +84,51 @@ def _parse_arguments(raw: str) -> tuple[dict[str, Any] | None, str | None]:
     if not isinstance(value, dict):
         return None, "the arguments must be one JSON object"
     return value, None
+
+
+async def _closing_summary(
+    llm: LLMClient,
+    trace: EpisodeTrace,
+    *,
+    guard: SpendGuard | None,
+    turn: int,
+) -> None:
+    """Ask the model, without tools, for the final summary the system prompt promises.
+
+    Best effort by design: the campaign is over and a finished episode is never discarded
+    over its epilogue, so a cap hit, a model failure or an empty reply only raises
+    ``closing_summary_failed``. The usage row carries ``closing``, so the per-turn rows stay
+    one per turn.
+    """
+    if guard is not None:
+        try:
+            guard.check()
+        except SpendCapReached:
+            trace.flags["closing_summary_failed"] = 1
+            return
+    try:
+        reply = await llm.complete(trace.messages, [])  # no tools: nothing left to call
+    except LLMError:
+        trace.flags["closing_summary_failed"] = 1
+        return
+    cost = guard.record_call(reply.usage) if guard is not None else 0.0
+    trace.cost_usd += cost
+    trace.usage.append(
+        {
+            "turn": turn,
+            "closing": True,
+            "input_miss": reply.usage.input_miss,
+            "input_cached": reply.usage.input_cached,
+            "output": reply.usage.output,
+            "input_cache_write": reply.usage.input_cache_write,
+            "cost_usd": cost,
+        }
+    )
+    if reply.tool_calls or not reply.content or not reply.content.strip():
+        # tools were not offered, and a reply without text leaves no epilogue to record
+        trace.flags["closing_summary_failed"] = 1
+        return
+    trace.messages.append({"role": "assistant", "content": reply.content})
 
 
 async def run_episode(
@@ -168,6 +220,7 @@ async def run_episode(
         current = status()
         if current.finished:
             trace.stop_reason = "agent_stopped" if current.stopped else "finished"
+            await _closing_summary(llm, trace, guard=guard, turn=turn)
             return trace
 
     trace.stop_reason = "max_turns"

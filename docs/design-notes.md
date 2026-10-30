@@ -1126,12 +1126,26 @@ Readings (intervals reported; §16 registered no threshold):
   `config/conditions.yaml`) would test it directly, on a fresh block from
   trial 140 and with its own pre-registration.
 
-**Open follow-up (outside §15/§16, deferred).** `prompts/system.md` promises a
+**Follow-up, now fixed (outside §15/§16).** `prompts/system.md` promises a
 final plain-text summary that the loop never requests on the `finished` /
 `agent_stopped` paths: `loop.py` returns immediately after the last tool call,
 and every agent episode on record ends on a tool result (60 ds + 60 mimo);
 only a voluntary `agent_ended` could show the summary, and no model ever took
-that path. Fix candidates: one final no-tools call to collect the summary, or
-rewording the prompt. Either edits loop/prompt code (new config hash; fresh
-block per §9 rule 5 applies to any future confirmatory claim), so it is decided
-separately, not inside this test.
+that path.
+
+Fixed after §15 and §16 were judged, so no episode here is affected: on
+`finished` and `agent_stopped` the loop now makes one further call **without
+tools** and appends the reply as the last assistant message. It is best effort
+-- a cap hit, a model failure (`ResponseTruncated` included) or an empty reply
+only raises a new `closing_summary_failed` flag, because a finished campaign
+must not be discarded over its epilogue. The usage row carries `closing: True`,
+so "one usage row per turn" still holds for the turns.
+
+**This does not change the config hash**, which covers the model and price
+entries, both prompts, the conditions file, the tool descriptions and `Limits`
+-- not `loop.py`. So the hash alone cannot separate episodes played before and
+after it; what does is §15 gate 3's second half, the `git diff ... -- src`
+check against the record's `git_sha`. Any later confirmatory claim still needs
+a fresh block (§9 rule 5), and the epilogue adds one call per episode at the
+episode's largest context (mostly cache reads, and outside the pilot's
+projection), so recorded per-episode cost shifts slightly upwards.

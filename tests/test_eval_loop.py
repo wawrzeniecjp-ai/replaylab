@@ -59,7 +59,8 @@ def test_a_heuristic_agent_plays_the_campaign_to_the_end(env):
     assert state.finished and not state.stopped
     assert trace.messages[0] == {"role": "system", "content": "SYSTEM"}
     assert trace.messages[1] == {"role": "user", "content": "USER"}
-    assert trace.turns == len([u for u in trace.usage])
+    # one usage row per turn, plus the closing summary's row, which carries "closing"
+    assert trace.turns == len([u for u in trace.usage if not u.get("closing")])
     assert all(v == 0 for v in trace.flags.values())
 
 
@@ -233,6 +234,85 @@ def test_reasoning_is_recorded_even_when_it_is_not_passed_back(env):
     assert trace.reasoning == [None, "thinking hard"]  # one entry per assistant message
     assert len(assistants) == 2
     assert "reasoning_content" not in json.dumps(trace.messages)  # nothing sent back
+
+
+def _rows_from(messages):
+    for message in reversed(messages):
+        if message["role"] == "tool":
+            data = json.loads(message["content"])
+            if isinstance(data, dict) and "rows" in data:
+                return data["rows"]
+    return []
+
+
+def _play_to_finished(rounds=4, usage=None):
+    """A script that buys the pool's first rows until the campaign is over."""
+    extra = {"usage": usage} if usage is not None else {}
+
+    def submit_from_last_query(messages):
+        ids = [row["design_id"] for row in _rows_from(messages)][:5]
+        return turn(calls=(call("submit_batch", {"design_ids": ids}),), **extra)
+
+    script = []
+    for _ in range(rounds):
+        script.append(turn(calls=(call("query_pool", {"limit": 5}),), **extra))
+        script.append(submit_from_last_query)
+    return script
+
+
+def test_the_closing_summary_is_requested_without_tools_and_recorded(env):
+    """The system prompt promises a final summary; the loop has to ask for it."""
+    seen = []
+
+    class Spy(ScriptedLLM):
+        async def complete(self, messages, tools):
+            seen.append([spec["function"]["name"] for spec in tools])
+            return await super().complete(messages, tools)
+
+    summary = "Bought 20 designs, found 6 hits, stopped at the round limit."
+    llm = Spy(_play_to_finished() + [turn(content=summary)])
+    trace, _ = play(env, llm)
+
+    assert trace.stop_reason == "finished"
+    assert seen[-1] == []  # the epilogue is asked for with no tools at all
+    assert trace.messages[-1] == {"role": "assistant", "content": summary}
+    assert trace.usage[-1]["closing"] is True
+    assert trace.flags["closing_summary_failed"] == 0
+
+
+def test_a_failing_closing_summary_never_discards_the_finished_episode(env):
+    """Best effort: the campaign is already over, so the epilogue only gets flagged."""
+
+    class RaisingOnClosing(ScriptedLLM):
+        async def complete(self, messages, tools):
+            if not tools:
+                raise LLMError("provider 500 on the epilogue", status=500)
+            return await super().complete(messages, tools)
+
+    trace, state = play(env, RaisingOnClosing(_play_to_finished()))
+
+    assert trace.stop_reason == "finished" and state.finished
+    assert trace.flags["closing_summary_failed"] == 1
+    assert trace.messages[-1]["role"] == "tool"  # the episode ends where play ended
+
+
+def test_a_closing_summary_over_the_spend_cap_is_flagged_not_raised(env, tmp_path):
+    """The cap still bites, but a finished episode is not thrown away for its epilogue."""
+    usage = Usage(input_miss=10_000, input_cached=0, output=0)  # 0.01 USD per call
+    # eight turns of play cost 0.08: the last turn still passes the check, the epilogue does not
+    guard = SpendGuard(tmp_path, PRICE, "m", max_usd=0.075)
+    trace, _ = play(env, ScriptedLLM(_play_to_finished(usage=usage)), guard=guard)
+
+    assert trace.stop_reason == "finished"
+    assert trace.flags["closing_summary_failed"] == 1
+    assert not [u for u in trace.usage if u.get("closing")]  # no call was made
+
+
+def test_the_closing_summary_is_also_asked_for_after_the_stop_tool(env):
+    llm = ScriptedLLM([turn(calls=(call("stop", {"reason": "enough"}),)), turn(content="Summary.")])
+    trace, _ = play(env, llm)
+    assert trace.stop_reason == "agent_stopped"
+    assert trace.messages[-1] == {"role": "assistant", "content": "Summary."}
 
 
 def test_the_model_sees_exactly_the_offered_tools(env):

@@ -12,6 +12,8 @@ from typing import Any
 from replaylab.eval.llm_types import AssistantTurn, LLMError, ToolCall, Usage
 
 DEFAULT_USAGE = Usage(input_miss=100, input_cached=0, output=20)
+# what both fakes reply to the loop's no-tools epilogue request
+CLOSING_SUMMARY = "The campaign is over; here is what I bought and found."
 
 
 def turn(
@@ -49,6 +51,9 @@ class ScriptedLLM:
     async def complete(self, messages: list[dict], tools: list[dict]) -> AssistantTurn:
         self.histories.append(copy.deepcopy(messages))
         if not self._script:
+            if not tools:
+                # the loop's closing summary, which most scripts do not bother to script
+                return turn(content=CLOSING_SUMMARY, usage=Usage(0, 0, 0))
             raise AssertionError("the scripted LLM ran out of turns")
         item = self._script.pop(0)
         return item(messages) if callable(item) else item
@@ -93,6 +98,8 @@ class HeuristicLLM:
         self.max_running = 0
 
     async def complete(self, messages: list[dict], tools: list[dict]) -> AssistantTurn:
+        if not tools:  # the closing summary: before the counter, so call numbering is unchanged
+            return turn(content=CLOSING_SUMMARY, usage=Usage(0, 0, 0))
         self.calls += 1
         self.running += 1
         self.max_running = max(self.max_running, self.running)
