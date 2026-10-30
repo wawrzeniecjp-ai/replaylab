@@ -11,6 +11,7 @@ from replaylab.policies import make_rng
 
 
 def scores_dict(card: ScoreCard) -> dict[str, Any]:
+    """A score card as the JSON-ready dict every record's ``scores`` field holds."""
     return {
         "hits": card.hits,
         "purchases": card.purchases,

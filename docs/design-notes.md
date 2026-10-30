@@ -1149,3 +1149,34 @@ check against the record's `git_sha`. Any later confirmatory claim still needs
 a fresh block (§9 rule 5), and the epilogue adds one call per episode at the
 episode's largest context (mostly cache reads, and outside the pilot's
 projection), so recorded per-episode cost shifts slightly upwards.
+
+## 17. Amendment: condition B2 on the transfer set (2026-10-30)
+
+Written **before any condition-B2 episode on E exists** (checked: the E records
+hold A, B1 and C only). Descriptive, like §16: no threshold, no pass/fail;
+§15 and §16 are untouched.
+
+* **Question:** how much of the advisor gain (§16: B1 - A = +6.7 ds, +4.5
+  mimo) comes from `similar_designs` specifically? B2 is B1 minus that one
+  tool, so **B1 - B2** isolates it. The N-dev forensics after §9 implicated the
+  neighbour crawl in the agent's worst runs; E is where that gets a clean test
+  in a cell where the advisor demonstrably helps.
+* **Setup:** condition `B2` (`config/conditions.yaml`: campaign + advisor -
+  `similar_designs`), game E, trials 100-119, both models, working tree
+  `ba56753` (episodes therefore include the closing-summary call;
+  `config_hash` is unchanged by it -- prompts, conditions, tool descriptions
+  and limits are what the hash covers). B2's own cell carries a different
+  config hash (its conditions text differs) -- expected and confined to it.
+* **Comparisons** (same settings as §15/§16: `--ci 0.9 --resamples 10000
+  --seed 0 --trial-range 100-119`): **B1 - B2** per model (the isolating
+  pair), **B2 - `scripted:learner_sim`** (does the reduced agent still clear
+  the bar?), C - B2 as context. Intervals reported, no threshold registered.
+* **Commands** (the four scripted rows for trials 100-119 already exist in
+  both files; caps cover existing spend plus the projection -- spend is
+  cumulative per run-dir, and pilot means are ds 0.0172 / mimo 0.0109 per
+  episode):
+
+      replaylab-eval pilot --run-dir runs/egfr-ds --model deepseek --games E \
+          --conditions B2 --trials 20 --first-trial 100 --n 20 --max-usd 1.5
+      replaylab-eval pilot --run-dir runs/egfr-mimo --model mimo --games E \
+          --conditions B2 --trials 20 --first-trial 100 --n 20 --max-usd 1.4

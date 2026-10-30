@@ -12,6 +12,7 @@ from replaylab.eval.llm_types import AssistantTurn
 
 
 def initial_messages(system_prompt: str, user_prompt: str) -> list[dict[str, Any]]:
+    """The history every episode starts with: system prompt, then user prompt."""
     return [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_prompt},
@@ -42,4 +43,5 @@ def assistant_message(
 
 
 def tool_message(call_id: str, content: str) -> dict[str, Any]:
+    """The history entry carrying one tool's result back to the model."""
     return {"role": "tool", "tool_call_id": call_id, "content": content}

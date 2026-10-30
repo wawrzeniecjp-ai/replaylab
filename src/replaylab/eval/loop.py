@@ -34,17 +34,26 @@ from replaylab.eval.spend import SpendCapReached, SpendGuard
 
 @dataclass(frozen=True)
 class Limits:
+    """Per-episode caps; reaching ``max_turns`` ends the episode without the campaign being over."""
+
     max_turns: int = 40
 
 
 @dataclass(frozen=True)
 class CampaignStatus:
+    """What the loop samples after each turn: is the campaign over, and why."""
+
     finished: bool  # no further batch can be submitted
     stopped: bool  # ... because the agent stopped it
 
 
 @dataclass
 class EpisodeTrace:
+    """Everything one episode accumulates: history, per-call audit, token use, flags.
+
+    Serialized into an ``EpisodeRecord`` when the episode ends normally.
+    """
+
     messages: list[dict[str, Any]]
     tool_calls: list[dict[str, Any]] = field(default_factory=list)
     usage: list[dict[str, Any]] = field(default_factory=list)
@@ -143,6 +152,13 @@ async def run_episode(
     passback_reasoning: bool = False,
     reasoning_field: str = "reasoning_content",
 ) -> EpisodeTrace:
+    """Play one episode: one model call per turn, every tool call executed in order.
+
+    Ends at ``finished``/``agent_stopped`` (plus the best-effort closing summary),
+    ``agent_ended`` (a plain reply while the campaign is open) or ``max_turns``.
+    A spend cap or model failure raises instead -- such an episode is never
+    recorded, and a later run plays it again.
+    """
     tools = await bridge.tool_specs()
     offered = [spec["function"]["name"] for spec in tools]
     trace = EpisodeTrace(messages=initial_messages(system_prompt, user_prompt))

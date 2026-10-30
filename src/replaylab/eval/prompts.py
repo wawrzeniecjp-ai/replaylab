@@ -12,6 +12,7 @@ USER_PROMPT = (
 
 
 def load_system_prompt(path: Path | str) -> str:
+    """Read the shared system prompt, stripped of surrounding whitespace."""
     return Path(path).read_text().strip()
 
 

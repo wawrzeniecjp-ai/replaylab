@@ -202,6 +202,8 @@ reference:
         - advisor.rates.HitRateReport
         - advisor.rates.estimate_hit_rate
         - advisor.rates.beta_posterior
+        - advisor.analysis.Analysis
+        - advisor.analysis.AnalysisSettings
 
     - title: Policies
       desc: >-
@@ -238,6 +240,53 @@ reference:
         - eval.smoke.ProbeResult
         - eval.smoke.format_report
         - eval.smoke.passback_needed
+
+    - title: Agent evaluation
+      desc: >-
+        The other half of eval: how an LLM actually plays. A matrix of
+        episodes is played through an in-memory MCP server (one model call per
+        turn), each finishable episode becomes one JSON line of records
+        (messages, tool calls, scores, cost), and comparisons pair the lines by
+        seed. Money is capped before every call; the replay viewer turns one
+        records file back into a page you can read.
+      contents:
+        - eval.loop.run_episode
+        - eval.loop.EpisodeTrace
+        - eval.loop.Limits
+        - eval.loop.CampaignStatus
+        - eval.runner.run_matrix
+        - eval.runner.run_pilot
+        - eval.runner.EpisodeSpec
+        - eval.runner.RunnerDeps
+        - eval.runner.expand_matrix
+        - eval.records.EpisodeRecord
+        - eval.records.append_record
+        - eval.records.read_records
+        - eval.records.config_hash
+        - eval.conditions.Condition
+        - eval.conditions.load_conditions
+        - eval.prompts.load_system_prompt
+        - eval.models.ModelConfig
+        - eval.models.load_models
+        - eval.llm.OpenAICompatClient
+        - eval.llm_anthropic.AnthropicClient
+        - eval.llm_types.LLMClient
+        - eval.llm_types.LLMError
+        - eval.llm_types.ResponseTruncated
+        - eval.mcp_bridge.McpBridge
+        - eval.spend.SpendGuard
+        - eval.spend.Price
+        - eval.spend.load_prices
+        - eval.spend.project
+        - eval.spend.SpendCapReached
+        - eval.scorers.hits
+        - eval.scorers.argument_validity
+        - eval.scorers.first_batch_sort_column
+        - eval.scorers.stop_tradeoff
+        - eval.scripted.play_scripted
+        - eval.stats.paired_bootstrap
+        - eval.stats.PairedResult
+        - eval.replay_view.build_page
 
     - title: Agent interfaces
       desc: >-

@@ -9,5 +9,7 @@ guide-section: "Quick Start"
   then [Core concepts](01-concepts.qmd) for the vocabulary (pools, aliases,
   rounds, purchases), then wander into the Reference from there.
 * *Evaluating strategies* → the architecture page's "leak rules" section
-  first, because everything else is designed around them.
+  first, because everything else is designed around them. Then
+  [Evaluation](02-evaluation.qmd): how a model is played, what a run writes,
+  and how two conditions are compared.
 

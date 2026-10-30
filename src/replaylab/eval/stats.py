@@ -18,6 +18,8 @@ class UnpairedError(ValueError):
 
 @dataclass(frozen=True)
 class PairedResult:
+    """The paired comparison two conditions deserve: mean, interval, win ledger."""
+
     n: int
     mean_diff: float
     ci_low: float
@@ -37,6 +39,12 @@ def paired_bootstrap(
     seed: int = 0,
     ci: float = 0.95,
 ) -> PairedResult:
+    """Percentile bootstrap of the per-seed differences ``a[k] - b[k]``.
+
+    Seeds must match exactly (:class:`UnpairedError` otherwise -- pairing is the
+    whole point); ``seed`` fixes the resampling draws, so a comparison is
+    reproducible to the digit.
+    """
     if set(a) != set(b):
         only_a, only_b = sorted(set(a) - set(b), key=str), sorted(set(b) - set(a), key=str)
         raise UnpairedError(

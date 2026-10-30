@@ -44,6 +44,8 @@ _CLIP = 1e-6  # probabilities are clipped to [_CLIP, 1 - _CLIP] for the log loss
 
 @dataclass(frozen=True)
 class AnalysisSettings:
+    """The model options an agent may choose in ``fit_custom_model`` (ranges in :meth:`check`)."""
+
     penalty: str = "l2"
     C: float = 0.1
     similarity: bool = False
@@ -69,6 +71,12 @@ class AnalysisSettings:
 
 @dataclass(frozen=True)
 class Analysis:
+    """One fitted analysis: model, left-one-out quality against the baseline, rankings.
+
+    ``loo_*`` numbers describe the fit on delivered designs only; ``mean``/``upper``
+    and ``order`` are what the candidate pool receives.
+    """
+
     columns: tuple[str, ...]
     coef: tuple[float, ...]
     coef_sd: tuple[float, ...] | None  # posterior sd per weight (l2 only)

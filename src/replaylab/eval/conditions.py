@@ -18,6 +18,8 @@ class ConditionError(ValueError):
 
 @dataclass(frozen=True)
 class Condition:
+    """One named experiment arm: the exact tool list its agent receives."""
+
     name: str
     tools: tuple[str, ...]  # explicit tool names, in server registration order
 
@@ -34,6 +36,13 @@ def _tokens(value: Any, where: str) -> str:
 
 
 def parse_conditions(data: Any, registered: Sequence[str]) -> dict[str, Condition]:
+    """Resolve ``config/conditions.yaml`` into per-name tool tuples.
+
+    Each entry has ``include`` (groups or tool names) and an optional
+    ``exclude``; names resolve against ``registered`` in server order.
+    Raises :class:`ConditionError` for anything malformed, including a
+    condition that would end up with no tools at all.
+    """
     if not isinstance(data, Mapping) or set(data) != {"version", "conditions"}:
         raise ConditionError("conditions config needs exactly the keys version and conditions")
     if data["version"] != 1 or isinstance(data["version"], bool):
@@ -72,6 +81,7 @@ def parse_conditions(data: Any, registered: Sequence[str]) -> dict[str, Conditio
 
 
 def load_conditions(path: Path | str, registered: Sequence[str]) -> dict[str, Condition]:
+    """Read and parse a conditions YAML file (see :func:`parse_conditions`)."""
     return parse_conditions(yaml.safe_load(Path(path).read_text()), registered)
 
 

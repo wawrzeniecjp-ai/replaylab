@@ -60,6 +60,14 @@ def _retryable(error: Exception) -> bool:
 
 
 class OpenAICompatClient:
+    """One chat-completions endpoint behind the ``LLMClient`` protocol.
+
+    Wraps an injected async client (``AsyncOpenAI``-shaped), sends only the
+    configured ``params``, classifies retries (429/5xx/connection with capped
+    exponential backoff, up to ``max_attempts``), and normalizes the reply into
+    an :class:`~replaylab.eval.llm_types.AssistantTurn`.
+    """
+
     def __init__(
         self,
         client: Any,
@@ -97,6 +105,7 @@ class OpenAICompatClient:
         raise AssertionError("unreachable")  # pragma: no cover
 
     async def complete(self, messages: list[dict], tools: list[dict]) -> AssistantTurn:
+        """One completion; empty ``tools`` omits the key (a plain no-tools request)."""
         kwargs: dict[str, Any] = {"model": self._model, "messages": messages, **self._params}
         if tools:
             kwargs["tools"] = tools

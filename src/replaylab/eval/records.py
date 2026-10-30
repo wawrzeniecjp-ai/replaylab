@@ -27,6 +27,13 @@ class CorruptRecords(Exception):
 
 @dataclass
 class EpisodeRecord:
+    """Everything one finished episode leaves behind: one JSON line in ``episodes.jsonl``.
+
+    ``scores`` is the campaign's outcome, ``messages``/``tool_calls`` the full
+    play-by-play, ``config_hash`` + ``git_sha`` pin what produced it, and
+    ``reasoning`` (schema 2) holds one entry per assistant message.
+    """
+
     game: str
     condition: str
     trial: int
@@ -48,9 +55,11 @@ class EpisodeRecord:
 
     @property
     def key(self) -> tuple[str, str, int]:
+        """The identity used to skip completed episodes: (game, condition, trial)."""
         return (self.game, self.condition, self.trial)
 
     def to_dict(self) -> dict[str, Any]:
+        """The JSON-ready mapping written to disk (``sort_keys`` at the door)."""
         return asdict(self)
 
 
@@ -69,6 +78,7 @@ def _drop_partial_tail(path: Path) -> None:
 
 
 def append_record(path: Path | str, record: EpisodeRecord | Mapping[str, Any]) -> None:
+    """Append one record as a single flushed, fsynced line (see the module docstring)."""
     data = record.to_dict() if isinstance(record, EpisodeRecord) else dict(record)
     line = json.dumps(data, sort_keys=True, separators=(",", ":"))
     path = Path(path)
@@ -98,6 +108,7 @@ def read_records(path: Path | str) -> list[dict[str, Any]]:
 
 
 def completed_keys(records: Iterable[Mapping[str, Any]]) -> set[tuple[str, str, int]]:
+    """The (game, condition, trial) identities already in ``records`` -- what the runner skips."""
     return {(r["game"], r["condition"], int(r["trial"])) for r in records}
 
 

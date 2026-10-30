@@ -92,6 +92,11 @@ def _dump(block: Any) -> dict[str, Any]:
 
 
 def extract_usage(usage: Any) -> Usage:
+    """Anthropic usage fields -> the shared :class:`~...llm_types.Usage` shape.
+
+    Cache reads and cache writes are reported apart (Anthropic bills both
+    distinctly); the openai-style adapter never fills ``input_cache_write``.
+    """
     if usage is None:
         return Usage()
 
@@ -107,6 +112,15 @@ def extract_usage(usage: Any) -> Usage:
 
 
 class AnthropicClient:
+    """The Anthropic Messages API behind the ``LLMClient`` protocol.
+
+    Streams every call (long thinking turns would trip the SDK's non-streaming
+    guard), converts the OpenAI-shaped history per request, keeps signed thinking
+    blocks verbatim in ``provider_content``, maps ``stop_reason`` to the shared
+    vocabulary, and treats any unexpected stop (``refusal``) as a hard failure --
+    no mid-episode model fallback. Retries share :mod:`.llm`'s classification.
+    """
+
     def __init__(
         self,
         client: Any,
@@ -144,6 +158,7 @@ class AnthropicClient:
         raise AssertionError("unreachable")  # pragma: no cover
 
     async def complete(self, messages: list[dict], tools: list[dict]) -> AssistantTurn:
+        """One streamed completion; empty ``tools`` omits the key entirely."""
         system, history = to_anthropic(messages)
         kwargs: dict[str, Any] = {"model": self._model, "messages": history, **self._params}
         if system:

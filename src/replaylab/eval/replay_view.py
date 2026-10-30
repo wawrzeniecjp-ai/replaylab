@@ -197,6 +197,8 @@ def ghosts(records: Iterable[Mapping[str, Any]], game: str, seed: int) -> list[d
 
 @dataclass(frozen=True)
 class PoolPaths:
+    """Where the viewer reads a game's pool from (the same files the campaign used)."""
+
     games: Path
     features: Path
     tables: Path

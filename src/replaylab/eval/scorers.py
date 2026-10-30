@@ -9,6 +9,7 @@ BAD_ARGUMENT_KINDS = ("bad_json", "validation", "unknown_tool")
 
 
 def hits(record: Mapping[str, Any]) -> int:
+    """How many hits the episode's campaign found (``record['scores']['hits']``)."""
     return int(record["scores"]["hits"])
 
 
@@ -39,6 +40,7 @@ def argument_validity(record: Mapping[str, Any]) -> float | None:
 
 
 def fabricated_tool_calls(record: Mapping[str, Any]) -> int:
+    """Tool calls the model invented (names never offered by the server)."""
     return sum(1 for c in record["tool_calls"] if c.get("error_kind") == "unknown_tool")
 
 

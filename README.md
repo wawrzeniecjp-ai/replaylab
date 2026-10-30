@@ -45,6 +45,17 @@ pytest -m data -q                                                    # real-data
 
 # Evaluation harness
 python scripts/run_ladder.py                                         # reports/ladder.{csv,md}
+uv sync --extra eval                                                 # adds the LLM client extras
+replaylab-eval conditions                                            # the tool set of every condition
+replaylab-eval pilot --run-dir runs/x --model deepseek --games N-dev \
+    --conditions A,B1 --trials 20 --max-usd 1                        # first episodes + cost projection
+replaylab-eval run --run-dir runs/x --model deepseek --games N-dev \
+    --conditions A,B1 --trials 20 --max-usd 1                        # plays only what is missing
+replaylab-eval scripted --run-dir runs/x --games N-dev \
+    --policies random,learner,learner_sim,learner_sim_purchased --trials 20
+replaylab-eval compare --records runs/x/episodes.jsonl --game N-dev \
+    --a B1 --b scripted:learner_sim --ci 0.9                         # paired bootstrap over seeds
+replaylab-eval view --run-dir runs/x                                 # one HTML page for the run
 ```
 
 ### Note

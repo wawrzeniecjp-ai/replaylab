@@ -34,12 +34,15 @@ from replaylab.interfaces.tools import Toolbox
 
 @dataclass(frozen=True)
 class EpisodeSpec:
+    """One cell of the matrix: (game, condition, trial); the seed derives from game+trial."""
+
     game: str
     condition: str
     trial: int
 
     @property
     def key(self) -> tuple[str, str, int]:
+        """The skip identity: completed (game, condition, trial) cells are never replayed."""
         return (self.game, self.condition, self.trial)
 
 
@@ -57,6 +60,12 @@ def expand_matrix(
 
 @dataclass
 class RunnerDeps:
+    """Everything episodes of one run share: files, prompts, model, hash, guard, limits.
+
+    ``llm`` is ``None`` in dry runs and for scripted episodes; ``config_hash``
+    and ``git_sha`` are stamped into every record this run writes.
+    """
+
     tables_dir: Path
     games_path: Path
     features_path: Path
@@ -79,6 +88,8 @@ class RunnerDeps:
 
 @dataclass
 class RunSummary:
+    """What a matrix run did: played, skipped as already recorded, failed, capped."""
+
     completed: list[tuple[str, str, int]] = field(default_factory=list)
     skipped: int = 0
     failed: list[tuple[tuple[str, str, int], str]] = field(default_factory=list)
@@ -129,6 +140,11 @@ def _runtime(game: str, seed: int, store: str, deps: RunnerDeps):
 
 
 async def run_llm_episode(spec: EpisodeSpec, deps: RunnerDeps) -> EpisodeRecord:
+    """Play one matrix cell end to end: fresh campaign + in-memory server + model loop.
+
+    The episode is recorded only if it ends normally (see ``run_episode``);
+    failures raise, so the caller leaves it unrecorded and a later run replays it.
+    """
     seed = episode_seed(spec.game, spec.trial)
     condition = deps.conditions[spec.condition]
     store = _store_path(deps.store_dir, f"{spec.game}_{spec.condition}_{spec.trial}")

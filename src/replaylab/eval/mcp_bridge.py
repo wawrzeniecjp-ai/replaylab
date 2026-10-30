@@ -25,6 +25,8 @@ class BridgeError(Exception):
 
 @dataclass(frozen=True)
 class ToolResult:
+    """One tool call's fate, exactly as the model will see it (plus bookkeeping)."""
+
     text: str
     ok: bool
     truncated: bool
@@ -33,10 +35,12 @@ class ToolResult:
 
 
 def truncation_marker(max_chars: int) -> str:
+    """The visible suffix appended when a tool result exceeds ``max_chars``."""
     return f"\n[TRUNCATED: the output was longer than {max_chars} characters and was cut here]"
 
 
 def classify_error(text: str) -> str:
+    """Bucket a tool error as validation, unknown_tool or tool_error (for the flags)."""
     lowered = text.lower()
     if "validation error" in lowered:
         return "validation"
@@ -55,12 +59,20 @@ def _clean_error(text: str) -> str:
 
 
 class McpBridge:
+    """The translator between MCP tool results and OpenAI-style function calling.
+
+    Caches the tool listing, converts it to ``tools`` specs, runs calls, and
+    normalizes responses: compact JSON for structured results, ``ERROR: `` prefix
+    for failures, truncation marker beyond ``max_chars``.
+    """
+
     def __init__(self, client: Any, *, max_chars: int = DEFAULT_MAX_CHARS) -> None:
         self._client = client
         self._max_chars = max_chars
         self._specs: list[dict[str, Any]] | None = None
 
     async def tool_specs(self) -> list[dict[str, Any]]:
+        """The server's tools as function-calling specs (cached after the first listing)."""
         if self._specs is None:
             listing = await self._client.list_tools()
             specs = []
@@ -81,9 +93,11 @@ class McpBridge:
         return self._specs
 
     async def tool_names(self) -> list[str]:
+        """The offered tool names, in server registration order."""
         return [spec["function"]["name"] for spec in await self.tool_specs()]
 
     async def call(self, name: str, arguments: dict[str, Any]) -> ToolResult:
+        """Run one tool on the server and wrap what comes back for the model."""
         result = await self._client.call_tool(name, arguments)
         texts = [block.text for block in result.content if getattr(block, "type", None) == "text"]
         if result.is_error:

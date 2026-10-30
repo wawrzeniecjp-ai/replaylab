@@ -23,6 +23,12 @@ class ModelConfigError(ValueError):
 
 @dataclass(frozen=True)
 class ModelConfig:
+    """One model entry from ``config/models.yaml``: where, how, and at whose expense.
+
+    ``api`` picks the adapter (``openai_chat`` or ``anthropic``); ``params`` are
+    sent to the provider verbatim (nothing is invented by the code).
+    """
+
     key: str
     base_url: str
     model: str
@@ -35,6 +41,11 @@ class ModelConfig:
 
 
 def load_models(path: Path | str) -> dict[str, ModelConfig]:
+    """Read ``config/models.yaml``; raises :class:`ModelConfigError` naming the problem.
+
+    The adapter-owned params (``model``/``messages``/``tools``/``system``) are
+    refused in ``params`` -- the adapter sets them itself.
+    """
     data = yaml.safe_load(Path(path).read_text())
     if not isinstance(data, dict) or set(data) != {"version", "models"} or data["version"] != 1:
         raise ModelConfigError("models file needs exactly the keys version (1) and models")
