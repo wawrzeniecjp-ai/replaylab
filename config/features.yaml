@@ -58,6 +58,7 @@ targets:
       - {name: esmfold_plddt}
   ab-egfr: *anthropic_features
   ab-bbf-14: *anthropic_features
+  ab-bhrf1: *anthropic_features
   ab-rehearsal: *anthropic_features
   human-tnfa: &stop_game_features
     first_column: esmfold_plddt

@@ -10,7 +10,7 @@ ladder and the agent conditions play it unchanged (the final run passes
 the release's own documentation, never by looking at outcomes):
 
 * **One game per target**, not one pooled game. A target's designs are its own pool, which is
-  what a real campaign selects from, and it keeps the target name meaningful. The three
+  what a real campaign selects from, and it keeps the target name meaningful. The four
   games are chosen by :data:`GAME_TARGETS`'s rule.
 * **Features: the crosswalk** :data:`CROSSWALK` -- the four Proteinbase feature columns that
   also exist here, under their Proteinbase names. ``proteinmpnn_score`` and the shape
@@ -57,10 +57,11 @@ SLUG_PREFIX = "ab-"
 #: * no cofactor in the co-folds (``INSILICO.md`` section 3 -- drops RBX1's three zinc ions);
 #: * Nipah-G and EGFR because Proteinbase has the same two targets, so the same target can be
 #:   compared across two different design campaigns;
-#: * one further target that Proteinbase does **not** have, so that a result on the first two
-#:   cannot be explained by target familiarity alone. Seven candidates pass the filters
-#:   (BBF-14, BHRF1, IL-7Ra, MBP, PD-L1, TREM2, TrkA) and the first alphabetically is taken.
-GAME_TARGETS: tuple[str, ...] = ("Nipah-G", "EGFR", "BBF-14")
+#: * two further targets that Proteinbase does **not** have, so that a result on the first
+#:   two cannot be explained by target familiarity alone. Seven candidates pass the filters
+#:   (BBF-14, BHRF1, IL-7Ra, MBP, PD-L1, TREM2, TrkA) and the first two alphabetically are
+#:   taken.
+GAME_TARGETS: tuple[str, ...] = ("Nipah-G", "EGFR", "BBF-14", "BHRF1")
 
 #: Stoichiometries of a design complex: the forms ``design_summary`` reports (INSILICO.md
 #: section 3). ``2to2`` / ``3to3`` rows score one binder copy per protomer and are excluded.

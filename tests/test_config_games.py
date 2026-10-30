@@ -120,7 +120,7 @@ def test_committed_games_yaml_defines_the_expected_games():
     }
     assert set(games) == {
         "N-dev", "N-held", "E", "E-long", "N-dev-delay2",
-        "AB-nipah", "AB-egfr", "AB-bbf14", "AB-rehearsal", *stop_targets,
+        "AB-nipah", "AB-egfr", "AB-bbf14", "AB-bhrf1", "AB-rehearsal", *stop_targets,
     }  # fmt: skip
 
     nipah = "nipah-glycoprotein-g"
@@ -133,6 +133,7 @@ def test_committed_games_yaml_defines_the_expected_games():
         "AB-nipah": ("ab-nipah-g", "all", 4, 8, 32, 0, "rank"),
         "AB-egfr": ("ab-egfr", "all", 4, 8, 32, 0, "rank"),
         "AB-bbf14": ("ab-bbf-14", "all", 4, 8, 32, 0, "rank"),
+        "AB-bhrf1": ("ab-bhrf1", "all", 4, 8, 32, 0, "rank"),
         "AB-rehearsal": ("ab-rehearsal", "all", 4, 8, 32, 0, "rank"),
     }
     for game_id, values in expected.items():
@@ -140,7 +141,7 @@ def test_committed_games_yaml_defines_the_expected_games():
         got = (game.target, game.split, game.rounds, game.batch_size, game.budget)
         assert got + (game.delay_rounds, game.kind) == values, game_id
     # the final tests are guarded, their rehearsal copy is not (prereg-anthropic.md s7)
-    final = {"AB-nipah", "AB-egfr", "AB-bbf14"}
+    final = {"AB-nipah", "AB-egfr", "AB-bbf14", "AB-bhrf1"}
     assert {i for i, g in games.items() if g.final_test} == final
     assert not games["AB-rehearsal"].final_test
     for game_id, target in stop_targets.items():

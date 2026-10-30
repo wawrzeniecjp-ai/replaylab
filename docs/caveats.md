@@ -74,6 +74,10 @@ the gate never opens, which we know from E systematically favours the agent over
 ladder. The shape of a game is therefore not a neutral administrative choice.
 
 **What the write-up should say.** Report pool size, budget share, and the random-to-oracle
-gap alongside every result, and express margins as a share of that gap when comparing across
-games. When a game's batch size keeps the scripted gate shut, say so, and treat the
-comparison as a cold-start result rather than a general one.
+gap alongside every result. Express a practical margin as a **hit rate within the purchased
+batch**, not in absolute hits and not as a share of the oracle gap: the first does not
+transfer between pool sizes, and the second turns out to be sub-hit on a small pool (2/55 of
+a gap of 13 is 0.47 hits), which is no standard at all. N-dev's 2 hits of 60 purchases is
+3.33 percentage points, and that is the standard the Anthropic games carry over
+(`docs/prereg-anthropic.md` section 5). When a game's batch size keeps the scripted gate
+shut, say so, and treat the comparison as a cold-start result rather than a general one.

@@ -1,7 +1,7 @@
 # Pre-registration: the Anthropic binder release as the final test
 
-Written 2026-10-30, **before any episode of `AB-nipah`, `AB-egfr` or `AB-bbf14` has been
-played** and before any hit rate of any of these pools was computed. It fixes the pools, the
+Written 2026-10-30, **before any episode of `AB-nipah`, `AB-egfr`, `AB-bbf14` or `AB-bhrf1`
+has been played** and before any hit rate of any of these pools was computed. It fixes the pools, the
 features, the label and the game shape. It is the plan the handoff calls direction A;
 `docs/design-notes.md` section 9 holds the decision rule this will be judged by, and
 `docs/caveats.md` holds the conditions under which the result should be read.
@@ -38,8 +38,8 @@ meaningless, which `describe_campaign` reports and which every N-dev and E episo
 (`docs/caveats.md` entry 2). Pooling the *results* of several single-target games gives the
 same statistical power without either problem, so that is what section 5 does.
 
-The 1,320 designs that carry a binder call split into 15 targets. The three games were
-chosen by this rule, applied to documented columns and nothing else:
+The 1,320 designs that carry a binder call split into 15 targets. The games were chosen by
+this rule, applied to documented columns and nothing else:
 
 1. **90 designs with a binder call** -- the modal pool size, so the three games are one
    shape. Drops 15-PGDH (30), Latent GDF-8 (60), TNFa (150) and mature GDF-8 (0 -- the
@@ -49,13 +49,18 @@ chosen by this rule, applied to documented columns and nothing else:
 3. **No cofactor in the co-folds** (`INSILICO.md` section 3). Drops RBX1's three zinc ions.
 4. **Nipah-G and EGFR**, because Proteinbase has the same two targets: the same target under
    a different design campaign is the most direct test of transfer available.
-5. **One target Proteinbase does not have**, so that a result on the first two cannot be
-   explained by target familiarity alone. Seven candidates pass filters 1 to 3 (BBF-14,
-   BHRF1, IL-7Ra, MBP, PD-L1, TREM2, TrkA) and the **first alphabetically** is taken:
-   **BBF-14**, a 110-residue construct. The tie-break is arbitrary by design, which is the
-   point: it cannot correlate with anything in the data. It happens to select the one
-   candidate that is neither a well-known therapeutic target nor a standard benchmark
-   protein, which is a bonus for filter 5's purpose, not the reason for the choice.
+5. **Two targets Proteinbase does not have**, so that a result on the first two cannot be
+   explained by target familiarity alone, and so that the unfamiliar half is not a single
+   game. Seven candidates pass filters 1 to 3 (BBF-14, BHRF1, IL-7Ra, MBP, PD-L1, TREM2,
+   TrkA) and the **first two alphabetically** are taken: **BBF-14** (a 110-residue
+   construct) and **BHRF1** (157 residues). The tie-break is arbitrary by design, which is
+   the point: it cannot correlate with anything in the data.
+
+So **four games**, all 90 designs and `1to1`: `AB-nipah`, `AB-egfr`, `AB-bbf14`, `AB-bhrf1`.
+TNFa is the only target with more designs (150) and was **not** added: it folds as a trimer
+(`1to3`), so taking it would have meant amending filter 2 after the filters were written,
+which is the move a pre-registration exists to prevent. It remains available as a declared
+amendment if the author wants a larger pool, decided before any play.
 
 Cas9 is excluded by filter 2 rather than by a judgment about difficulty. `DATA_NOTES.md`
 note 20 separately records that its ipSAE is exactly zero for most of its designs.
@@ -147,13 +152,42 @@ to measure. The 36% share is the price, and it is above the 20% the original rul
 that deviation is recorded here rather than quietly taken.
 
 **Pooling results, not designs.** Each game is compared on its own (paired by seed, as
-always), and the three games' paired differences are also pooled, giving 3 x *trials* paired
+always), and the four games' paired differences are also pooled, giving 4 x *trials* paired
 episodes. Which is reported as the headline is section 6's call.
 
-**Resolution.** A 90-design pool with a 36% share has a random-to-oracle gap of roughly 12
-to 14 hits at plausible rates, against roughly 55 on N-dev and E. Section 9's 2-hit margin
-is therefore a far stricter test here in relative terms. `docs/caveats.md` entry 3 says what
-the write-up must report alongside any margin.
+### The margin, rescaled
+
+Section 9's margin is **2 hits out of 60 purchases**. Carried over unchanged to a
+32-purchase game it would be a far stricter test: the same absolute margin against a
+random-to-oracle gap of roughly 12 to 14 hits rather than roughly 55. The author has agreed to
+rescale it, and the rescaling registered here is **by purchase rate**, which keeps N-dev's
+practical standard identical:
+
+> 2 hits of 60 purchases = **3.33 percentage points** of hit rate within the purchased
+> batch. On 32 purchases that is **1.07 hits**, which is the margin these four games use.
+
+The alternative scaling -- by the random-to-oracle gap, which is what was first floated in
+conversation -- was computed and **rejected**: 2/55 of a gap of 13 is 0.47 hits, below one
+hit, so it would make the margin unreachable as a practical statement (hits are integers)
+and amount to "beat the bar at all". Recording both numbers so the choice is visible.
+
+A margin of 1.07 hits is a statement about effect **size**. It is not made easier by playing
+more trials, and that distinction is the answer to a question raised in conversation:
+
+* **More trials buy precision, not a lower bar.** They narrow the interval, so a true
+  difference above the margin becomes easier to *establish*; a true difference below it
+  becomes more clearly below it. That is legitimate and not confounding, on one condition:
+  the trial count is fixed in advance, or extended by a rule declared in advance. Looking
+  first and then adding trials because the result was nearly decisive is optional stopping,
+  and it inflates false positives.
+* **What the numbers say.** E's paired interval implies a per-episode paired sd of about 9
+  hits on 60 purchases, so about 5 hits on 32. At 20 trials one game resolves to a 90%
+  half-width of about 1.8 hits; the four games pooled (80 paired episodes) resolve to about
+  0.9 hits, which is below the 1.07-hit margin. So **20 trials per game, pooled over the
+  four games, is enough to clear the margin if the effect is real**, while a single game at
+  20 trials would need an effect of about 2.9 hits to clear it on its own.
+
+`docs/caveats.md` entry 3 says what the write-up must report alongside any margin.
 
 ### Disclosure: what was seen, and when
 
@@ -179,24 +213,24 @@ What this does and does not affect:
 
 ## 6. What is still open (the author's call, before the run)
 
-1. **The bar and the decision rule.** Section 9's rule (90% paired interval, 2-hit margin)
-   applies, but the bar has to be named: on N-dev it was `learner_sim_purchased`, on E it was
-   `learner_sim`. The scripted ladder of these pools can only be computed **at the final
-   run**, so the bar must be named by policy, not by number. Section 5's resolution note
-   argues for expressing the margin as a share of the random-to-oracle gap instead of in
-   absolute hits; that is a change to section 9 and so the author's to make.
-2. **Which games count, and how they combine.** All three, or Nipah-G and EGFR first and
-   BBF-14 only if those two are decisive. Whether the headline is the pooled paired
-   difference over the three games or one named game.
+1. **The bar.** Section 9's rule applies with the margin of section 5 (90% paired interval,
+   1.07 hits), but the bar has to be *named*: on N-dev it was `learner_sim_purchased`, on E
+   it was `learner_sim`. The scripted ladder of these pools can only be computed **at the
+   final run**, so the bar must be named by policy, not by number.
+2. **How the four games combine.** Whether the headline is the pooled paired difference over
+   the four games (which section 5 shows is the version with enough precision) or a per-game
+   verdict, and whether all four are played at once or the two Proteinbase targets first.
 3. **Which conditions and how many trials.** A and B1 at minimum, to repeat the section 16
-   split between the model's own judgment and the tools; C and B2 if the budget allows. The
-   trial block starts at 0 for these games: they have never been played.
+   split between the model's own judgment and the tools; C and B2 if the budget allows. 20
+   trials per game is what section 5's arithmetic supports. The trial block starts at 0 for
+   these games: they have never been played. Whatever is chosen is fixed before the first
+   episode, and any extension needs its rule written here first.
 4. **The cost.** One pilot episode, then the usual projection and cap. These pools are
    90 designs rather than 1,320, so transcripts and costs should be well below E's.
 
 ## 7. The guard
 
-`AB-nipah`, `AB-egfr` and `AB-bbf14` are each marked `final_test: true` in
+`AB-nipah`, `AB-egfr`, `AB-bbf14` and `AB-bhrf1` are each marked `final_test: true` in
 `config/games.yaml`, so:
 
 * reading their outcomes, building a runtime for them (`serve`, `campaign`), the ladder, the
@@ -207,7 +241,7 @@ What this does and does not affect:
   (or `scripted`); an identical rerun resumes and plays only the missing episodes, and any
   other setting is refused.
 
-Each game has its own lock, so playing Nipah-G does not consume EGFR or BBF-14.
+Each game has its own lock, so playing one game does not consume the others.
 
 ## 8. The rehearsal
 

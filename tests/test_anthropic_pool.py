@@ -35,7 +35,7 @@ ROOT = Path(__file__).resolve().parents[1]
 RELEASE = ROOT / "data/raw/anthropic/anthropic_binders_core/data/tables"
 REHEARSAL_TABLES = ROOT / "data/processed/anthropic-rehearsal"
 FEATURES = [name for name, _, _ in CROSSWALK]
-FINAL_GAMES = ("AB-nipah", "AB-egfr", "AB-bbf14")
+FINAL_GAMES = ("AB-nipah", "AB-egfr", "AB-bbf14", "AB-bhrf1")
 
 
 def cofold_rows(uuid, target="T", model="boltz2", rows=((0, 0.5, 0.4, 70.0),), **extra):
@@ -95,6 +95,7 @@ TWO = [
         ("Nipah-G", "ab-nipah-g"),
         ("EGFR", "ab-egfr"),
         ("BBF-14", "ab-bbf-14"),
+        ("BHRF1", "ab-bhrf1"),
         ("IL-7Ra", "ab-il-7ra"),
         ("Latent GDF-8", "ab-latent-gdf-8"),
         ("15-PGDH", "ab-15-pgdh"),
@@ -111,8 +112,10 @@ def test_a_slug_carries_no_leading_or_trailing_separator():
     assert target_slug("PD-L1 ") == "ab-pd-l1"
 
 
-def test_the_three_games_are_the_pre_registered_targets():
-    assert GAME_TARGETS == ("Nipah-G", "EGFR", "BBF-14")
+def test_the_games_are_the_pre_registered_targets():
+    # two Proteinbase targets, then the first two alphabetically of the seven that pass the
+    # filters, so the unfamiliar half is not a single game (prereg section 2)
+    assert GAME_TARGETS == ("Nipah-G", "EGFR", "BBF-14", "BHRF1")
 
 
 # --- the seed-best rule -------------------------------------------------------------------
@@ -279,7 +282,7 @@ def test_every_anthropic_game_is_guarded_except_the_rehearsal():
     assert {name for name, game in games.items() if game.final_test} == set(FINAL_GAMES)
 
 
-def test_the_three_games_and_the_rehearsal_share_one_shape():
+def test_every_game_and_the_rehearsal_share_one_shape():
     games = load_games(ROOT / "config/games.yaml")
     shapes = {
         name: (games[name].rounds, games[name].batch_size, games[name].budget)

@@ -21,14 +21,16 @@ games:
   # 8 purchases) reachable in round 2; a smaller batch would leave it shut and quietly
   # favour the agent, as it did on E (docs/caveats.md entry 3).
   # Nipah-G and EGFR are Proteinbase's two targets under a different design campaign;
-  # BBF-14 is a target Proteinbase does not have, so a result on the first two cannot be
-  # explained by target familiarity alone.
+  # BBF-14 and BHRF1 are targets Proteinbase does not have, so a result on the first two
+  # cannot be explained by target familiarity alone.
   AB-nipah:
     {target: ab-nipah-g, split: all, rounds: 4, batch_size: 8, budget: 32, final_test: true}
   AB-egfr:
     {target: ab-egfr, split: all, rounds: 4, batch_size: 8, budget: 32, final_test: true}
   AB-bbf14:
     {target: ab-bbf-14, split: all, rounds: 4, batch_size: 8, budget: 32, final_test: true}
+  AB-bhrf1:
+    {target: ab-bhrf1, split: all, rounds: 4, batch_size: 8, budget: 32, final_test: true}
   # The rehearsal: the same shape on a copy with shuffled feature names and drawn labels
   # (scripts/build_anthropic.py --rehearsal). Its own target id, which the real tables do
   # not contain, so this game cannot be pointed at them.
