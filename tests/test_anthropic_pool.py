@@ -36,6 +36,7 @@ RELEASE = ROOT / "data/raw/anthropic/anthropic_binders_core/data/tables"
 REHEARSAL_TABLES = ROOT / "data/processed/anthropic-rehearsal"
 FEATURES = [name for name, _, _ in CROSSWALK]
 FINAL_GAMES = ("AB-nipah", "AB-egfr", "AB-bbf14", "AB-bhrf1")
+BAR = "learner_sim"  # the pre-registered bar (prereg section 5)
 
 
 def cofold_rows(uuid, target="T", model="boltz2", rows=((0, 0.5, 0.4, 70.0),), **extra):
@@ -314,6 +315,20 @@ def test_every_anthropic_target_has_the_crosswalk_features():
         assert sorted(feature_config.names) == sorted(FEATURES), name
         assert all(spec.higher_is_better for spec in feature_config.specs), name
         assert feature_config.first_column == "boltz2_min_ipsae", name
+
+
+# --- the pre-registered bar ---------------------------------------------------------------
+
+
+def test_the_pre_registered_bar_is_a_policy_that_exists():
+    """The bar named in the pre-registration has to be a policy the ladder can play."""
+    from replaylab.interfaces.policy_factory import POLICY_NAMES
+
+    prereg = (ROOT / "docs/prereg-anthropic.md").read_text()
+    assert "### The bar: `scripted:learner_sim`" in prereg
+    assert BAR in POLICY_NAMES, f"{BAR} is not one of {sorted(POLICY_NAMES)}"
+    # and the margin it is judged by, so a silent edit of either shows up here
+    assert "1.07 hits" in prereg and "3.33 percentage points" in prereg
 
 
 # --- the real release ---------------------------------------------------------------------

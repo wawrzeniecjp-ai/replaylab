@@ -3,8 +3,9 @@
 Written 2026-10-30, **before any episode of `AB-nipah`, `AB-egfr`, `AB-bbf14` or `AB-bhrf1`
 has been played** and before any hit rate of any of these pools was computed. It fixes the pools, the
 features, the label and the game shape. It is the plan the handoff calls direction A;
-`docs/design-notes.md` section 9 holds the decision rule this will be judged by, and
-`docs/caveats.md` holds the conditions under which the result should be read.
+`docs/design-notes.md` section 9 holds the decision rule this will be judged by, with the
+bar and the margin of section 5 below, and `docs/caveats.md` holds the conditions under which
+the result should be read.
 
 Nothing here was chosen by looking at outcomes. Where a choice could have been made by
 looking, this file says so and says what was used instead.
@@ -29,7 +30,7 @@ All 22 files downloaded were verified against that manifest and matched.
 **No sequence of this release appears in Proteinbase** (checked by exact sequence match:
 0 of 1,440), so the pools are genuinely unseen by anything tuned on N-dev or E.
 
-## 2. The pools: one game per target, and which three
+## 2. The pools: one game per target, and which four
 
 A target's designs are its own pool, which is what a real campaign selects from. A pooled
 game across targets was considered and rejected: it would have required rescaling the
@@ -41,7 +42,7 @@ same statistical power without either problem, so that is what section 5 does.
 The 1,320 designs that carry a binder call split into 15 targets. The games were chosen by
 this rule, applied to documented columns and nothing else:
 
-1. **90 designs with a binder call** -- the modal pool size, so the three games are one
+1. **90 designs with a binder call** -- the modal pool size, so the four games are one
    shape. Drops 15-PGDH (30), Latent GDF-8 (60), TNFa (150) and mature GDF-8 (0 -- the
    release says its wet-lab results were inconclusive and are not included).
 2. **`1to1` stoichiometry**, as Nipah-G and EGFR are, so the games are comparable to each
@@ -155,6 +156,36 @@ that deviation is recorded here rather than quietly taken.
 always), and the four games' paired differences are also pooled, giving 4 x *trials* paired
 episodes. Which is reported as the headline is section 6's call.
 
+### The bar: `scripted:learner_sim`
+
+Named by the author, 2026-10-30, before any episode. The agent is judged against
+**`scripted:learner_sim`**, played on the same seeds, as condition `scripted:learner_sim`.
+
+Why that policy and not the stronger-looking one:
+
+* **The purchased-row variant is not a consistent baseline.** From `reports/ladder.md`:
+  `learner_sim_purchased` scores 26.43 against `learner_sim`'s 14.52 on N-dev (+11.9) and
+  4.45 against 10.39 on E (-5.9). A bar that swings by 12 hits in one direction and 6 in the
+  other, depending on the pool, is not measuring the same thing twice.
+* **The project already chose the pool-wide scaler.** The two variants differ in *nothing but
+  the scaler* -- pool-wide standardization against standardization on the delivered purchases,
+  recomputed each round (`policies/purchased.py`). Decision D-2026-10-13 made pool-wide the
+  library default and keeps the purchased variant as a legacy comparison only. Using it as
+  the bar would contradict a decision already frozen.
+* **Naming one policy in advance avoids a multiplicity bias.** "Beat the best of the ladder"
+  sounds stronger but takes a maximum over about 11 noisy policy means, and the maximum of
+  noisy estimates is biased upward: with 20 seeds and per-policy sd of 1 to 3 hits, that is
+  roughly +0.3 to +0.9 hits of inflation when the top policies are close. Against a margin of
+  1.07 hits that bias could consume most of the margin, so the bar would be unfairly high for
+  a reason that has nothing to do with the agent.
+
+**The residual risk, stated plainly.** `learner_sim` is not guaranteed to be the best
+scripted policy on these pools -- on N-dev it was beaten by plain `learner` (18.18) as well as
+by the purchased variant. So clearing this bar is **not** a claim of beating every scripted
+player. To keep that honest, the full ladder is played on the same seeds and reported
+descriptively beside the verdict, exactly as section 15 did on E; if any policy beats the
+agent, the write-up says so in the same table as the verdict.
+
 ### The margin, rescaled
 
 Section 9's margin is **2 hits out of 60 purchases**. Carried over unchanged to a
@@ -213,19 +244,17 @@ What this does and does not affect:
 
 ## 6. What is still open (the author's call, before the run)
 
-1. **The bar.** Section 9's rule applies with the margin of section 5 (90% paired interval,
-   1.07 hits), but the bar has to be *named*: on N-dev it was `learner_sim_purchased`, on E
-   it was `learner_sim`. The scripted ladder of these pools can only be computed **at the
-   final run**, so the bar must be named by policy, not by number.
-2. **How the four games combine.** Whether the headline is the pooled paired difference over
+The bar is fixed (section 5). What remains:
+
+1. **How the four games combine.** Whether the headline is the pooled paired difference over
    the four games (which section 5 shows is the version with enough precision) or a per-game
    verdict, and whether all four are played at once or the two Proteinbase targets first.
-3. **Which conditions and how many trials.** A and B1 at minimum, to repeat the section 16
+2. **Which conditions and how many trials.** A and B1 at minimum, to repeat the section 16
    split between the model's own judgment and the tools; C and B2 if the budget allows. 20
    trials per game is what section 5's arithmetic supports. The trial block starts at 0 for
    these games: they have never been played. Whatever is chosen is fixed before the first
    episode, and any extension needs its rule written here first.
-4. **The cost.** One pilot episode, then the usual projection and cap. These pools are
+3. **The cost.** One pilot episode, then the usual projection and cap. These pools are
    90 designs rather than 1,320, so transcripts and costs should be well below E's.
 
 ## 7. The guard
