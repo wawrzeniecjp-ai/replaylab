@@ -1080,3 +1080,58 @@ nothing in §15 is re-judged.
     replaylab-eval pilot --run-dir runs/egfr-mimo --model mimo --games E \
         --conditions A --trials 20 --first-trial 100 --n 20 --max-usd 1
     # the four scripted rows for trials 100-119 already exist in both files
+
+
+**§16 results (2026-10-30: descriptive; both models complete, n=20, settings
+identical to §15).** deepseek's A needed one resume after three provider 500s
+(`LLMError: the response has no choices`, trials 104/109/110 -- replayed per
+the failure rule; the final set holds 0 unrecovered failures). mimo's A ran
+clean. Config hashes unchanged per model (`d103491a18c7` / `1665298211ef`);
+all A episodes end 20/20 `finished`.
+
+| comparison | deepseek | mimo |
+| --- | --- | --- |
+| A - `learner_sim` (bar) | **+5.55** [2.2, 8.75] (13/7/0) | **+9.2** [6.45, 11.75] (18/2/0) |
+| B1 - A | **+6.7** [1.25, 12.2] (14/6/0) | **+4.5** [1.5, 7.6] (13/6/1) |
+| C - A | +6.8 [2.5, 11.25] (14/6/0) | +2.65 [-0.65, 5.65] (14/6/0) |
+
+Readings (intervals reported; §16 registered no threshold):
+
+* **Campaign-side judgment alone clears E's bar on both models** -- both
+  intervals above zero. A means: 16.1 (ds) and 19.8 (mimo) against the same
+  bar at 10.55 on these seeds. The round-2 cold-start escape needs no advisor
+  tools at all.
+* **Advisor tools add on top on both models** (B1 - A intervals above zero:
+  +6.7 ds, +4.5 mimo), splitting §15's gain roughly in half. The deepseek round
+  profile makes it concrete: A vs bar [-0.1, +3.8, +1.5, +0.2] -- lifts in
+  round 2, then flatlines with no fit tool -- against B1's
+  [0.2, +5.8, +9.2, +12.2], which compounds once the model can fit.
+* C - A is decisive for ds (+6.8) and straddles zero for mimo (+2.65),
+  matching C - B1 in §15: *having* an analysis tool matters more than which
+  one is exposed.
+* Model contrast: mimo's bare judgment is the stronger (A alone 19.8 vs 16.1);
+  deepseek leans more on the advisor (+6.7 vs +4.5).
+* **Which advisor tool.** Attributing B1's rounds 2-4 purchases by whether the
+  design had appeared in a `similar_designs` reply: ds 24.1 such buys per
+  episode at a 0.67 hit rate against 17.8 others at 0.26; mimo 29.7 at 0.67
+  against 15.3 at 0.24. So the round-2 escape is judgment (A reproduces it
+  with no advisor tool at all), while the rounds 3-4 compounding runs through
+  the neighbour tool: buy a feature sort, keep the hits, ask for their
+  neighbours, buy those. `fit_and_rank` / `propose_batch` rankings account for
+  about 3 buys per episode. **Correlational:** a design in a neighbour list
+  may have been chosen for another reason, and E's hit-rich families are
+  small, so neighbours of a hit are hits nearly by construction -- which is
+  real pool structure being exploited, not an artifact, but it is not a
+  controlled attribution. `B2` (`exclude: [similar_designs]`, already in
+  `config/conditions.yaml`) would test it directly, on a fresh block from
+  trial 140 and with its own pre-registration.
+
+**Open follow-up (outside §15/§16, deferred).** `prompts/system.md` promises a
+final plain-text summary that the loop never requests on the `finished` /
+`agent_stopped` paths: `loop.py` returns immediately after the last tool call,
+and every agent episode on record ends on a tool result (60 ds + 60 mimo);
+only a voluntary `agent_ended` could show the summary, and no model ever took
+that path. Fix candidates: one final no-tools call to collect the summary, or
+rewording the prompt. Either edits loop/prompt code (new config hash; fresh
+block per §9 rule 5 applies to any future confirmatory claim), so it is decided
+separately, not inside this test.
