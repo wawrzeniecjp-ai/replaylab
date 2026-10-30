@@ -1180,3 +1180,38 @@ hold A, B1 and C only). Descriptive, like §16: no threshold, no pass/fail;
           --conditions B2 --trials 20 --first-trial 100 --n 20 --max-usd 1.5
       replaylab-eval pilot --run-dir runs/egfr-mimo --model mimo --games E \
           --conditions B2 --trials 20 --first-trial 100 --n 20 --max-usd 1.4
+
+
+**§17 results (2026-10-30: gates before hit counts).** Both cells complete:
+20/20 episodes, all `finished`, 0 B2 failures, 80 scripted rows present,
+spend $1.280 (cap 1.5) and $0.934 (cap 1.4); flags: 5 and 3 tool-errors
+(+1 validation). **Correction to §17 above:** B2 does *not* carry its own
+config hash -- the hash covers the whole `conditions` file, so all four
+conditions in a run-dir share it (the registered `d103491a18c7` /
+`1665298211ef`). The expectation recorded above was wrong; the useful
+consequence is that A, B1, B2 and C are provably one configuration file.
+
+| comparison (n=20) | deepseek | mimo |
+| --- | --- | --- |
+| B1 - B2 | **+7.15** [1.65, 12.55] (15/5/0) | **+3.85** [0.55, 7.3] (11/7/2) |
+| B2 - `learner_sim` (bar) | **+5.1** [2.2, 8.0] (14/6/0) | **+9.85** [7.35, 12.2] (18/2/0) |
+| C - B2 | +7.25 [3.0, 11.3] (14/5/1) | +2.0 [-0.9, 5.1] (11/9/0) |
+
+Readings (descriptive; §17 registered no threshold):
+
+* **`similar_designs` is where the advisor's value comes from on E.**
+  B1 - B2 clears zero on both models, and B2 drops back to campaign-tools
+  level: B2 - bar (+5.1 ds, +9.85 mimo) sits at A - bar (+5.55, +9.2, section
+  16). The rest of the advisor kit -- fit, estimate, stop advice -- adds
+  little beyond the pool filters on this pool.
+* **B2 alone still beats the bar** on both models (intervals above zero):
+  the round-2 cold-start escape of section 15 needs no advisor tools at all.
+* C - B2: decisive on ds (+7.25; C keeps the similarity tool), straddles
+  zero on mimo (+2.0) -- consistent with C - B1 in section 15 being
+  null-to-negative for mimo.
+* The N-dev forensics (neighbour crawling in the worst runs) and this
+  ablation point opposite ways per pool: on E, with sparse, clustered hits,
+  following up on hits through the similarity index is the single most
+  valuable advisor behaviour; on N-dev it correlated with failure. The
+  ablation (randomised tool presence) outranks the observational forensics
+  -- recorded as such.
