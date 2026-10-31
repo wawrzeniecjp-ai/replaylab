@@ -1,208 +1,381 @@
 # replaylab
 
-**A campaign decision engine for protein design selection — and a way to check whether an
-LLM agent actually helps.**
+**A decision engine for protein design selection, validated by replaying real lab results.**
 
-Given a pool of computationally designed binders with predicted scores, which designs should
-you buy for lab testing, round by round, within a budget? replaylab answers that offline by
-*replaying* real lab results from Adaptyv Bio's open Proteinbase data: outcomes stay hidden
-until a design is bought, so a strategy has to earn its hits the way a real campaign would.
+*Abstract.* Designing a protein that binds something is mostly done on a
+computer; *testing* one in a wet lab costs real money and time. This project
+studies an AI agent that must choose which designed proteins to test, round by
+round, on a limited budget — and whether giving that agent the right tools
+makes it measurably better than simple scripted rules. Using public data, we
+replay real lab outcomes so that every decision can be scored honestly. The
+answer we find is two-sided: the agent **loses where the scripted rules already
+work**, and **wins where they break down**.
 
-The honest pitch: this is an **environment**, a **toolkit** (15 MCP tools) and a **ladder of
-scripted baselines** that together make *"does an LLM agent add anything?"* a checkable
-question. The agent is one player, not the point. If it loses to a scripted policy, that is a
-legitimate finding — and on one of the two pools, it does.
+![Agent minus its pre-registered bar on the Nipah development pool and on the EGFR transfer set: -6.90 on Nipah, +12.25 and +13.70 on EGFR, with 90% paired intervals](reports/figures/two-sided-result.svg)
+
+## 1. The problem
+
+[Adaptyv API: Giving everyone access to a real lab](https://www.adaptyvbio.com/blog/adaptyv-api)
+is built around agents as its primary users:
+
+> "agents can submit experimental campaigns, retrieve results, and reason over
+> them to plan the next round of designs"
+
+An agent in that seat can reason about a campaign from its own knowledge
+alone. But a language model generalizes; it does not know *your* assay, *your*
+score columns, or what happened in *this* campaign last round. The question this
+project sets out to answer, in that context, is: **how can we make an agent's
+life easier?** Our bet: hand it specialized tools — a way to inspect the pool,
+to fit a model on its own results, to follow up on its own discoveries — and it
+should make more informed decisions, better than before and at lower cost than
+giving it everything at once or asking it to reason harder.
+
+## 2. The setup, in plain words
+
+An agent conducting an experimental campaign on the platform is handed:
+
+* a **pool of protein designs** — hundreds of computer-generated candidates,
+* a handful of **computational features** for each one — predicted quality
+  scores that are weakly informative and often misleading (fast computational
+  estimates that rank candidates plausibly, but not reliably),
+* a **budget** and a limited number of **rounds**.
+
+Each round the agent buys a **batch** of designs; the lab reports back how many
+were **hits** — designs that actually bind the intended target in the lab.
+Results arrive after each purchase: sometimes
+immediately, sometimes delayed, during which bought-but-unreported designs are
+*pending*. The goal: **find as many hits as possible before the money runs
+out** — and know when to stop early and save the rest of the budget.
+
+## 3. The games
+
+We turn a public dataset of real designed binders and their recorded lab
+outcomes into a **game** that mimics a real campaign: the agent never sees the
+outcome column — it is revealed only for designs the agent has actually bought.
+
+Each turn the agent receives the campaign state — how much budget and how many
+rounds remain, what it has bought, what is still pending, and the visible
+features of the candidates (one tidy object; in the code, `CampaignState`). It
+then either **uses a tool** or **submits a batch**, and receives the results at
+the next time step (or, in delayed games, later). Two families of tools are
+offered:
+
+* **campaign tools** — inspect the pool and its columns, buy, wait, review
+  history, stop;
+* **advisor tools** — propose a batch from a scripted policy, fit a logistic
+  model on what has been learned so far, find neighbours close to a hit (a
+  *similarity index* is a numeric measure of how alike two protein sequences
+  are), and estimate hit rates (14 tools in total).
+
+The agent plays **against rules-based policies that see exactly the same
+information**: random selection; picking by a single fixed score; and
+*learners* — policies that fit a simple logistic model on their own delivered
+results. The plain one is `learner`; `learner_sim` blends its ranking with
+sequence similarity to the hits it has already found; a third variant
+standardizes its features on what it has bought rather than on the whole pool.
+"The best scripted player" (the *bar* the agent is judged against) is the best
+of these policies *on the pool being played*. Because everyone reads the same
+pool and the same hidden outcomes, the comparison is fair by construction.
+
+## 4. The evaluation
+
+The project followed a research timeline, each stage written down *before* its
+data was seen:
+
+1. **Preliminary analysis** — which score columns can be trusted (coverage,
+   missingness); and whether "similarity" between designs mostly measures
+   shared authorship. It partly does: sequences designed by the same author
+   turned out to be statistically more similar to each other than to other
+   authors' designs, so a similarity score partially reveals *who* designed a
+   sequence, not only how good it is.
+2. **Frozen experiment setup** — a fixed train/test split built by family
+   (near-identical sequences never straddle the split), frozen feature lists,
+   frozen model settings, per-episode pseudonymous ids, and criteria written in
+   advance.
+3. **Test on Nipah data** — the development pool, against the scripted
+   policies, with two flash models and a round of prompt/tool tuning.
+4. **Test on EGFR data** — the transfer set: the configuration frozen, a fresh
+   block of never-played episodes, the bar set to the best scripted policy on
+   that pool.
+5. **Ablation tests** — removing the advisor tools (condition A) and removing
+   one advisor tool (`similar_designs`, condition B2) to see what actually
+   carries the result.
+6. **Test on the Anthropic dataset** — *built and pre-registered; deliberately
+   unplayed.* Four single-target games (Nipah-G, EGFR, BBF-14, BHRF1 — 90
+   designs each, sharing no sequence with the development pools), conditions A,
+   B1 and B2, both models, 20 trials, a pooled headline, every input file
+   pinned by hash and each game behind a run-once lock. The parameters are
+   fixed in `docs/prereg-anthropic.md` before any episode exists.
+
+**Headline results.** On the Nipah development pool the agent **fails** to
+match the best scripted player; on EGFR it **passes outright — all four
+cells (each cell is one combination of LLM model and available tool set) beat
+the best scripted policy** with intervals above zero; the ablations show the
+win splits roughly in half between the agent's own
+filtering and its advisor tools, with `similar_designs` carrying the advisor
+half. Section 6 has the numbers; section 7 the caveats.
+
+## 5. How the data is protected
+
+Lab outcomes are the answer sheet; an agent that reads them early is not being
+evaluated, it is cheating. Several independent safeguards prevent that:
+
+* **Sealed outcomes.** Policies and advisor code receive only a read-only
+  snapshot of the campaign — no writes, no outcome access beyond delivered
+  results. Tools never return sequences, real identifiers, or outcomes for
+  designs that were not bought *and* delivered. A test fails the build if any
+  package crosses these import boundaries.
+* **Anonymous, seed-dependent ids.** Agents see `d0001`-style aliases, not real
+  ids; the mapping is reshuffled by every episode's seed. An agent (or a human)
+  cannot join ids across runs or to outside knowledge — aliases are meaningless
+  outside their own episode.
+* **Reproducibility stamps.** Every run records a `config_hash` over the model,
+  prices, prompts, conditions, tool descriptions and limits, plus the git
+  commit. Two records with the same hash came from the same configuration — a
+  claim in the results can always be traced to exactly the code that produced it.
+* **Honest bookkeeping.** One append-only JSON line per finished episode;
+  episodes that fail (provider error, truncated reply, spending cap) are *never*
+  recorded and simply replayed — a run's record cannot be curated after the
+  fact. Comparisons are paired on identical seeds, so luck of the draw cancels
+  out.
+* **Frozen artifacts** — splits, feature lists, model settings are committed and
+  checked; the held-out fold is refused by three separate guards until the one
+  final run.
+* **Pre-registration.** Each experiment's question, trials and pass/fail rule
+  are written down *before* the data exists, and validity gates are checked
+  before any score is read.
+
+## 6. Results
+
+**Development pool (Nipah-G).** The best scripted player reaches **26.4 hits**
+per 60 purchases (mean over 100 seeds). The agent (deepseek-flash, condition
+B1) falls **6.2 hits short** (90% paired interval [−9.0, −3.35]; a
+confirmatory rerun on a fresh block: −6.9 [−8.8, −4.95]) — a clear **FAIL**
+against the pre-registered margin. mimo-v2.6-flash narrowly misses the same
+margin. For context, the agent beats random selection decisively
+(+11.9 to +14.4) and lands at parity with the plain learner policy `learner`
+(+1.2 [−0.8, +3.35]) — it plays competently, it just does not beat a well-tuned
+script here. A stronger frontier model was the obvious suspect: Claude Opus 5.5
+could not be tested (the provider declined the requests), so the capability
+probe used Claude Sonnet 5.5, which did no better (−10.4 on trials 0–9). Two
+rounds of prompt/tool tuning likewise changed nothing (first iteration: no
+detectable effect; second: worse and reverted). **The Nipah failure does not
+appear to be a capability gap** — neither a bigger model nor more instruction
+tuning closed it.
+
+**Transfer set (EGFR).** Here the scripted policies are weak — the best of
+them, `learner_sim`, averages only **~10.4 hits** — because of a *model gate*:
+a policy (scripted or agent) may only fit its model once it has at least 2 hits
+among at least 8 delivered purchases. Until then it cannot use its model at
+all, so on this pool the scripted policies spend their first rounds blindly
+fishing for hits — buying by a fixed score until the gate opens, which in our
+data happens only in round 4 of 4. The whole ladder reorders between the two
+pools, which is the clearest single picture of why one bar is high and the
+other low:
+
+![Mean hits per scripted policy on Nipah and on EGFR: the best policy on Nipah, learner_sim_purchased at 26.4, is the worst on EGFR at 4.5, where random at 9.6 beats learner at 7.4](reports/figures/ladder-inversion.svg)
+
+On a fresh block of episodes with the configuration frozen, **every cell passes
+and exceeds**:
+
+| cell | agent − best scripted | 90% CI | verdict |
+| --- | --- | --- | --- |
+| deepseek, B1 | **+12.25** | [8.85, 15.55] | exceeds |
+| deepseek, C (custom analysis tool) | +12.35 | [9.2, 15.25] | exceeds |
+| mimo, B1 | **+13.70** | [12.05, 15.35] | exceeds (20/20 wins) |
+| mimo, C | +11.85 | [9.1, 14.5] | exceeds |
+
+The agent reaches ~23–24 hits (a 38–40% hit rate on a pool where only 16% of
+designs bind), using two features, length and design class.
+
+*Condition keys:* **A** — campaign tools only; **B1** — campaign + advisor
+tools (the headline agent); **B2** — B1 with the similarity-lookup tool
+removed; **C** — B1 with the scripted-fit tool replaced by a custom-analysis
+tool (the agent fits and ranks with its own logistic regression). All
+conditions share the same prompts, model and limits — they differ only in
+which tools are exposed.
+
+**Why it wins there — the mechanism.** Round 1 is a wash: neither the agent
+nor the scripted policy can fit a model yet (the gate above is open for no
+one), so both buy blind. The agent then builds its lead **in round 2** by
+filtering the pool directly with its query tools; those early hits open *its*
+model gate a full round before the scripted policy reaches the same gate (the
+agent crosses the 2-hit threshold after two rounds, the scripted learner only
+after four). Rounds 3 and 4 compound.
+
+![Cumulative hits at each round boundary on EGFR: the scripted bar stays near one hit through rounds 1-2 and reaches 10.6 by round 4, while B1 climbs to 22.8 and campaign-tools-only A to 16.1](reports/figures/e-round-curves.svg)
+
+**How the agents actually play.** The transcripts show a consistent style
+across every run: several dozen tool calls per campaign, most of them narrow
+pool queries — filter, sort, re-query — in long chains; `describe_campaign`
+before the first purchase in every episode; a model fit consulted before most
+later batches. The agents prefer to **hand-pick their batches** from their own
+filtered views rather than delegate: the "propose a batch" tool is used only a
+handful of times per campaign. The campaign-tools-only condition shows the same
+style with no advisor at all — about twelve filtered queries per episode, the
+entire selection made through `query_pool` and `column_summary` — and the
+differences between models show up as habits: one checks its estimated hit rate
+several times per campaign, the other rarely does.
+
+**Ablations.**
+
+![Paired differences on EGFR: B1 minus A is +6.70 and +4.50, B1 minus B2 is +7.15 and +3.85, while B2 minus A straddles zero on both models](reports/figures/e-ablation.svg)
+
+* *Campaign tools only (A):* still beats the bar — **+5.55** (deepseek) and
+  **+9.2** (mimo). The cold-start escape needs no advisor at all.
+* *Advisor on top (B1 − A):* **+6.7** [1.25, 12.2] and **+4.5** [1.5, 7.6] —
+  the advisor roughly doubles the gain, in different halves for each model.
+* *One tool removed (B1 − B2, `similar_designs` taken away):* **+7.15** and
+  **+3.85** — and B2 drops back to campaign-tools level. On this pool, the
+  advisor's entire measurable value is *following up on hits through the
+  similarity index*; the rest of the kit is close to neutral.
+
+**A defect in our own toolkit, and what it taught us.** Auditing the
+transcripts turned up a flaw on our side rather than the model's: agents were
+shown **raw** feature values while the fitted model reported its weights in
+**oriented** space, and nothing stated which columns were flipped. Of the 607
+pool queries that sorted on the one lower-is-better column, **113 asked for the
+worst designs**, and 86 batches were submitted directly afterwards — in 39% of
+EGFR episodes. Since buying the worst-scoring designs *hurts* the agent, the
+EGFR win was obtained in spite of this, not because of it. We fixed the surface
+and then measured the fix on a fresh block of 80 episodes: hits did not move
+(pooled +0.17 [−2.70, +3.00]), and neither did the behaviour — the worst-first
+rate was unchanged (+0.25 calls per episode, interval spanning zero). The old
+description had already said "a lower ProteinMPNN score is better" in plain
+words, and agents sorted backwards anyway, in both arms. The lesson is a design
+one: a hazard in a tool is better **removed** than documented.
+
+**The two-sided conclusion.** The agent loses where the scripted learner works
+(a strong, well-fed model on a dense-signal pool) and wins where it breaks down
+(a cold start it cannot escape, weak scripts, sparse clustered hits). Neither
+half cancels the other: tool sets for agents should be judged by *where* they
+change the game, not by a single universal scoreboard.
+
+## 7. Limitations
+
+* **Offline only so far.** Everything is replayed from recorded outcomes; the
+  live forward mode against the real lab API is future work. Replay means the
+  world never reacts to the agent — a real campaign does.
+* **Few pools.** Nipah and EGFR are two targets (plus small stop-games);
+  seed-level intervals measure policy luck on *one* pool, not performance across
+  targets. The Anthropic dataset test, run once, is meant to be the third leg.
+* **Small samples.** Each cell holds 20 paired episodes; some intervals are wide and
+  one cell (mimo's confirmatory run) straddled its margin at the maximum
+  planned sample.
+* **Relative bars.** "Pass" means beating the *best scripted policy of that
+  pool* — a high bar on Nipah (26.4), a low one on EGFR (10.4). It is not an
+  absolute measure of usefulness.
+* **Possibly-seen data.** Nipah and EGFR competition data is public; models may
+  have seen it in training. This affects every condition equally but muddies
+  absolute claims.
+* **Provider variability.** Runs depend on live APIs: transient 500s (retried
+  and replayed), thinking-mode cost inflation, and no sampling seed — a rerun
+  is not token-for-token reproducible; the recorded file *is* the result.
+* **Tuning attempts were few.** Two prompt/tool iterations were tried on the
+  development pool (neither helped); this is not an exhaustive search of what
+  prompting could do.
+* **A known toolkit defect sits inside the played results.** Feature
+  orientation was undescribed while every episode in this report was played
+  (section 6); it cost the agent rather than flattered it, but the absolute
+  numbers belong to a toolkit with that flaw in it.
+* **Early stopping was barely exercised.** Almost every campaign ran to its
+  full budget; a stopping-advice tool exists, but nothing in these results
+  speaks for or against stopping early. That question is future work.
+
+## 8. Conclusion
+
+Tool-using agents are not uniformly better than scripted rules — they are
+better *where rules cannot go*: when the start is blind, the signal is weak, or
+the winning move is to adapt mid-campaign. On this evidence, the practical
+takeaway for agentic lab platforms is to give agents tools that compress exactly
+those gaps (inspect freely, follow up on discoveries, fit what they have
+learned) rather than more raw capability. The next checks are the once-only
+Anthropic dataset test and, eventually, a live campaign.
 
 ---
 
-## The result
-
-![Paired difference between the agent and its pre-registered bar on N-dev and on E](reports/figures/two-sided-result.svg)
-
-**The answer is two-sided: the agent loses where the scripted learner works, and wins where
-it breaks down.** Both halves were pre-registered — the decision rule, the bar, the seeds and
-the validity gates were written down before the trials were played — and both are kept.
-
-| | pool | agent − bar | 90% interval | W/L/T |
-|---|---|---|---|---|
-| **N-dev** (Nipah-G) | ~1,100 designs | **−6.90** vs `learner_sim_purchased` | [−8.80, −4.95] | 2/17/1 |
-| **E** (EGFR transfer), deepseek | ~1,340 designs | **+12.25** vs `learner_sim` | [+8.85, +15.55] | 17/3/0 |
-| **E** (EGFR transfer), mimo | ~1,340 designs | **+13.70** vs `learner_sim` | [+12.05, +15.35] | 20/0/0 |
-
-On N-dev the agent is no better than a plain scripted `learner` (+1.20 [−0.80, +3.35]) though
-far better than random (+13.75 [+12.00, +15.55]). A stronger model (Sonnet 5.5), two rounds of
-tool-description tuning, and a condition that let the agent configure its own logistic model
-all failed to close the gap. That is a **NO-GO**, recorded as such.
-
-### Why the two pools disagree
-
-![Mean hits per scripted policy on N-dev and on E — the ranking inverts](reports/figures/ladder-inversion.svg)
-
-The scripted ladder needs 2 hits and 8 delivered purchases before it can fit a model. On
-N-dev that gate opens early and the scripted learner is strong. On E it opens in **one round
-out of four**, and the ladder inverts: the best scripted policy on N-dev
-(`learner_sim_purchased`, 26.4 hits) is the *worst* on E (4.5), and plain `random` (9.6) beats
-`learner` (7.4).
-
-![Cumulative hits by round on E](reports/figures/e-round-curves.svg)
-
-The agent's advantage is a **cold-start** advantage. The scripted players sit flat at ~1 hit
-through rounds 1–2 because they cannot fit yet; the agent is already selecting on the features
-in round 2 and compounds from there.
-
-### What the tools are actually worth
-
-![Paired differences between conditions A, B1 and B2 on E](reports/figures/e-ablation.svg)
-
-Conditions are tool allow-lists over one shared system prompt: **A** = campaign tools only
-(8), **B1** = campaign + advisor tools (14), **B2** = B1 minus `similar_designs` (13).
-
-On E, **the advisor's entire measurable contribution is the neighbour search.** Removing that
-one tool costs as much as removing the whole advisor (B1−B2 ≈ B1−A), and what remains adds
-nothing detectable over no advisor at all (B2−A straddles zero on both models). That fits the
-cold-start story: where the fit gate rarely opens, the fitting tools have little to do, and
-what pays is chasing sequence neighbours of the hits you already have.
-
-| | deepseek | mimo |
-|---|---|---|
-| B1 − A (all advisor tools) | +6.70 [+1.25, +12.20] | +4.50 [+1.50, +7.60] |
-| B1 − B2 (neighbour search alone) | +7.15 [+1.65, +12.55] | +3.85 [+0.55, +7.30] |
-| B2 − A (advisor without it) | −0.45 [−4.70, +3.90] | +0.65 [−3.15, +4.45] |
-
-### A finding about the toolkit, not the model
-
-Auditing the transcripts turned up a defect in our own tool surface: the agent saw **raw**
-feature values but the model fitted on **oriented** ones, and nothing said which columns were
-flipped. Of 607 `query_pool` calls that sorted on the one lower-is-better column, **113 asked
-for the worst designs**, and 86 batches were submitted straight after one. It is now fixed —
-the tools report each column's `higher_is_better`, and weights are expressed in the raw-value
-direction — but the played results carry it. The direction matters: buying the worst-scoring
-designs *hurts* the agent, so E's win was obtained **despite** it. See
-[`docs/caveats.md`](docs/caveats.md) entry 4.
-
----
-
-## How it is kept honest
-
-The point of the project is that the numbers above are hard to fool yourself with.
-
-- **Pre-registration.** The decision rule, the bar, the margin, the seeds and the validity
-  gates are written down before the trials run ([`docs/design-notes.md`](docs/design-notes.md)
-  §9, [`docs/prereg-anthropic.md`](docs/prereg-anthropic.md)). Seen trials are never reused: a
-  new idea gets a fresh trial block.
-- **Paired by seed.** The episode seed depends only on game and trial — never on condition or
-  model — so every condition plays the same pools and comparisons are paired.
-- **No leaks, enforced by tests.** Tool responses never carry sequences, real design ids, or
-  an outcome for a design that was not bought. `tests/test_import_boundaries.py` proves
-  `advisor` and `policies` cannot even *see* the store or a backend.
-- **Held-out and final-test guards.** A guarded game refuses to load its own outcomes outside
-  its single final run, and refuses a second run via a committed lock file.
-- **Mutation-minded tests.** New behaviour gets a test that fails without it; guards and
-  builders are checked by deliberately breaking them. 939 tests, `ruff` clean.
-- **Costs are capped**, with a spend ledger, a pilot projection and a hard cap checked before
-  every model call.
-
-## Architecture
+## For developers
 
 ```text
 src/replaylab/
-  domain/      pure types and rules (standard library only)
-  config.py    YAML loaders (games, features) with no silent defaults
-  datasets/    Proteinbase + Anthropic tables, splits, clusters, similarity
-  store/       SQLite campaign store (append-only event log)
-  backends/    replay backend: serves recorded outcomes, hides the rest
-  engine/      campaign rules (submit / settle / wait), scoring
-  advisor/     preprocessing, logistic model, similarity, hit-rate, stop advice
-  policies/    the scripted ladder (random, fixed_metric, learner, learner_sim, ...)
-  interfaces/  schemas, the 15 tools, MCP server, CLI
-  eval/        agent loop, matrix runner, spend guard, scorers, statistics, CLI
-```
-
-Import boundaries are enforced, not documented: `domain` imports only the standard library,
-`advisor` and `policies` receive a `CampaignState` snapshot and nothing else, and **nothing**
-imports `interfaces` or `eval`.
-
-## Quickstart
-
-```bash
-uv sync          # or: pip install -e . pytest ruff
-make test        # 939 tests, no data, network or API key needed
-make lint
-```
-
-To work with the real data, download the Proteinbase CSV to `data/raw/proteinbase.csv`
-(git-ignored), then:
-
-```bash
-python data/build_tables.py --csv data/raw/proteinbase.csv --check
-python data/build_clusters.py --check
-python data/build_folds.py
-pytest -m data -q
-```
-
-Play the scripted ladder, then an agent, then compare them:
-
-```bash
-python scripts/run_ladder.py
+  domain/     core types and feature specs
+  config.py   YAML configuration loading and validation
+  datasets/   Proteinbase tables, 3-mer similarity/clustering, folds, aliases,
+              pool loader
+  store/      SQLite store: append-only campaign history
+  backends/   replay backend: serves recorded outcomes to the agent
+  engine/     campaign rules (clock, submit/settle/wait), scoring
+  advisor/    preprocessing, logistic model, similarity index, rate/stop rules
+  policies/   batch selection strategies: random, fixed metric, learner, learner_sim (+stop)
+  eval/       evaluation engine
+  interfaces/ the 15 tools, MCP server and CLI (the agent-facing layer)
+  spec_pin.py OpenAPI spec pin
+data/         data handling and processing scripts
+scripts/      convenience scripts
+tests/        one test file per module + import-boundary guard
 ```
 
 ```bash
-replaylab-eval scripted --run-dir runs/r1 --games E --policies random,learner,learner_sim --trials 20
+uv sync                                    # project + dev group (pytest, ruff); without uv: pip install -e . pytest ruff
+make test                                  # CI set: no data, network or key needed
+make lint                                  # ruff check + format check
+make test-all                              # everything, including real-data checks
+
+# Download the Proteinbase CSV at data/raw/proteinbase.csv (gitignored), then:
+python data/build_tables.py --csv data/raw/proteinbase.csv --check   # expect 15 x OK
+python data/build_clusters.py --check                                # cluster summary check
+python data/build_folds.py                                           # writes the frozen split
+pytest -m data -q                                                    # real-data checks
+
+# Evaluation harness
+python scripts/run_ladder.py                                         # reports/ladder.{csv,md}
+uv sync --extra eval                                                 # adds the LLM client extras
+replaylab-eval conditions                                            # the tool set of every condition
+replaylab-eval pilot --run-dir runs/x --model deepseek --games N-dev \
+    --conditions A,B1 --trials 20 --max-usd 1                        # first episodes + cost projection
+replaylab-eval run --run-dir runs/x --model deepseek --games N-dev \
+    --conditions A,B1 --trials 20 --max-usd 1                        # plays only what is missing
+replaylab-eval scripted --run-dir runs/x --games N-dev \
+    --policies random,learner,learner_sim,learner_sim_purchased --trials 20
+replaylab-eval compare --records runs/x/episodes.jsonl --game N-dev \
+    --a B1 --b scripted:learner_sim --ci 0.9                         # paired bootstrap over seeds
+replaylab-eval view --run-dir runs/x                                 # one HTML page for the run
 ```
 
-```bash
-replaylab-eval run --run-dir runs/r1 --model deepseek --games E --conditions A,B1 --trials 20 --max-usd 20
-```
+`build_folds.py` refuses to overwrite a frozen split (exit code 3); pass
+`--force` only if you really mean to replace it. The user guide under
+`docs/user_guide/` walks through the architecture, the vocabulary, and the
+evaluation workflow; `docs/design-notes.md` holds the numbers behind every
+choice and every experiment's registration and results.
 
-```bash
-replaylab-eval compare --records runs/r1/episodes.jsonl --game E --a B1 --b scripted:learner_sim --ci 0.9
-```
+| document | what it holds |
+| --- | --- |
+| [`docs/design-notes.md`](docs/design-notes.md) | every number behind every decision, in order |
+| [`docs/caveats.md`](docs/caveats.md) | the conditions these results hold under — read before quoting them |
+| [`docs/prereg-anthropic.md`](docs/prereg-anthropic.md) | the final test, fixed before it is played |
+| [`docs/prereg-orientation.md`](docs/prereg-orientation.md) | the toolkit-defect experiment and its null |
+| [`reports/ladder.md`](reports/ladder.md) | the full scripted ladder, 100 seeds per game |
+| `reports/agent_study.csv` | per-episode scores behind every figure in this README |
 
-`replaylab-eval view --run-dir runs/r1` writes an offline replay of the episodes you can click
-through. Real runs need an API key and real values in `config/models.yaml` /
-`config/prices.yaml` (copy the `.example` files and check every number against the provider's
-own pages — nothing about a provider is decided in code).
-
-Regenerate this README's figures from the committed CSVs:
+The figures above are generated, not pasted: `scripts/export_study.py` writes the per-episode
+scores out of the run records (scores only — no transcripts, identifiers or sequences), and
+`scripts/make_figures.py` redraws the SVGs from that CSV using the project's own paired
+bootstrap, so a figure and `replaylab-eval compare` cannot drift apart.
 
 ```bash
 python scripts/make_figures.py
 ```
 
-## Status
+**Definitions**
 
-Phases 0–7 are built and integrated: the environment, the toolkit, the scripted ladder, the
-evaluation harness and the agent study above. The **final test** — the Anthropic binder
-release, 1,320 designs over 15 targets that share no sequence with Proteinbase — is **built,
-pre-registered and deliberately unplayed**: four single-target games behind a run-once lock, a
-pinned input hash, and a rehearsal copy with shuffled column names and drawn labels so the
-whole pipeline can be exercised without spending the test. See
-[`docs/prereg-anthropic.md`](docs/prereg-anthropic.md).
-
-Still open: the live Foundry-API backend (forward mode), and a knowledge layer whose shape
-should follow from the ablation above rather than precede it.
-
-## Where things are documented
-
-| File | What it holds |
-|---|---|
-| [`docs/design-notes.md`](docs/design-notes.md) | every number behind every decision, in order |
-| [`docs/caveats.md`](docs/caveats.md) | the conditions these results hold under — read before quoting them |
-| [`docs/prereg-anthropic.md`](docs/prereg-anthropic.md) | the final test, fixed in advance |
-| [`reports/ladder.md`](reports/ladder.md) | the full scripted ladder, 100 seeds per game |
-| `reports/agent_study.csv` | per-episode scores behind every figure |
-| [`CLAUDE.md`](CLAUDE.md) | the working handoff: status, frozen decisions, rules of engagement |
-
-## Definitions
-
-* **hit** — any binding record for the (design, target) pair is True. On the Anthropic pool,
-  the release's own two-vendor binder call.
-* **conflict** — the binding records for a pair disagree.
-* **strength** — the strongest label among the strength records (Strong, Medium, Weak).
-* **kd_molar** — the smallest dissociation constant, in molar units, never rounded; a KD with
-  no target is attached to the design's only binding target, or dropped if ambiguous.
+* **hit**: any binding record for the (design, target) pair is True.
+* **conflict**: the binding records for the pair disagree.
+* **strength**: the strongest label among the strength records (Strong, Medium, Weak).
+* **kd_molar**: the smallest KD, converted to molar units; a KD with no target is attached
+  to the design's only binding target, or dropped if that is ambiguous.
 * Metadata (`meta_name`, `meta_author`, `meta_method`) is stored apart from features and is
   never visible to an agent.
 
-Processed tables land in `data/processed/` (git-ignored): `designs.parquet`,
-`outcomes.parquet`, `targets.parquet`, `evaluations_long.parquet`, `build_report.json`.
+**Output** (`data/processed/`, gitignored): `designs.parquet`,
+`outcomes.parquet`, `targets.parquet`, `evaluations_long.parquet`,
+`build_report.json`.
