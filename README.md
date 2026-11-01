@@ -13,7 +13,7 @@ work**, and **wins where they break down**.
 
 ![Agent minus its pre-registered bar on the Nipah development pool and on the EGFR transfer set: -6.90 on Nipah, +12.25 and +13.70 on EGFR, with 90% paired intervals](reports/figures/two-sided-result.svg)
 
-## 1. The problem
+## 1. Introduction
 
 [Adaptyv API: Giving everyone access to a real lab](https://www.adaptyvbio.com/blog/adaptyv-api)
 is built around agents as its primary users:
@@ -30,7 +30,9 @@ to fit a model on its own results, to follow up on its own discoveries — and i
 should make more informed decisions, better than before and at lower cost than
 giving it everything at once or asking it to reason harder.
 
-## 2. The setup, in plain words
+## 2. Methods
+
+### 2.1 The setup, in plain words
 
 An agent conducting an experimental campaign on the platform is handed:
 
@@ -42,12 +44,13 @@ An agent conducting an experimental campaign on the platform is handed:
 
 Each round the agent buys a **batch** of designs; the lab reports back how many
 were **hits** — designs that actually bind the intended target in the lab.
-Results arrive after each purchase: sometimes
-immediately, sometimes delayed, during which bought-but-unreported designs are
-*pending*. The goal: **find as many hits as possible before the money runs
-out** — and know when to stop early and save the rest of the budget.
+Results arrive after each purchase, in some campaigns immediately and in
+others after a delay; a design that has been bought but not yet reported on is
+*pending*, and cannot be bought again. The goal: **find as many hits as
+possible before the money runs out** — and know when to stop early and save
+the rest of the budget.
 
-## 3. The games
+### 2.2 The games, and the tools on offer
 
 We turn a public dataset of real designed binders and their recorded lab
 outcomes into a **game** that mimics a real campaign: the agent never sees the
@@ -65,7 +68,10 @@ offered:
 * **advisor tools** — propose a batch from a scripted policy, fit a logistic
   model on what has been learned so far, find neighbours close to a hit (a
   *similarity index* is a numeric measure of how alike two protein sequences
-  are), and estimate hit rates (14 tools in total).
+  are), and estimate hit rates.
+
+Eight campaign tools and six advisor tools make fourteen; a fifteenth, used
+only by one experimental condition, lets the agent configure its own model.
 
 The agent plays **against rules-based policies that see exactly the same
 information**: random selection; picking by a single fixed score; and
@@ -77,7 +83,7 @@ standardizes its features on what it has bought rather than on the whole pool.
 of these policies *on the pool being played*. Because everyone reads the same
 pool and the same hidden outcomes, the comparison is fair by construction.
 
-## 4. The evaluation
+### 2.3 The evaluation design
 
 The project followed a research timeline, each stage written down *before* its
 data was seen:
@@ -107,15 +113,7 @@ data was seen:
    pinned by hash and each game behind a run-once lock. The parameters are
    fixed in `docs/prereg-anthropic.md` before any episode exists.
 
-**Headline results.** On the Nipah development pool the agent **fails** to
-match the best scripted player; on EGFR it **passes outright — all four
-cells (each cell is one combination of LLM model and available tool set) beat
-the best scripted policy** with intervals above zero; the ablations show the
-win splits roughly in half between the agent's own
-filtering and its advisor tools, with `similar_designs` carrying the advisor
-half. Section 6 has the numbers; section 7 the caveats.
-
-## 5. How the data is protected
+### 2.4 How the data is protected
 
 Lab outcomes are the answer sheet; an agent that reads them early is not being
 evaluated, it is cheating. Several independent safeguards prevent that:
@@ -145,7 +143,15 @@ evaluated, it is cheating. Several independent safeguards prevent that:
   are written down *before* the data exists, and validity gates are checked
   before any score is read.
 
-## 6. Results
+## 3. Results
+
+**In brief.** On the Nipah development pool the agent **fails** to match the
+best scripted player. On the EGFR transfer set it **passes outright**: all four
+cells — each cell being one combination of language model and tool set — beat
+the best scripted policy with intervals above zero. The ablations split that
+win roughly in half between the agent's own filtering and its advisor tools,
+with `similar_designs` carrying the advisor half. Section 4 gives the
+limitations these numbers come with.
 
 **Development pool (Nipah-G).** The best scripted player reaches **26.4 hits**
 per 60 purchases (mean over 100 seeds). The agent (deepseek-flash, condition
@@ -153,8 +159,9 @@ B1) falls **6.2 hits short** (90% paired interval [−9.0, −3.35]; a
 confirmatory rerun on a fresh block: −6.9 [−8.8, −4.95]) — a clear **FAIL**
 against the pre-registered margin. mimo-v2.6-flash narrowly misses the same
 margin. For context, the agent beats random selection decisively
-(+11.9 to +14.4) and lands at parity with the plain learner policy `learner`
-(+1.2 [−0.8, +3.35]) — it plays competently, it just does not beat a well-tuned
+(+13.8 to +18.0 across the three Nipah blocks) and lands at parity with the
+plain learner policy `learner` (+1.2 [−0.8, +3.35]) — it plays competently,
+it just does not beat a well-tuned
 script here. A stronger frontier model was the obvious suspect: Claude Opus 5.5
 could not be tested (the provider declined the requests), so the capability
 probe used Claude Sonnet 5.5, which did no better (−10.4 on trials 0–9). Two
@@ -185,8 +192,10 @@ and exceeds**:
 | mimo, B1 | **+13.70** | [12.05, 15.35] | exceeds (20/20 wins) |
 | mimo, C | +11.85 | [9.1, 14.5] | exceeds |
 
-The agent reaches ~23–24 hits (a 38–40% hit rate on a pool where only 16% of
-designs bind), using two features, length and design class.
+The agent reaches ~23–24 hits out of 60 purchases — a 38–40% hit rate on a
+pool where 16% of designs bind — working from just two predicted-score columns
+(an ESMFold confidence and a ProteinMPNN score), plus the sequence length and
+design class that are visible in every game.
 
 *Condition keys:* **A** — campaign tools only; **B1** — campaign + advisor
 tools (the headline agent); **B2** — B1 with the similarity-lookup tool
@@ -199,9 +208,10 @@ which tools are exposed.
 nor the scripted policy can fit a model yet (the gate above is open for no
 one), so both buy blind. The agent then builds its lead **in round 2** by
 filtering the pool directly with its query tools; those early hits open *its*
-model gate a full round before the scripted policy reaches the same gate (the
-agent crosses the 2-hit threshold after two rounds, the scripted learner only
-after four). Rounds 3 and 4 compound.
+model gate a full round before the scripted policy reaches the same gate: the
+agent is past 2 hits by the end of round 2 and can fit from round 3, while the
+scripted learner only gets there by the end of round 3 and first fits in round
+4 — its last. Rounds 3 and 4 compound.
 
 ![Cumulative hits at each round boundary on EGFR: the scripted bar stays near one hit through rounds 1-2 and reaches 10.6 by round 4, while B1 climbs to 22.8 and campaign-tools-only A to 16.1](reports/figures/e-round-curves.svg)
 
@@ -233,11 +243,14 @@ several times per campaign, the other rarely does.
 **A defect in our own toolkit, and what it taught us.** Auditing the
 transcripts turned up a flaw on our side rather than the model's: agents were
 shown **raw** feature values while the fitted model reported its weights in
-**oriented** space, and nothing stated which columns were flipped. Of the 607
-pool queries that sorted on the one lower-is-better column, **113 asked for the
-worst designs**, and 86 batches were submitted directly afterwards — in 39% of
-EGFR episodes. Since buying the worst-scoring designs *hurts* the agent, the
-EGFR win was obtained in spite of this, not because of it. We fixed the surface
+**oriented** space, and nothing stated which columns were flipped. Across all
+350 recorded episodes, of the 607 pool queries that sorted on the one
+lower-is-better column, **113 asked for the worst designs** and 86 batches
+were submitted directly afterwards. The damage was concentrated in EGFR, which
+has only two score columns and so leans half its signal on the inverted one:
+39% of its episodes contain at least one such query, against 6% on Nipah.
+Since buying the worst-scoring designs *hurts* the agent, the EGFR win was
+obtained in spite of this, not because of it. We fixed the surface
 and then measured the fix on a fresh block of 80 episodes: hits did not move
 (pooled +0.17 [−2.70, +3.00]), and neither did the behaviour — the worst-first
 rate was unchanged (+0.25 calls per episode, interval spanning zero). The old
@@ -251,14 +264,16 @@ one: a hazard in a tool is better **removed** than documented.
 half cancels the other: tool sets for agents should be judged by *where* they
 change the game, not by a single universal scoreboard.
 
-## 7. Limitations
+## 4. Limitations
 
 * **Offline only so far.** Everything is replayed from recorded outcomes; the
   live forward mode against the real lab API is future work. Replay means the
   world never reacts to the agent — a real campaign does.
 * **Few pools.** Nipah and EGFR are two targets (plus small stop-games);
   seed-level intervals measure policy luck on *one* pool, not performance across
-  targets. The Anthropic dataset test, run once, is meant to be the third leg.
+  targets. The Anthropic test adds four more targets, but they come from a
+  single design campaign, so they are four targets rather than four independent
+  replications.
 * **Small samples.** Each cell holds 20 paired episodes; some intervals are wide and
   one cell (mimo's confirmatory run) straddled its margin at the maximum
   planned sample.
@@ -276,13 +291,13 @@ change the game, not by a single universal scoreboard.
   prompting could do.
 * **A known toolkit defect sits inside the played results.** Feature
   orientation was undescribed while every episode in this report was played
-  (section 6); it cost the agent rather than flattered it, but the absolute
+  (section 3); it cost the agent rather than flattered it, but the absolute
   numbers belong to a toolkit with that flaw in it.
 * **Early stopping was barely exercised.** Almost every campaign ran to its
   full budget; a stopping-advice tool exists, but nothing in these results
   speaks for or against stopping early. That question is future work.
 
-## 8. Conclusion
+## 5. Conclusion
 
 Tool-using agents are not uniformly better than scripted rules — they are
 better *where rules cannot go*: when the start is blind, the signal is weak, or
@@ -357,10 +372,11 @@ choice and every experiment's registration and results.
 | [`reports/ladder.md`](reports/ladder.md) | the full scripted ladder, 100 seeds per game |
 | `reports/agent_study.csv` | per-episode scores behind every figure in this README |
 
-The figures above are generated, not pasted: `scripts/export_study.py` writes the per-episode
-scores out of the run records (scores only — no transcripts, identifiers or sequences), and
-`scripts/make_figures.py` redraws the SVGs from that CSV using the project's own paired
-bootstrap, so a figure and `replaylab-eval compare` cannot drift apart.
+The figures above are generated, not pasted: `scripts/export_study.py` writes
+the per-episode scores out of the run records (scores only — no transcripts,
+identifiers or sequences), and `scripts/make_figures.py` redraws the SVGs from
+that CSV using the project's own paired bootstrap, so a figure and
+`replaylab-eval compare` cannot drift apart.
 
 ```bash
 python scripts/make_figures.py
