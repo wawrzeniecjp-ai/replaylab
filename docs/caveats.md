@@ -160,3 +160,44 @@ the hazardous call impossible or self-correcting (for example, refusing a descen
 an inverted column unless it is asked for explicitly, or returning the direction in the rows
 themselves) rather than by warning about it. And that this is one block on one pool: it shows
 a warning *can* fail to land, not that documentation never works.
+
+## 6. Pairing by seed does not cancel the agent's own randomness (2026-11-01)
+
+**What.** Every comparison in this project is paired on the episode seed, and the seed depends
+only on game and trial, so two conditions meet the same pool, the same hidden outcomes and the
+same alias order. The claim that was being made on top of that -- that pairing therefore
+cancels luck of the draw -- is true for scripted arms and **false for agent arms**. Measured on
+the played blocks:
+
+| comparison | r between arms | sd of the paired difference | sd if treated as independent | change |
+| --- | --- | --- | --- | --- |
+| `scripted:learner` vs `scripted:learner_sim` (E) | +0.50 | 0.73 | 1.02 | -29% |
+| `scripted:random` vs `scripted:learner_sim` (E) | +0.37 | 2.25 | 2.54 | -11% |
+| B1 vs `scripted:learner_sim_purchased` (N-dev) | +0.23 | 5.26 | 5.79 | -9% |
+| B1 vs `scripted:learner_sim` (E, deepseek) | +0.04 | 9.34 | 9.36 | -0.3% |
+| B1 vs A (E, mimo) | +0.01 | 8.65 | 8.69 | -0.4% |
+| B1 vs A (N-dev, mimo) | -0.22 | 11.78 | 10.72 | **+10%** |
+| B1 vs A (E, deepseek) | -0.42 | 15.30 | 12.86 | **+19%** |
+
+**Why.** What the seed controls is small. On a `split: all` game the pool and the outcomes are
+identical across trials, so the seed varies only the alias map -- which design is `d0001`, and
+hence the order the pool is presented in -- plus the generator that scripted policies use for
+their 20% exploration (`policies/core.make_rng`, a fresh generator per round, so a policy that
+draws a different number of values in one round still gets the identical stream in the next).
+No fit consumes randomness: the learner is lbfgs with no `random_state`, `fit_custom_model` is
+lbfgs or saga with `random_state=0`, and its validation is leave-one-out, which is exhaustive
+rather than sampled. The one shuffling RNG in the project, `StratifiedGroupKFold` in
+`datasets/splits.py`, ran once offline to build the committed folds.
+
+So for two scripted policies the shared alias order is most of the variance and pairing earns
+its keep. For an agent it is almost none of it: the per-seed sd is 0.7 to 2.8 hits on scripted
+arms and 4.4 to 9.3 on agent arms, and the difference is LLM sampling, for which no seed is set
+(none of the providers used here offers a reliable one). That noise is independent across arms,
+so differencing two agent arms adds it twice while cancelling nothing.
+
+**What the write-up should say.** That pairing is justified by a shared *exogenous* factor --
+same pool, same outcomes, same presentation order -- and not by the claim that it removes the
+agent's variance, which it does not. The paired bootstrap stays the right interval for the mean
+paired difference either way; where the correlation is negative it is simply **wider** than an
+unpaired analysis, which is the direction that cannot manufacture a result. No published number
+changes; the sentence claiming that "luck of the draw cancels out" does.

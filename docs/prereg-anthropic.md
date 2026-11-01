@@ -306,6 +306,89 @@ Pooling them measures the method across targets within this release; it does not
 across campaigns, and the write-up must not read it as the latter. The targets also share a
 single generator mix, a single scoring pipeline and a single pair of vendors.
 
+### Amendment, 2026-11-01: the primary outcome is the tool contrast
+
+Added **before any episode of any `AB-` game was played**, at commit `1a6cb9f` with a clean
+tree. Checked at the time of writing: no `runs/ab-*` directory exists, no lock file exists for
+any of the four games, and no record in any run directory names an `AB-` game. Nothing about
+the run itself changes -- same four games, same conditions A/B1/B2, same two models, same
+block 0-19, same caps, same registered `config_hash` values. What changes is the **analysis
+plan**, which does not enter the config hash and was not fixed by section 6. The "headline"
+row of section 6's table is to be read through this amendment: the pooled paired difference
+is still the headline quantity, and the primary comparison it is taken over is now `B1 - A`.
+
+**Why.** The author's argument, 2026-11-01: a bar set at "the best scripted policy" is
+unfair to the agent, because in a real campaign nobody knows in advance which policy is
+best, so the agent would be measured against an oracle that has already seen the results.
+The more meaningful question is whether the agent *with* advisor tools beats the agent
+*without* them, which is also the question the study set out to answer.
+
+Section 5 already accepted half of this when it refused a maximum over the ladder and named
+one policy in advance. The amendment accepts the rest. Two facts support it:
+
+* **"Best scripted policy" is not a target anyone can aim at.** The ladder reorders between
+  pools: `learner_sim_purchased` scores 26.43 on N-dev and 4.45 on E, `learner` 18.18 and
+  7.44 (`reports/ladder.md`). A practitioner must commit to a policy before seeing any
+  outcome, so a bar defined as "whichever policy turned out best on this pool" cannot be met
+  by anything a practitioner could have done either.
+* **The tool contrast needs no oracle.** B1 - A is paired by seed within one model and one
+  game, and both arms are the same player with a different tool list. Nothing in it depends
+  on knowing which scripted policy is strongest.
+
+**The hierarchy, in order.** All comparisons are paired by seed and use
+`replaylab.eval.stats.paired_bootstrap` at 90%, 10,000 resamples, resampling seed 0.
+
+1. **Primary -- do the advisor tools help?** `B1 - A`, pooled over the four games, reported
+   per model (80 paired episodes each). **Decision rule: the lower bound of the 90% interval
+   is above zero.** No effect-size margin (see below).
+2. **Secondary -- how does the agent compare to scripted play?** `B1 - scripted:learner_sim`,
+   pooled over the four games, against the **1.07-hit margin** of section 5, unchanged.
+3. **Descriptive, no threshold attached.** Per-game rows for both of the above; `B1 - B2`
+   (what `similar_designs` contributes); `A - scripted:learner_sim`; and the full scripted
+   ladder on the same seeds, so that any policy beating the agent is visible in the same
+   table as the verdict, exactly as section 5 requires.
+
+**The hierarchy is a hierarchy, not a maximum.** A primary interval that includes zero is
+**not** rescued by the secondary clearing its margin, and the write-up may not promote the
+secondary to the headline after the fact. Both are reported whatever their signs. This is the
+same refusal as section 5's refusal to take a maximum over policies, applied to outcomes
+instead of policies.
+
+**Why no margin on the primary.** The 1.07-hit margin was derived by rescaling N-dev's
+2-of-60 standard by purchase rate, and its purpose is to stop a trivially small win over a
+*competitor* being reported as beating it. The primary is an ablation of our own toolkit, not
+a contest: the quantity of interest is the sign and the width of the interval, and "the tools
+help" has no natural effect size attached to it. The alternative -- reusing 1.07 for
+consistency -- was considered and rejected on that ground, and is recorded here so the choice
+is visible rather than silent.
+
+**Resolution, from the played pools.** The per-episode paired sd of `B1 - A` measured on
+N-dev and E (60 purchases) is 15.30 and 8.65 hits on E (deepseek, mimo) and 9.51 and 11.78 on
+N-dev. Scaled to 32 purchases by the same purchase-rate factor section 5 uses (32/60) that is
+roughly 5 to 8 hits, so 80 pooled pairs give a 90% half-width of about **1.1 to 1.5 hits**.
+The effect measured on the played pools, scaled the same way, is **+2.5 to +3.0 hits**
+(pooled `B1 - A` of +4.62 on N-dev and +5.60 on E, both over 40 pairs). So the primary
+resolves the effect if it transfers to a fresh campaign, and reports it as inconclusive if it
+shrinks by more than about half.
+
+**Pairing does not reduce variance for this contrast, and that is the conservative
+direction.** Measured on the played blocks, the two agent arms' per-seed hit counts are
+*negatively* correlated in three of the four cells (r = -0.42 on E deepseek, -0.16 and -0.22
+on N-dev; +0.01 on E mimo, and -0.45 for `B1 - B2` on E deepseek), so differencing by seed
+gives an interval **wider** than treating the arms as independent would -- by up to 19% in
+the cells with the strongest negative correlation, and by nothing in the neutral one.
+Pairing is kept regardless, because it is what the seed design licenses and because the
+inflation is in the direction that cannot manufacture a result. See `docs/caveats.md`
+entry 6.
+
+**No extension.** Unchanged from section 6: if the primary interval straddles zero the result
+is reported as inconclusive. Adding trials after seeing it would be optional stopping.
+
+**Disclosure.** Every number quoted in this amendment comes from the already-played N-dev and
+E blocks, which are development and confirmatory data for those two pools. No quantity of any
+`AB-` pool was computed, looked at or estimated in writing it, beyond what section 5's
+disclosure already records.
+
 ## 7. The configuration these games run on
 
 The orientation defect of `docs/caveats.md` entry 4 was **fixed before any of these games was
