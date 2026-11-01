@@ -1103,9 +1103,21 @@ Readings (intervals reported; §16 registered no threshold):
   tools at all.
 * **Advisor tools add on top on both models** (B1 - A intervals above zero:
   +6.7 ds, +4.5 mimo), splitting §15's gain roughly in half. The deepseek round
-  profile makes it concrete: A vs bar [-0.1, +3.8, +1.5, +0.2] -- lifts in
-  round 2, then flatlines with no fit tool -- against B1's
-  [0.2, +5.8, +9.2, +12.2], which compounds once the model can fit.
+  profile makes it concrete. Lead over the bar at the four round boundaries,
+  cumulative in both rows: A [-0.1, +3.8, +5.4, +5.6] against B1
+  [+0.2, +5.9, +9.2, +12.2]. A takes its whole lead in round 2 and holds it
+  (the lead grows by +3.8, then +1.6, then +0.2); B1 keeps compounding once it
+  can fit (+5.6, then +3.4, then +3.1). Note that A's *hits* rise throughout
+  (0.95, 4.75, 9.35, 16.1) -- it is the lead that stops growing, not the
+  buying.
+
+  (Correction, 2026-10-30: this bullet previously read "A vs bar
+  [-0.1, +3.8, +1.5, +0.2] -- lifts in round 2, then flatlines" against B1's
+  [0.2, +5.8, +9.2, +12.2]. The two brackets were different quantities -- A's
+  were increments of the lead, B1's the cumulative lead -- so the contrast read
+  starker than a like-for-like comparison supports, and A's third increment was
+  +1.6, printed as +1.5. Both rows are now cumulative. The qualitative reading
+  is unchanged and still holds.)
 * C - A is decisive for ds (+6.8) and straddles zero for mimo (+2.65),
   matching C - B1 in §15: *having* an analysis tool matters more than which
   one is exposed.
