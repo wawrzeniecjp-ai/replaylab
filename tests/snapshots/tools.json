@@ -9,7 +9,7 @@
     "name": "campaign_summary"
   },
   {
-    "description": "Summarize each column over the whole pool (min, median, max and share missing; counts for classes). Use it to pick thresholds before querying. It says nothing about which designs are hits.",
+    "description": "Summarize each column over the whole pool (min, median, max, share missing and higher_is_better; counts for classes). higher_is_better says which direction is the good one, since values are raw; use it to pick thresholds before querying. It says nothing about which designs are hits.",
     "input_schema": {
       "properties": {
         "columns": {
@@ -93,7 +93,7 @@
     "name": "estimate_hit_rate"
   },
   {
-    "description": "Fit a regularized logistic model on delivered designs and rank unpurchased designs by predicted hit probability. Needs at least 2 hits and 8 delivered purchases, otherwise it returns insufficient_data. Use it to see which features matter.",
+    "description": "Fit a regularized logistic model on delivered designs and rank unpurchased designs by predicted hit probability. Needs at least 2 hits and 8 delivered purchases, otherwise it returns insufficient_data. Use it to see which features matter: each weight is in the raw-value direction, so positive means a higher raw value of that column goes with binding.",
     "input_schema": {
       "properties": {
         "exploration": {
@@ -128,7 +128,7 @@
     "name": "fit_and_rank"
   },
   {
-    "description": "Fit your own logistic regression on the delivered results, with the options below, and rank the unpurchased designs. It needs at least 2 hits and 8 delivered purchases, otherwise it returns insufficient_data; with the default options it is the same model as fit_and_rank. validation compares the model's leave-one-out log loss with a base-rate baseline (improvement above 0 means better than the baseline; compare it with improvement_se) and gives the leave-one-out AUC with its standard error.\nOptions:\n- features: the predicted-score features to use (default: all); length and design class are always inputs.\n- scaling: pool standardizes each input with the mean and standard deviation of the whole pool; purchased, with those of your delivered designs.\n- penalty and C: l2 shrinks every weight toward zero, l1 can set weights to exactly zero; a smaller C shrinks more (0.001 to 100).\n- similarity_feature: adds each design's largest 3-mer sequence similarity to one of your hits as an input (a design is never compared with itself).\n- rank_by: mean ranks by predicted hit probability; upper by an optimistic bound, sigmoid(log-odds + kappa x sd), from the model's uncertainty (l2 only; kappa 0 to 5).\n- top_k: how many designs to return (at most 50).",
+    "description": "Fit your own logistic regression on the delivered results, with the options below, and rank the unpurchased designs; each reported weight is in the raw-value direction, so positive means a higher raw value goes with binding. It needs at least 2 hits and 8 delivered purchases, otherwise it returns insufficient_data; with the default options it is the same model as fit_and_rank. validation compares the model's leave-one-out log loss with a base-rate baseline (improvement above 0 means better than the baseline; compare it with improvement_se) and gives the leave-one-out AUC with its standard error.\nOptions:\n- features: the predicted-score features to use (default: all); length and design class are always inputs.\n- scaling: pool standardizes each input with the mean and standard deviation of the whole pool; purchased, with those of your delivered designs.\n- penalty and C: l2 shrinks every weight toward zero, l1 can set weights to exactly zero; a smaller C shrinks more (0.001 to 100).\n- similarity_feature: adds each design's largest 3-mer sequence similarity to one of your hits as an input (a design is never compared with itself).\n- rank_by: mean ranks by predicted hit probability; upper by an optimistic bound, sigmoid(log-odds + kappa x sd), from the model's uncertainty (l2 only; kappa 0 to 5).\n- top_k: how many designs to return (at most 50).",
     "input_schema": {
       "properties": {
         "C": {
@@ -277,7 +277,7 @@
     "name": "propose_batch"
   },
   {
-    "description": "List unpurchased designs with their raw metric values, optionally filtered and sorted (at most 50 rows). Use it to look at candidates before buying, or pass design_ids to look up specific designs (purchased ones included). Metric values are raw, so a lower ProteinMPNN score is better.",
+    "description": "List unpurchased designs with their raw metric values, optionally filtered and sorted (at most 50 rows). Use it to look at candidates before buying, or pass design_ids to look up specific designs (purchased ones included). Values are raw and never reoriented, so for some columns a LOWER value is better and sorting descending returns the worst designs: check the column's higher_is_better, which describe_campaign and column_summary report.",
     "input_schema": {
       "$defs": {
         "Condition": {

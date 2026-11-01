@@ -1,6 +1,9 @@
 # data: never commit the Proteinbase CSV or derived tables
-data/raw/
-data/processed/
+# no trailing slash: this must also catch a symlink of the same name, which a
+# scratch worktree may create to point at the real data
+data/raw
+data/processed
+data/splits/splits
 
 # secrets and local notes
 .env

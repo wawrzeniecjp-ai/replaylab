@@ -212,7 +212,9 @@ def test_fit_and_rank_ranks_unpurchased_designs_by_probability():
     # the planted signal: strong features carry the weight, the noise column does not
     weights = {w.feature: w.weight for w in result.top_weights}
     assert len(result.top_weights) <= 5
-    assert weights.get("f_strong", 0) > 0 and weights.get("f_lower", 0) > 0
+    # weights are in the raw-value direction, and make_signal_pool shifts f_lower DOWN for
+    # hits, so its weight is negative here while f_strong's is positive
+    assert weights.get("f_strong", 0) > 0 and weights.get("f_lower", 0) < 0
     assert "f_noise" not in weights or abs(weights["f_noise"]) < abs(weights["f_strong"])
 
 

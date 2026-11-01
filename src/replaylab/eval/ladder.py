@@ -15,7 +15,9 @@ Two decisions the task card leaves ambiguous, fixed here:
   The small stop-game targets have no rows in ``data/splits/clusters.csv``, and
   ``score`` would raise for any hit it cannot place in a family.
 
-Held-out games are refused with ``ValueError``: that split is run once, at the end.
+Held-out games are refused with ``ValueError``: that split is run once, at the end. So are
+final-test games: their scripted numbers come only from the final run itself
+(``replaylab-eval scripted --final-run``), never from a ladder one could tune against.
 """
 
 from __future__ import annotations
@@ -58,6 +60,10 @@ from replaylab.policies.core import (
 )
 from replaylab.policies.purchased import PurchasedLearner, PurchasedLearnerSim
 
+FINAL_TEST_REFUSAL = (
+    "the final test is played once, by the runner with --final-run; the ladder refuses it"
+)
+
 LADDER_COLUMNS = [
     "game",
     "policy",
@@ -89,12 +95,14 @@ def run_game(
     stop). When ``stop_trace`` is given it receives the stop advice at every round
     boundary, whether or not the policy is wrapped in ``WithStop``.
 
-    Held-out games raise ``ValueError`` before anything is loaded.
+    Held-out and final-test games raise ``ValueError`` before anything is loaded.
     """
     if game.split == "heldout":
         raise ValueError(
             f"game {game.id}: the held-out split is run once, at the end; the ladder refuses it"
         )
+    if game.final_test:
+        raise ValueError(f"game {game.id}: {FINAL_TEST_REFUSAL}")
     env = build_replay_campaign(
         game,
         tables_dir,
@@ -330,6 +338,8 @@ def run_ladder(
             raise ValueError(
                 f"game {game_id}: the held-out split is run once, at the end; the ladder refuses it"
             )
+        if game.final_test:
+            raise ValueError(f"game {game_id}: {FINAL_TEST_REFUSAL}")
         if game.target not in feature_configs:
             raise ValueError(
                 f"game {game_id}: target {game.target!r} has no entry in the feature "

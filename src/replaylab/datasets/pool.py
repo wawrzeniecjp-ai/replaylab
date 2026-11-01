@@ -3,7 +3,8 @@
 * :func:`load_pool` returns the candidate designs (visible features only) plus the
   hidden cluster ids and the feature orientation.
 * :func:`load_outcomes` returns the hidden outcomes. It is the only function that
-  reads them, and it refuses to read the held-out split unless ``final_run=True``.
+  reads them, and it refuses the held-out split and a final-test game unless
+  ``final_run=True``.
 
 Feature values stay raw here (decision D7): orientation is applied later, in the
 advisor's preprocessing, so agents see original values such as the lower-is-better
@@ -28,6 +29,10 @@ HELDOUT_FOLD = 2
 
 class HeldOutAccessError(PermissionError):
     """The held-out split's outcomes were requested outside the final run."""
+
+
+class FinalTestAccessError(PermissionError):
+    """A final-test game's outcomes were requested outside its one final run."""
 
 
 @dataclass(frozen=True)
@@ -146,6 +151,10 @@ def load_outcomes(
     if game.split == "heldout" and not final_run:
         raise HeldOutAccessError(
             f"game {game.id}: the held-out split's outcomes may only be read in the final run"
+        )
+    if game.final_test and not final_run:
+        raise FinalTestAccessError(
+            f"game {game.id}: a final-test game's outcomes may only be read in its final run"
         )
     outcomes = pd.read_parquet(Path(tables_dir) / "outcomes.parquet")
     ids = _pool_ids(outcomes, game, Path(folds_path) if folds_path else None)

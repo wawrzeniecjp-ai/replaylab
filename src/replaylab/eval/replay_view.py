@@ -212,7 +212,7 @@ def pool_view(game_id: str, seed: int, paths: PoolPaths) -> dict[str, Any]:
     The aliases are built exactly as the episode built them (same pool order, same seed).
 
     Raises:
-        ValueError: unknown game, or a held-out game (never shown, not even here).
+        ValueError: unknown game, or a held-out or final-test game (never shown, not even here).
     """
     games = load_games(paths.games)
     if game_id not in games:
@@ -220,6 +220,8 @@ def pool_view(game_id: str, seed: int, paths: PoolPaths) -> dict[str, Any]:
     game = games[game_id]
     if game.split == "heldout":
         raise ValueError(f"game {game_id!r} is held-out: it is never replayed")
+    if game.final_test:
+        raise ValueError(f"game {game_id!r} is the final test: it is never replayed")
     feature_config = load_feature_config(paths.features)[game.target]
     folds = paths.folds if paths.folds and paths.folds.exists() else None
     clusters = paths.clusters if target_has_clusters(paths.clusters, game.target) else None

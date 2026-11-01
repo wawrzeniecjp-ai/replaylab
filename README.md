@@ -11,6 +11,8 @@ replay real lab outcomes so that every decision can be scored honestly. The
 answer we find is two-sided: the agent **loses where the scripted rules already
 work**, and **wins where they break down**.
 
+![Agent minus its pre-registered bar on the Nipah development pool and on the EGFR transfer set: -6.90 on Nipah, +12.25 and +13.70 on EGFR, with 90% paired intervals](reports/figures/two-sided-result.svg)
+
 ## 1. The problem
 
 [Adaptyv API: Giving everyone access to a real lab](https://www.adaptyvbio.com/blog/adaptyv-api)
@@ -98,8 +100,12 @@ data was seen:
 5. **Ablation tests** — removing the advisor tools (condition A) and removing
    one advisor tool (`similar_designs`, condition B2) to see what actually
    carries the result.
-6. **Test on the Anthropic dataset** — *planned: the final, once-only test,
-   run after everything else is frozen.*
+6. **Test on the Anthropic dataset** — *built and pre-registered; deliberately
+   unplayed.* Four single-target games (Nipah-G, EGFR, BBF-14, BHRF1 — 90
+   designs each, sharing no sequence with the development pools), conditions A,
+   B1 and B2, both models, 20 trials, a pooled headline, every input file
+   pinned by hash and each game behind a run-once lock. The parameters are
+   fixed in `docs/prereg-anthropic.md` before any episode exists.
 
 **Headline results.** On the Nipah development pool the agent **fails** to
 match the best scripted player; on EGFR it **passes outright — all four
@@ -163,8 +169,14 @@ a policy (scripted or agent) may only fit its model once it has at least 2 hits
 among at least 8 delivered purchases. Until then it cannot use its model at
 all, so on this pool the scripted policies spend their first rounds blindly
 fishing for hits — buying by a fixed score until the gate opens, which in our
-data happens only in round 4 of 4. On a fresh block of episodes with the
-configuration frozen, **every cell passes and exceeds**:
+data happens only in round 4 of 4. The whole ladder reorders between the two
+pools, which is the clearest single picture of why one bar is high and the
+other low:
+
+![Mean hits per scripted policy on Nipah and on EGFR: the best policy on Nipah, learner_sim_purchased at 26.4, is the worst on EGFR at 4.5, where random at 9.6 beats learner at 7.4](reports/figures/ladder-inversion.svg)
+
+On a fresh block of episodes with the configuration frozen, **every cell passes
+and exceeds**:
 
 | cell | agent − best scripted | 90% CI | verdict |
 | --- | --- | --- | --- |
@@ -191,6 +203,8 @@ model gate a full round before the scripted policy reaches the same gate (the
 agent crosses the 2-hit threshold after two rounds, the scripted learner only
 after four). Rounds 3 and 4 compound.
 
+![Cumulative hits at each round boundary on EGFR: the scripted bar stays near one hit through rounds 1-2 and reaches 10.6 by round 4, while B1 climbs to 22.8 and campaign-tools-only A to 16.1](reports/figures/e-round-curves.svg)
+
 **How the agents actually play.** The transcripts show a consistent style
 across every run: several dozen tool calls per campaign, most of them narrow
 pool queries — filter, sort, re-query — in long chains; `describe_campaign`
@@ -205,6 +219,8 @@ several times per campaign, the other rarely does.
 
 **Ablations.**
 
+![Paired differences on EGFR: B1 minus A is +6.70 and +4.50, B1 minus B2 is +7.15 and +3.85, while B2 minus A straddles zero on both models](reports/figures/e-ablation.svg)
+
 * *Campaign tools only (A):* still beats the bar — **+5.55** (deepseek) and
   **+9.2** (mimo). The cold-start escape needs no advisor at all.
 * *Advisor on top (B1 − A):* **+6.7** [1.25, 12.2] and **+4.5** [1.5, 7.6] —
@@ -213,6 +229,21 @@ several times per campaign, the other rarely does.
   **+3.85** — and B2 drops back to campaign-tools level. On this pool, the
   advisor's entire measurable value is *following up on hits through the
   similarity index*; the rest of the kit is close to neutral.
+
+**A defect in our own toolkit, and what it taught us.** Auditing the
+transcripts turned up a flaw on our side rather than the model's: agents were
+shown **raw** feature values while the fitted model reported its weights in
+**oriented** space, and nothing stated which columns were flipped. Of the 607
+pool queries that sorted on the one lower-is-better column, **113 asked for the
+worst designs**, and 86 batches were submitted directly afterwards — in 39% of
+EGFR episodes. Since buying the worst-scoring designs *hurts* the agent, the
+EGFR win was obtained in spite of this, not because of it. We fixed the surface
+and then measured the fix on a fresh block of 80 episodes: hits did not move
+(pooled +0.17 [−2.70, +3.00]), and neither did the behaviour — the worst-first
+rate was unchanged (+0.25 calls per episode, interval spanning zero). The old
+description had already said "a lower ProteinMPNN score is better" in plain
+words, and agents sorted backwards anyway, in both arms. The lesson is a design
+one: a hazard in a tool is better **removed** than documented.
 
 **The two-sided conclusion.** The agent loses where the scripted learner works
 (a strong, well-fed model on a dense-signal pool) and wins where it breaks down
@@ -243,6 +274,10 @@ change the game, not by a single universal scoreboard.
 * **Tuning attempts were few.** Two prompt/tool iterations were tried on the
   development pool (neither helped); this is not an exhaustive search of what
   prompting could do.
+* **A known toolkit defect sits inside the played results.** Feature
+  orientation was undescribed while every episode in this report was played
+  (section 6); it cost the agent rather than flattered it, but the absolute
+  numbers belong to a toolkit with that flaw in it.
 * **Early stopping was barely exercised.** Almost every campaign ran to its
   full budget; a stopping-advice tool exists, but nothing in these results
   speaks for or against stopping early. That question is future work.
@@ -273,7 +308,7 @@ src/replaylab/
   advisor/    preprocessing, logistic model, similarity index, rate/stop rules
   policies/   batch selection strategies: random, fixed metric, learner, learner_sim (+stop)
   eval/       evaluation engine
-  interfaces/ the 14 tools, MCP server and CLI (the agent-facing layer)
+  interfaces/ the 15 tools, MCP server and CLI (the agent-facing layer)
   spec_pin.py OpenAPI spec pin
 data/         data handling and processing scripts
 scripts/      convenience scripts
@@ -312,6 +347,24 @@ replaylab-eval view --run-dir runs/x                                 # one HTML 
 `docs/user_guide/` walks through the architecture, the vocabulary, and the
 evaluation workflow; `docs/design-notes.md` holds the numbers behind every
 choice and every experiment's registration and results.
+
+| document | what it holds |
+| --- | --- |
+| [`docs/design-notes.md`](docs/design-notes.md) | every number behind every decision, in order |
+| [`docs/caveats.md`](docs/caveats.md) | the conditions these results hold under — read before quoting them |
+| [`docs/prereg-anthropic.md`](docs/prereg-anthropic.md) | the final test, fixed before it is played |
+| [`docs/prereg-orientation.md`](docs/prereg-orientation.md) | the toolkit-defect experiment and its null |
+| [`reports/ladder.md`](reports/ladder.md) | the full scripted ladder, 100 seeds per game |
+| `reports/agent_study.csv` | per-episode scores behind every figure in this README |
+
+The figures above are generated, not pasted: `scripts/export_study.py` writes the per-episode
+scores out of the run records (scores only — no transcripts, identifiers or sequences), and
+`scripts/make_figures.py` redraws the SVGs from that CSV using the project's own paired
+bootstrap, so a figure and `replaylab-eval compare` cannot drift apart.
+
+```bash
+python scripts/make_figures.py
+```
 
 **Definitions**
 

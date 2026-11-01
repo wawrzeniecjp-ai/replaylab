@@ -82,14 +82,18 @@ def test_column_summary_over_the_whole_pool_and_the_class_counts():
     toolbox.submit_batch(["d0001", "d0002"])  # purchased designs stay in the summary
     summary = toolbox.column_summary().columns
     assert list(summary) == ["length", "design_class", "f1", "f2"]
-    assert summary["length"] == s.NumericSummary(min=10, median=11.5, max=14, missing_share=0.0)
+    # length has no pre-registered direction, so higher_is_better is None
+    assert summary["length"] == s.NumericSummary(
+        min=10, median=11.5, max=14, missing_share=0.0, higher_is_better=None
+    )
     # f1 values: 1, 3, 2, 3, 0.5 (d0006 missing); median of [0.5, 1, 2, 3, 3] is 2
     assert summary["f1"] == s.NumericSummary(
-        min=0.5, median=2.0, max=3.0, missing_share=round(1 / 6, 6)
+        min=0.5, median=2.0, max=3.0, missing_share=round(1 / 6, 6), higher_is_better=True
     )
     # f2 values: 5, 5, 1, 9, 2 (d0002 missing); median of [1, 2, 5, 5, 9] is 5
+    # MINI_FEATURES declares f2 lower-is-better, and the summary now says so
     assert summary["f2"] == s.NumericSummary(
-        min=1.0, median=5.0, max=9.0, missing_share=round(1 / 6, 6)
+        min=1.0, median=5.0, max=9.0, missing_share=round(1 / 6, 6), higher_is_better=False
     )
     assert summary["design_class"] == s.CategorySummary(
         counts={"A": 3, "B": 2}, missing_share=round(1 / 6, 6)

@@ -1,0 +1,14 @@
+# Conditions for the orientation-headroom experiment only (docs/prereg-orientation.md).
+#
+# B1 and B1ctl have exactly the same tools. They differ only in which *code* plays them:
+# B1 is played from the fixed working tree, B1ctl from a worktree at the pre-fix commit, so
+# the pair isolates the orientation fix and nothing else. Two labels are needed because the
+# runner keys an episode by (game, condition, trial), so one label cannot hold both arms.
+#
+# This file is separate from config/conditions.yaml on purpose: that one is frozen into the
+# Anthropic final test's configuration hash (docs/prereg-anthropic.md section 7) and must not
+# change for an unrelated experiment.
+version: 1
+conditions:
+  B1:    {include: [campaign, advisor]}
+  B1ctl: {include: [campaign, advisor]}
