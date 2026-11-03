@@ -201,3 +201,81 @@ agent's variance, which it does not. The paired bootstrap stays the right interv
 paired difference either way; where the correlation is negative it is simply **wider** than an
 unpaired analysis, which is the direction that cannot manufacture a result. No published number
 changes; the sentence claiming that "luck of the draw cancels out" does.
+
+## 7. What `similar_designs` exploits, and what it costs
+(2026-11-03)
+
+**What.** Section 17 of the design notes established that on E the advisor's entire measurable
+value is `similar_designs` (B1 - B2 = +7.15 ds, +3.85 mimo, and B2 falls back to A's level).
+That is a statement about which tool, not about what the tool exploits. The pools answer the
+second question, and the answer qualifies the finding in three ways.
+
+**Hits are clustered, so a neighbour of a hit is a good bet by construction.** From
+`data/splits/clusters.csv` and `outcomes.parquet`:
+
+| | E | N-dev target |
+| --- | --- | --- |
+| pool hit rate | 0.162 | 0.100 |
+| hit rate within a family holding >= 1 hit | **0.427** | **0.348** |
+| families with >= 1 hit / all families | 60 / 499 | 70 / 631 |
+| mean designs in a hit-holding family | 5.2 | 4.2 |
+
+So "fetch the neighbours of a hit and buy them" draws from a 2.6x enriched subpool on E (3.5x
+on nipah). The agent must still find the first hit and choose to follow it up -- the buy
+attribution in section 16 shows it doing exactly that, 24-30 neighbour-sourced purchases per
+episode at a 0.67 hit rate against 0.24-0.26 for the rest -- but the size of the payoff is a
+property of how the pool was assembled, not something the agent learned about binding.
+
+**The similarity measure is entangled with authorship, far more on E than phase 0 suggested.**
+Phase 0 (design notes section 1) measured nipah only: nearest 3-mer neighbour is the same
+author 44.7% of the time, 51.6% among hit pairs. Run on E for the write-up, 2026-11-03, with
+`datasets/author_checks.nearest_neighbor_table`:
+
+| | E | nipah |
+| --- | --- | --- |
+| same-author rate, both authors known | **0.743** (n=564) | 0.447 (n=1030) |
+| chance baseline, sum of squared author shares | 0.047 | 0.007 |
+| same-author rate among hit pairs, both known | **0.798** (n=84) | 0.516 (n=64) |
+| designs with no author | 192 of 826 | 0 of 1030 |
+| largest two authors | 96 + 84 designs | 10 + 10 |
+
+(`same_author` requires both authors present and equal, and `same_author_rate_all` is taken
+over pairs where both are known, so missing authors never inflate it. The hit-pair rate in
+`summarize_author_checks` is over *all* hit pairs, so E's 0.713 there is a floor; 0.798 is the
+both-known figure.) A 16x lift over chance on E means a family is largely one author's design
+series. **This cannot be separated with this data,** and it is not a leak the safeguards can
+close: no tool exposes `meta_author`, the entanglement is inside the 3-mer measure itself.
+Whether the agent is riding shared backbones or shared pipelines is unresolved either way.
+
+**The hit lead comes with less family diversity than random selection.** Distinct families
+among the 60 purchases, E, from `reports/agent_study.csv`:
+
+| condition | hits | distinct families | hits per family |
+| --- | --- | --- | --- |
+| B1 deepseek | 22.80 | 6.70 | 3.40 |
+| B1 mimo | 24.25 | 5.75 | 4.22 |
+| A deepseek | 16.10 | 5.20 | 3.10 |
+| `scripted:random` | 9.90 | **7.45** | 1.33 |
+
+`random` finds more distinct binding families than any agent cell while finding less than half
+the hits. This is not a defect in the agent: hits is the only scored objective and it rewards
+concentration. But if the purpose of a first campaign is to find as many *distinct* binding
+families as possible, to be narrowed in a follow-up, the objective rewards the wrong behaviour
+and these rankings could invert.
+
+**What the write-up should say.** All three, which README section 3.4 now does. Specifically:
+that the tool's value rests on pool structure; that the structure is confounded with
+authorship on E to a degree that cannot be unpicked here, so "the agent learns
+sequence-activity relationships" is **not** supported; and that the measured gain is in hits,
+with diversity moving the other way. The framing to avoid is presenting pipeline exploitation
+as an intended feature -- it is a confound that happens to pay.
+
+**What would settle it.** A diversity-scored game: `distinct_families` is already computed per
+episode by `engine/scoring.py` and carried in every record, so scoring it needs no new
+measurement, only a new objective. Running the existing ladder under it is free of agent cost
+and would show whether the baselines reorder. Any agent claim needs its own pre-registration
+and a fresh trial block: E is used through trial 159 (100-119 by design notes sections 15
+to 17, 120-139 left unplayed, 140-159 by `docs/prereg-orientation.md` section 3), so a new
+idea starts at 160. A structural similarity measure (TM-score, Foldseek) would be the other
+half, but Proteinbase's structure-comparison columns cannot supply it: ~20% coverage and a
+missingness leak (entry 4's rule; design notes section 1).
