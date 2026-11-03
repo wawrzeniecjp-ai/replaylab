@@ -15,9 +15,10 @@ outcomes, so that every purchase can be scored without a lab, and compare the tw
 the same seeds, on two targets (Nipah-G and EGFR), with two inexpensive models.
 **The advisor tools add hits in all four model × target cells, with intervals above zero in
 three of them: +5.1 hits per 60 purchases pooled over the four (90% interval about
-[3.0, 7.2]).** As a secondary comparison, against hand-coded baseline policies the picture is
-two-sided: the agent falls short of the strongest baseline on Nipah-G and beats every baseline
-by a wide margin on EGFR, where the baselines stall at a cold start. Section 2.5 explains how
+[3.0, 7.2]; pooled post-hoc, not the pre-registered outcome).** As a secondary comparison,
+against hand-coded baseline policies the picture is two-sided: the agent falls short of the
+strongest baseline on Nipah-G and beats every baseline by a wide margin on EGFR, where the
+baselines stall at a cold start. Section 2.5 explains how
 the primary outcome was chosen.
 
 ![B1 (campaign + advisor tools) minus A (campaign tools only), paired by seed: +2.45 and +6.80 on Nipah, +6.70 and +4.50 on EGFR, +5.11 pooled over all four cells, with 90% paired intervals](reports/figures/advisor-effect.svg)
@@ -109,9 +110,12 @@ consider six:
 3. **`learner`**: fits a logistic regression on its own delivered results and buys the
    designs with the highest predicted hit probability, drawing 20% of each batch at random to
    keep exploring. It may fit only once it has **at least 2 hits among at least 8 delivered
-   purchases** (the *model gate*). Until then it falls back to `fixed:<first_column>`: the top
-   of the pool by one score column named per target before the experiments (`boltz2_ipsae` for
-   Nipah-G, `esmfold_plddt` for EGFR; `config/features.yaml`).
+   purchases** (the *model gate*). The 2-hit half is close to forced: below it only one class
+   is present and a binary logistic regression has nothing to separate, so the fit is undefined
+   rather than merely noisy. The 8-purchase half is a judgement call, meant to stop the policy
+   chasing a model fitted on a handful of rows. Until the gate opens it falls back to
+   `fixed:<first_column>`: the top of the pool by one score column named per target before the
+   experiments (`boltz2_ipsae` for Nipah-G, `esmfold_plddt` for EGFR; `config/features.yaml`).
 4. **`learner_sim`**: as `learner`, but it ranks each design by the average of two ranks, its
    predicted probability and its sequence similarity to the hits found so far.
 5. **`learner_purchased`** and
@@ -126,10 +130,22 @@ comparison is fair by construction.
 We followed a fixed sequence, writing down each stage's question and analysis plan before
 seeing its data:
 
-1. **Preliminary analysis.** Which score columns can be trusted (coverage, missingness), and
-   what sequence similarity actually measures. In part it measures authorship: designs by the
-   same author are more alike than designs by different authors, so similarity partly reveals
-   *who* made a sequence, not only how good it is.
+1. **Preliminary analysis.** Which score columns can be trusted, and what sequence similarity
+   actually measures.
+   * *Coverage and missingness leaks.* A column was kept if at least 90% of designs had a
+     value for it, and dropped if the hit rate among designs *with* a value differed from the
+     hit rate among designs *without* one by more than 5 points. That second rule catches a
+     **missingness leak**: a column whose *gaps* predict the answer. A metric only gets
+     computed for designs that reached some stage of a pipeline, so "this field is empty" can
+     itself carry information about the design — and a model can learn from the pattern of
+     blanks without the values telling it anything. The structure-comparison columns failed
+     badly: designs with a value had a 1.6% hit rate against 17.4% for designs without one, so
+     merely *having* been scored was a strong negative signal. They were excluded.
+   * *What similarity measures.* In part, authorship. On Nipah-G, a design's nearest
+     neighbour by 3-mer similarity is the same author **44.7%** of the time, against a 0.7%
+     chance baseline, and 51.6% among pairs of hits. So similarity partly reveals *who* made a
+     sequence, not only how good it is. Section 3.4 returns to this, with the much stronger
+     figures for EGFR.
 2. **Frozen setup**, committed before any agent episode:
    * *Split.* We cut Nipah-G into three folds with a stratified group k-fold
      (`StratifiedGroupKFold`), which groups designs into sequence families by 3-mer similarity,
@@ -307,6 +323,36 @@ batch). `docs/design-notes.md` sections 6 and 8 keep the variant tracked as unex
   by *following up on hits through the similarity index*; the rest of the kit is close to
   neutral.
 
+**What that tool is actually exploiting, and what it costs.** Hits are clustered. On EGFR the
+pool binds at 16.2%, but inside a sequence family that already contains one hit the rate is
+**42.7%** — a 2.6-fold lift (Nipah-G: 34.8% against 10.0%). Only 60 of EGFR's 499 families hold
+any hit at all, and those families average 5.2 designs. So "ask for the neighbours of a hit and
+buy them" harvests a family whose odds are already known to be good. The agent still has to
+find the first hit and decide to follow it up, but the payoff for doing so is a property of how
+this pool is built, not something the agent learned about binding.
+
+Two consequences the numbers force us to state.
+
+* *We cannot say whether the structure is biological or sociological.* On EGFR a design's
+  nearest neighbour by 3-mer similarity is **the same author 74.3% of the time**, against a
+  4.7% chance baseline — and 79.8% among pairs of hits. (Figures for pairs where both authors
+  are known, 564 and 84 pairs; computed for this write-up, since the preliminary analysis
+  measured only Nipah-G, where the rate is 44.7%.) EGFR's authorship is also highly
+  concentrated: two authors account for 180 of its 826 designs. So a family is largely one
+  author's design series, and following up on a hit may be exploiting a shared backbone, a
+  shared pipeline, or both. This data cannot separate them. No tool shows the agent any author
+  metadata — the entanglement is inside the similarity measure itself, which is why the
+  safeguards in section 2.6 do not help here.
+* *The lead in hits comes with less diversity.* Counting distinct families among the designs
+  bought, B1 ends an EGFR campaign with 6.7 (deepseek) and 5.8 (mimo) families against
+  **7.5 for `random`** — while finding more than twice the hits. The agent concentrates its
+  purchases where hits already are, which is exactly what maximising hits rewards. If the point
+  of a first campaign is instead to find as many *distinct* binding families as possible, to be
+  narrowed down in a follow-up, then our objective rewards the wrong behaviour and these
+  rankings could invert. Nothing here measures that; `distinct_families` is recorded per
+  episode but was never scored. It is the clearest next experiment, and it needs its own
+  pre-registration and a fresh trial block.
+
 ### 3.5 How the agents play
 
 The transcripts show the same style in every run: several dozen tool calls per campaign, most
@@ -366,6 +412,19 @@ reported weights but left the worst-first sort in place, only better documented.
   replications.
 * **Small samples.** Each cell holds 20 paired episodes. Some intervals are wide, and one cell
   (mimo on Nipah) still straddled its margin at the largest planned sample.
+* **The baselines could be stronger.** Before the model gate opens, a baseline learner buys
+  the top of one fixed column — on EGFR that finds 1 hit in round 1 and none in round 2. A
+  fallback that spread its early purchases across sequence families instead might reach the
+  gate far sooner and close much of the agent's lead. The baselines are a reference point, not
+  an attempt at the best possible script.
+* **Hits are the only scored objective.** They reward concentrating purchases in families that
+  already contain a hit, which is what the agent does (section 3.4). A campaign judged on
+  distinct binding families would be a different experiment and might rank the players
+  differently.
+* **Sequence similarity only.** Families come from 3-mer sequence similarity, not structural
+  comparison (TM-score, Foldseek), which is what a real campaign would likely add. The
+  structure-comparison columns in Proteinbase could not be used: they cover only ~20% of
+  designs and carry a missingness leak (section 2.4).
 * **Relative bars.** Passing in section 3.2 means beating the strongest baseline *on that
   pool*: a high bar on Nipah-G (26.4), a low one on EGFR (10.4). It is not an absolute measure
   of usefulness, and the bar is known only in hindsight (section 2.5).
