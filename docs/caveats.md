@@ -210,6 +210,11 @@ value is `similar_designs` (B1 - B2 = +7.15 ds, +3.85 mimo, and B2 falls back to
 That is a statement about which tool, not about what the tool exploits. The pools answer the
 second question, and the answer qualifies the finding in three ways.
 
+**Narrowed 2026-11-03.** The authorship and diversity qualifications below were written from E
+alone and read as properties of the method. The N-dev ablation (design notes section 18) tested
+both on a second pool and **neither generalises**: the tool pays where authorship cannot explain
+it, and there it *raises* family diversity. Each paragraph now says which pool it is about.
+
 **Hits are clustered, so a neighbour of a hit is a good bet by construction.** From
 `data/splits/clusters.csv` and `outcomes.parquet`:
 
@@ -243,12 +248,22 @@ author 44.7% of the time, 51.6% among hit pairs. Run on E for the write-up, 2026
 over pairs where both are known, so missing authors never inflate it. The hit-pair rate in
 `summarize_author_checks` is over *all* hit pairs, so E's 0.713 there is a floor; 0.798 is the
 both-known figure.) A 16x lift over chance on E means a family is largely one author's design
-series. **This cannot be separated with this data,** and it is not a leak the safeguards can
-close: no tool exposes `meta_author`, the entanglement is inside the 3-mer measure itself.
-Whether the agent is riding shared backbones or shared pipelines is unresolved either way.
+series. **On E this cannot be separated with this data,** and it is not a leak the safeguards
+can close: no tool exposes `meta_author`, the entanglement is inside the 3-mer measure itself.
 
-**The hit lead comes with less family diversity than random selection.** Distinct families
-among the 60 purchases, E, from `reports/agent_study.csv`:
+**But authorship is not the mechanism.** Tested directly on nipah, whose hit-holding families
+span 11.2 authors on average and 0 of 6 of which are single-author, so an authorship effect
+cannot operate there (design notes section 18, pre-registered, trials 140-179, 40 trials per
+arm): `B1 - B2` on hits is **+5.30 [3.15, 7.40]** (deepseek, registered) and +4.88 [2.15, 7.47]
+(mimo, descriptive -- its cell failed a completeness gate). The tool is worth about 5 hits in 60
+purchases where riding one author's series is impossible. So the correlation above does **not**
+license "the gain is a pipeline artefact": the gain survives without it. What stays unresolved
+is narrower -- on E specifically, how much of *that* pool's +7.15 / +3.85 rides authorship is
+not separable, so E's own effect size carries the confound even though the mechanism does not
+depend on it.
+
+**On E, the hit lead comes with less family diversity than random selection.** Distinct
+families among the 60 purchases, E, from `reports/agent_study.csv`:
 
 | condition | hits | distinct families | hits per family |
 | --- | --- | --- | --- |
@@ -263,19 +278,40 @@ concentration. But if the purpose of a first campaign is to find as many *distin
 families as possible, to be narrowed in a follow-up, the objective rewards the wrong behaviour
 and these rankings could invert.
 
-**What the write-up should say.** All three, which README section 3.4 now does. Specifically:
-that the tool's value rests on pool structure; that the structure is confounded with
-authorship on E to a degree that cannot be unpicked here, so "the agent learns
-sequence-activity relationships" is **not** supported; and that the measured gain is in hits,
-with diversity moving the other way. The framing to avoid is presenting pipeline exploitation
-as an intended feature -- it is a confound that happens to pay.
+**On nipah the sign reverses, so this too is E's structure and not the tool's.** Same ablation,
+`distinct_families`: `B1 - B2` is **+3.58 [1.32, 5.83]** (deepseek) and +4.28 [1.93, 6.53]
+(mimo) -- the similarity tool makes the agent find *more* families. The ratios say why:
 
-**What would settle it.** A diversity-scored game: `distinct_families` is already computed per
-episode by `engine/scoring.py` and carried in every record, so scoring it needs no new
-measurement, only a new objective. Running the existing ladder under it is free of agent cost
-and would show whether the baselines reorder. Any agent claim needs its own pre-registration
-and a fresh trial block: E is used through trial 159 (100-119 by design notes sections 15
-to 17, 120-139 left unplayed, 140-159 by `docs/prereg-orientation.md` section 3), so a new
-idea starts at 160. A structural similarity measure (TM-score, Foldseek) would be the other
-half, but Proteinbase's structure-comparison columns cannot supply it: ~20% coverage and a
-missingness leak (entry 4's rule; design notes section 1).
+| | E | N-dev |
+| --- | --- | --- |
+| hits per family, agent cells | 3.10 to 4.22 | 1.13 to 1.23 |
+| hits per family, `random` | 1.33 | 1.04 |
+
+On nipah hits are spread thinly over many small families, so more hits almost mechanically
+means more families and concentration has nowhere to go; on E, families holding hits are large
+enough that an agent can spend a batch inside one. The diversity-objective worry is therefore
+**conditional on pool structure**: it is real where hit-holding families are large relative to
+the batch, and absent where they are not. It cannot be stated as a general property of
+hit-scored selection.
+
+**What the write-up should say.** That the tool's value rests on **pool structure** -- hits
+being clustered, so a neighbour of a hit is a good bet by construction -- and that this is a
+property of how these pools were assembled rather than something the agent learned about
+binding. "The agent learns sequence-activity relationships" remains **not** supported: nothing
+here distinguishes exploiting a neighbourhood from understanding one. What the write-up should
+*not* say any more is that the gain is an authorship artefact or that it costs diversity; both
+were E-only and the ablation contradicts them on nipah. Where E's own numbers are quoted, the
+authorship entanglement still belongs beside them as a limit on that effect size.
+
+**What is settled and what is not.** Settled: authorship is not the mechanism (above), and the
+diversity cost is conditional on pool structure, not inherent. Open: whether a
+**diversity-scored game** reorders the players where it bites. `distinct_families` is already
+computed per episode by `engine/scoring.py` and carried in every record, so scoring it needs no
+new measurement, only a new objective; running the existing baseline policies under it costs no
+agent spend and would show whether they reorder. Any agent claim needs its own pre-registration
+and a fresh trial block: E is used through trial 159 (100-119 by design notes sections 15 to 17,
+120-139 left unplayed, 140-159 by `docs/prereg-orientation.md` section 3) so a new E idea starts
+at 160, and N-dev is used through 179 (140-179 by section 18) so a new N-dev idea starts at 180.
+A structural similarity measure (TM-score, Foldseek) would separate shared backbone from shared
+pipeline on E, but Proteinbase's structure-comparison columns cannot supply it: ~20% coverage
+and a missingness leak (entry 4's rule; design notes section 1).

@@ -1227,3 +1227,109 @@ Readings (descriptive; §17 registered no threshold):
   valuable advisor behaviour; on N-dev it correlated with failure. The
   ablation (randomised tool presence) outranks the observational forensics
   -- recorded as such.
+## 18. Does `similar_designs` exploit authorship? N-dev B1 vs B2 (2026-11-03)
+
+Pre-registered in `docs/prereg-authorship.md` (sections 1 to 9), written and committed
+(`8f89d49`, trial count amended in `e72bc91`) before any episode of this block existed.
+
+**The question.** Section 17 showed that on E the advisor's whole measurable value is
+`similar_designs`. Caveats entry 7 then found the similarity measure entangled with authorship
+on E to 16x chance (0.743 same-author among nearest neighbours, 0.798 among hit pairs), which
+raises the possibility that the tool pays by riding one author's design series rather than by
+exploiting sequence neighbourhood. E cannot separate the two. N-dev can: its hit-holding
+families span 11.2 authors on average and 0 of 6 are single-author, so a gain there cannot be
+an authorship effect.
+
+**Setup.** Conditions B1 and B2, game N-dev, trials **140-179** (a fresh block; 0-139 were
+used by sections 9 to 14), 40 trials per arm, both models, 80 agent episodes per model plus the
+four baseline policies on the same seeds. Registered hashes `0fecb4a7e74a` (deepseek) /
+`c2c8dac7e136` (mimo) at sha `e72bc91`. Primary `B1 - B2` on hits, per model, 90% paired
+bootstrap, 10,000 resamples, seed 0. Decision rule: Helps / No measurable effect / Inconclusive
+as section 4 of the prereg defines them. No extension.
+
+### Gates (checked before any hit count was read)
+
+| gate | deepseek | mimo |
+| --- | --- | --- |
+| 1. completeness | **pass** -- 80 episodes, all `finished` | **FAIL** -- 1 of 40 B2 episodes `max_turns` |
+| 2. one configuration | pass -- all records `0fecb4a7e74a`; `git diff e72bc91 -- src prompts config` empty | pass -- all records `c2c8dac7e136`; same diff empty |
+| 3. manipulation | pass -- B1 40/40 episodes, 139 calls (3.5/ep); B2 exactly 0 | pass -- B1 40/40, 232 calls (5.8/ep); B2 exactly 0 |
+| 4. spend | pass -- $3.27502 of cap | pass -- $3.27497 of cap |
+| 5. argument validity | pass -- mean 0.998 / 1.000, min 0.963 | pass -- mean 0.9955 / 0.9941, min 0.947 |
+
+Gate 3's rates match trials 0-19 (3.5 ds, 7.0 mimo), so the contrast is not vacuous.
+
+**Cap deviation.** Section 6 of the prereg budgeted $0.035 per episode and set caps at $4.00.
+The measured cost was **$0.0443**, so the pilot projected $4.43 and `run` refused at $4.00 --
+the pilot gate working as designed. The caps were raised to $5.00 and the runs replayed from
+scratch. Actual spend came in at $3.275 per model. The cap is a safety rail and enters no
+comparison, so this does not touch the inference; it is recorded because the registered number
+changed. (Both totals landing on $3.275 is coincidence: deepseek's tokens price to $3.27502 and
+mimo's to $3.27497 under their own tariffs, reconciled against `config/prices.yaml`.)
+
+**Gate 1 and what follows from it.** The failing episode is mimo trial 160, B2: it hit the
+40-turn limit having used 3 of 4 rounds and 45 of 60 purchases, so its 10 hits are not
+comparable to a 60-purchase episode. This is substantive, not a formality. The prereg offers
+two responses -- replay if a provider error, else void the cell -- and this was not a provider
+error: the agent spent its own turns, and resampling an LLM episode after seeing the result is
+a do-over, which is what that clause exists to forbid. **So mimo's cell is void as registered
+and deepseek is the sole registered result.** mimo's numbers below are descriptive, labelled as
+such, and the conclusion does not rest on them. Dropping the pair moves nothing
+(+4.74 [1.92, 7.41] at n=39 against +4.88 [2.15, 7.47] at n=40), but that sensitivity is
+reported for information and is not what rescues the cell.
+
+The fault is in the drafting: `max_turns` is a normal ending of the loop, not a failure, and
+gate 1 should have said in advance what to do with one -- count it, or drop the pair and report
+n. **The next pre-registration must enumerate every `stop_reason` the loop can produce and give
+each a disposition.** Reinterpreting this gate after seeing the interval is not available.
+
+### Primary: Helps
+
+| | B1 - B2 (hits) | 90% CI | W/L/T | B1 | B2 |
+| --- | --- | --- | --- | --- | --- |
+| **deepseek** (registered) | **+5.30** | [+3.15, +7.40] | 29/10/1 | 21.75 | 16.45 |
+| mimo (descriptive, gate 1) | +4.88 | [+2.15, +7.47] | 26/9/5 | 24.20 | 19.32 |
+
+Wholly above zero: **Helps**. `similar_designs` is worth about 5 hits in 60 purchases on a pool
+where authorship cannot be the mechanism, and the descriptive mimo cell agrees in sign and
+size. **Authorship is not what the tool was exploiting.** Caveats entry 7's confound still
+qualifies E's absolute numbers -- it is unresolved *there* -- but it no longer threatens the
+mechanism, and entry 7 is narrowed to E accordingly.
+
+### Secondary: the diversity cost does not reproduce; it inverts
+
+| `distinct_families` | B1 - B2 | 90% CI | B1 | B2 | hits/family |
+| --- | --- | --- | --- | --- | --- |
+| deepseek | **+3.58** | [+1.32, +5.83] | 17.73 | 14.15 | 1.23 / 1.16 |
+| mimo | **+4.28** | [+1.93, +6.53] | 21.45 | 17.18 | 1.13 / 1.13 |
+
+The tool makes the agent find **more** distinct families, not fewer -- the opposite sign to E,
+where entry 7 found `random` (7.45 families) beating every agent cell (5.20 to 6.70). The
+ratios explain it: hits per family is 1.13 to 1.23 here against 3.40 to 4.22 on E. On N-dev
+hits are spread thinly over many small families, so more hits almost mechanically means more
+families, and concentration has nowhere to go. **The diversity cost is a property of E's
+structure, not of the tool.**
+
+### Baseline policies on the same seeds
+
+| | B1 - base (ds) | B2 - base (ds) | B1 - base (mimo) | B2 - base (mimo) |
+| --- | --- | --- | --- | --- |
+| `random` (5.83) | +15.93 [13.95, 17.90] | +10.62 [9.32, 12.00] | +18.38 [15.93, 20.73] | +13.50 [11.80, 15.22] |
+| `learner` (18.02) | **+3.73** [1.80, 5.72] | **-1.57** [-2.75, -0.35] | **+6.17** [3.90, 8.33] | +1.30 [-0.25, 2.88] |
+| `learner_sim` (14.80) | +6.95 [5.08, 8.85] | +1.65 [0.20, 3.15] | +9.40 [6.90, 11.80] | +4.53 [2.70, 6.40] |
+| `learner_sim_purchased` (26.73) | -4.97 [-6.88, -3.02] | -10.28 [-11.43, -9.07] | -2.52 [-4.85, -0.30] | -7.40 [-8.97, -5.83] |
+
+* **The tool is most of what lifts the agent past a plain scripted learner.** With it, B1 clears
+  `learner` on both models; without it, deepseek B2 falls *below* `learner` and mimo B2 straddles
+  it. That matches section 17's finding on E, where B2 fell back to condition A's level.
+* **The N-dev no-go is unchanged.** Both arms lose to `learner_sim_purchased`, as sections 9
+  and 12 found. Nothing here reopens it.
+* **Not a controlled comparison with earlier N-dev blocks.** B1 here (21.75 ds) sits above
+  trials 0-19 (20.5) and 100-119 (19.15), and B1 - `learner` is above zero where section 12
+  found parity (+1.2 [-0.8, +3.35]). The orientation fix is the obvious suspect, but this is a
+  different configuration on a different block, so it is an observation and not a measurement.
+  Testing it needs its own pre-registration and a fresh block, which for N-dev starts at 180.
+
+### Status of the block
+
+N-dev trials 140-179 are **used**. A new N-dev question starts at 180.
