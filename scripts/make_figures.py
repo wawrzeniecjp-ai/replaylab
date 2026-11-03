@@ -18,6 +18,7 @@ import csv
 from collections import defaultdict
 from pathlib import Path
 
+from replaylab.eval.seeds import episode_seed
 from replaylab.eval.stats import paired_bootstrap
 
 OUT = Path("reports/figures")
@@ -63,24 +64,32 @@ def study_rows():
         return list(csv.DictReader(handle))
 
 
-def hits_by_trial(rows, game, run, condition):
+def hits_by_seed(rows, game, run, condition):
+    # keyed by episode seed, as ``compare`` keys them, so the resampling draws are the same
     return {
-        int(r["trial"]): float(r["hits"])
+        episode_seed(game, int(r["trial"])): float(r["hits"])
         for r in rows
         if r["game"] == game and r["run"] == run and r["condition"] == condition
     }
 
 
+def _bootstrap(a, b, ci):
+    result = paired_bootstrap(a, b, n_resamples=10_000, seed=0, ci=ci)
+    return result.mean_diff, result.ci_low, result.ci_high
+
+
 def paired(rows, game, run, a, b, ci=0.9):
     """(mean difference, low, high) of a - b, the same way ``compare`` computes it."""
-    result = paired_bootstrap(
-        hits_by_trial(rows, game, run, a),
-        hits_by_trial(rows, game, run, b),
-        n_resamples=10_000,
-        seed=0,
-        ci=ci,
-    )
-    return result.mean_diff, result.ci_low, result.ci_high
+    return _bootstrap(hits_by_seed(rows, game, run, a), hits_by_seed(rows, game, run, b), ci)
+
+
+def pooled(rows, cells, a, b, ci=0.9):
+    """The same, pooled over several (game, run) cells; pairs are keyed by (run, seed)."""
+    left, right = {}, {}
+    for game, run in cells:
+        left.update({(run, k): v for k, v in hits_by_seed(rows, game, run, a).items()})
+        right.update({(run, k): v for k, v in hits_by_seed(rows, game, run, b).items()})
+    return _bootstrap(left, right, ci)
 
 
 def ladder_means():
@@ -347,7 +356,43 @@ def main() -> None:
     rows = study_rows()
     written = []
 
-    nd = paired(rows, "N-dev", "confirm1", "B1", "scripted:learner_sim_purchased")
+    nd_cells = (("N-dev", "ds2"), ("N-dev", "mimo2"))
+    e_cells = (("E", "egfr-ds"), ("E", "egfr-mimo"))
+    written.append(
+        interval_figure(
+            [
+                (
+                    "N-dev (Nipah), trials 0-19",
+                    [
+                        ("deepseek", *paired(rows, "N-dev", "ds2", "B1", "A")),
+                        ("mimo", *paired(rows, "N-dev", "mimo2", "B1", "A")),
+                    ],
+                ),
+                (
+                    "E (EGFR transfer), trials 100-119",
+                    [
+                        ("deepseek", *paired(rows, "E", "egfr-ds", "B1", "A")),
+                        ("mimo", *paired(rows, "E", "egfr-mimo", "B1", "A")),
+                    ],
+                ),
+                (
+                    "Pooled",
+                    [
+                        ("N-dev, both models", *pooled(rows, nd_cells, "B1", "A")),
+                        ("E, both models", *pooled(rows, e_cells, "B1", "A")),
+                        ("all four cells", *pooled(rows, nd_cells + e_cells, "B1", "A")),
+                    ],
+                ),
+            ],
+            OUT / "advisor-effect.svg",
+            "The advisor tools add hits on both pools, for both models",
+            "B1 (campaign + advisor tools) minus A (campaign tools only), paired by seed",
+            "20 pairs per cell. Same prompt and limits in both arms; only the tool list differs.",
+        )
+    )
+
+    bar_nd = "scripted:learner_sim_purchased"
+    nd = paired(rows, "N-dev", "confirm1", "B1", bar_nd)
     e_ds = paired(rows, "E", "egfr-ds", "B1", "scripted:learner_sim")
     e_mimo = paired(rows, "E", "egfr-mimo", "B1", "scripted:learner_sim")
     written.append(
@@ -355,17 +400,21 @@ def main() -> None:
             [
                 (
                     "N-dev (Nipah), vs scripted:learner_sim_purchased",
-                    [("deepseek B1", *nd)],
+                    [
+                        ("deepseek B1, 0-19", *paired(rows, "N-dev", "ds2", "B1", bar_nd)),
+                        ("deepseek B1, 100-119", *nd),
+                        ("mimo B1, 0-19", *paired(rows, "N-dev", "mimo2", "B1", bar_nd)),
+                    ],
                 ),  # fmt: skip
                 (
                     "E (EGFR transfer), vs scripted:learner_sim",
-                    [("deepseek B1", *e_ds), ("mimo B1", *e_mimo)],
+                    [("deepseek B1, 100-119", *e_ds), ("mimo B1, 100-119", *e_mimo)],
                 ),  # fmt: skip
             ],
             OUT / "two-sided-result.svg",
-            "The agent loses where the scripted learner works, wins where it breaks down",
-            "Agent minus its pre-registered bar, paired by seed, 20 trials per cell",
-            "Pre-registered in docs/design-notes.md section 9. Each game against its own bar.",
+            "Against the strongest baseline: behind on Nipah, ahead on EGFR",
+            "Agent minus the strongest baseline of each pool, paired by seed, 20 trials a row",
+            "Bars: docs/design-notes.md sections 9, 12 and 15. Labels give the trial block.",
         )
     )
 
