@@ -1296,19 +1296,36 @@ size. **Authorship is not what the tool was exploiting.** Caveats entry 7's conf
 qualifies E's absolute numbers -- it is unresolved *there* -- but it no longer threatens the
 mechanism, and entry 7 is narrowed to E accordingly.
 
-### Secondary: the diversity cost does not reproduce; it inverts
+### Secondary: the tool does not cost diversity, here or on E
 
 | `distinct_families` | B1 - B2 | 90% CI | B1 | B2 | hits/family |
 | --- | --- | --- | --- | --- | --- |
 | deepseek | **+3.58** | [+1.32, +5.83] | 17.73 | 14.15 | 1.23 / 1.16 |
 | mimo | **+4.28** | [+1.93, +6.53] | 21.45 | 17.18 | 1.13 / 1.13 |
 
-The tool makes the agent find **more** distinct families, not fewer -- the opposite sign to E,
-where entry 7 found `random` (7.45 families) beating every agent cell (5.20 to 6.70). The
-ratios explain it: hits per family is 1.13 to 1.23 here against 3.40 to 4.22 on E. On N-dev
-hits are spread thinly over many small families, so more hits almost mechanically means more
-families, and concentration has nowhere to go. **The diversity cost is a property of E's
-structure, not of the tool.**
+The tool makes the agent find **more** distinct families, not fewer.
+
+**The matched contrast on E, computed for the figure, says the same there.** `B1 - B2` on
+`distinct_families` is **+1.30 [-0.50, 3.15]** (deepseek) and **+0.10 [-1.25, 1.50]** (mimo):
+null, not negative. Caveats entry 7's diversity finding was `B1` against **`random`** (6.70 and
+5.75 families against 7.45), a different contrast, and on E it is worst in condition **A** --
+5.20 families, no similarity tool at all (`A - random` = -2.25 [-3.45, -1.10]). So the
+concentration comes from chasing hits with whatever tools are present, which is what a
+hits-only objective rewards, and **`similar_designs` is not its cause on either pool.**
+
+Hits per family explains why the two look alike: 1.13 to 1.23 on N-dev against 3.10 to 4.22 on
+E. Where hits are spread thinly over many small families, concentration has nowhere to go and
+more hits almost mechanically means more families; on E a batch fits inside one hit-holding
+family. The diversity-objective worry therefore stands, conditional on pool structure, but it
+is a worry about scoring hits and not about this tool.
+
+**Error caught here, recorded because it reached two commits.** The first write-up of this
+section and of README 3.4 (`a44bb20`, `3bf3d33`) read E's `B1 - random` against N-dev's
+`B1 - B2` and called the difference a sign reversal -- comparing two different contrasts and
+reporting an inversion that does not exist. It was found by plotting the matched contrast on
+both pools for `reports/figures/similarity-tool.svg`, not by review. **The lesson: a secondary
+outcome quoted across pools must name its comparator every time**; the figure pipeline is a
+better check on that than prose, because it has to be handed both arms explicitly.
 
 ### Baseline policies on the same seeds
 

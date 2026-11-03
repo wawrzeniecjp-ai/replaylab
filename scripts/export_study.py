@@ -25,6 +25,8 @@ BLOCKS: dict[str, tuple[str, range]] = {
     "mimo2": ("N-dev", range(0, 20)),  # N-dev development block, mimo
     "egfr-ds": ("E", range(100, 120)),  # the E verdict block (sections 15, 16)
     "egfr-mimo": ("E", range(100, 120)),
+    "auth-ds": ("N-dev", range(140, 180)),  # the authorship ablation (section 18)
+    "auth-mimo": ("N-dev", range(140, 180)),
 }
 FIELDS = ["run", "game", "model", "condition", "trial", "hits", "purchases", "rounds_used",
           "distinct_families", "stopped_early", "r1", "r2", "r3", "r4"]  # fmt: skip

@@ -64,10 +64,10 @@ def study_rows():
         return list(csv.DictReader(handle))
 
 
-def hits_by_seed(rows, game, run, condition):
+def hits_by_seed(rows, game, run, condition, metric="hits"):
     # keyed by episode seed, as ``compare`` keys them, so the resampling draws are the same
     return {
-        episode_seed(game, int(r["trial"])): float(r["hits"])
+        episode_seed(game, int(r["trial"])): float(r[metric])
         for r in rows
         if r["game"] == game and r["run"] == run and r["condition"] == condition
     }
@@ -78,9 +78,13 @@ def _bootstrap(a, b, ci):
     return result.mean_diff, result.ci_low, result.ci_high
 
 
-def paired(rows, game, run, a, b, ci=0.9):
+def paired(rows, game, run, a, b, ci=0.9, metric="hits"):
     """(mean difference, low, high) of a - b, the same way ``compare`` computes it."""
-    return _bootstrap(hits_by_seed(rows, game, run, a), hits_by_seed(rows, game, run, b), ci)
+    return _bootstrap(
+        hits_by_seed(rows, game, run, a, metric),
+        hits_by_seed(rows, game, run, b, metric),
+        ci,
+    )
 
 
 def pooled(rows, cells, a, b, ci=0.9):
@@ -110,7 +114,9 @@ def round_curve(rows, game, run, condition):
 # --- figure 1: the two-sided result -----------------------------------------------------
 
 
-def interval_figure(cells, path, title, subtitle, note, width=880):
+def interval_figure(
+    cells, path, title, subtitle, note, width=880, axis_label="hits, 90% paired interval"
+):
     """Horizontal dot-and-interval: the form for a signed effect with uncertainty."""
     left, right, top = 252, 76, 76
     row_h, gap = 34, 18
@@ -178,7 +184,7 @@ def interval_figure(cells, path, title, subtitle, note, width=880):
             y += row_h
         y += gap
     parts.append(text(24, height - 6, note, 11.5, MUTED))
-    parts.append(text(width - right, height - 6, "hits, 90% paired interval", 11.5, MUTED, "end"))
+    parts.append(text(width - right, height - 6, axis_label, 11.5, MUTED, "end"))
     path.write_text(
         svg(width, height, "".join(parts), title, f"{subtitle}. {note}"), encoding="utf-8"
     )
@@ -434,6 +440,35 @@ def main() -> None:
             "Paired differences between conditions, 20 trials per cell",
             "B2 is B1 without similar_designs. Remove it and the advisor adds nothing "
             "measurable over A.",
+        )
+    )
+    # the authorship ablation: the same contrast on both pools, on hits and on diversity
+    tool_cells = e_cells + (("N-dev", "auth-ds"), ("N-dev", "auth-mimo"))
+    labels = ("EGFR, deepseek", "EGFR, mimo", "Nipah, deepseek", "Nipah, mimo")
+    written.append(
+        interval_figure(
+            [
+                (
+                    "hits -- above zero in all four cells",
+                    [
+                        (label, *paired(rows, game, run, "B1", "B2"))
+                        for label, (game, run) in zip(labels, tool_cells, strict=True)
+                    ],
+                ),
+                (
+                    "distinct families -- never below zero",
+                    [
+                        (label, *paired(rows, game, run, "B1", "B2", metric="distinct_families"))
+                        for label, (game, run) in zip(labels, tool_cells, strict=True)
+                    ],
+                ),
+            ],
+            OUT / "similarity-tool.svg",
+            "The similarity tool adds hits on both pools, and costs no diversity on either",
+            "B1 minus B2 (B1 without similar_designs), paired by seed",
+            "EGFR 20 pairs a row, Nipah 40. Nipah's families are multi-author, so its hit gain "
+            "cannot be an authorship effect.",
+            axis_label="90% paired interval",
         )
     )
     written.append(ladder_figure(OUT / "ladder-inversion.svg"))

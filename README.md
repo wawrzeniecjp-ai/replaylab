@@ -345,22 +345,26 @@ EGFR raised two worries about that, both serious enough to test rather than argu
   author metadata — the entanglement sits inside the similarity measure itself, which is why the
   safeguards in section 2.6 do not help.
 * *Does the lead in hits cost diversity?* Counting distinct families among the designs bought,
-  B1 ends an EGFR campaign with 6.7 (deepseek) and 5.8 (mimo) families against **7.5 for
-  `random`** — while finding more than twice the hits. The agent concentrates its purchases
-  where hits already are, which is what maximising hits rewards. If the point of a first
-  campaign is instead to find as many *distinct* binding families as possible, to be narrowed in
-  a follow-up, our objective would be rewarding the wrong behaviour.
+  an EGFR agent ends with 5.2 to 6.7 families against **7.5 for `random`** — while finding up to
+  twice the hits. The agent concentrates its purchases where hits already are, which is what
+  maximising hits rewards. If the point of a first campaign is instead to find as many *distinct*
+  binding families as possible, to be narrowed in a follow-up, our objective would be rewarding
+  the wrong behaviour.
 
-**We tested both on Nipah-G, and neither survives.** Nipah-G is the control EGFR cannot be: its
-hit-holding families average **11.2 authors** and none is single-author, so there is no author
-series to ride. We pre-registered the contrast before running it
+**We tested the first on Nipah-G, and it does not survive.** Nipah-G is the control EGFR cannot
+be: its hit-holding families average **11.2 authors** and none is single-author, so there is no
+author series to ride. We pre-registered the contrast before running it
 ([`docs/prereg-authorship.md`](docs/prereg-authorship.md)), on a fresh block of 40 trials per
-arm.
+arm. Running the same contrast on both pools, and on both outcomes, also settles the second.
 
-| Nipah-G, B1 − B2 | deepseek | mimo |
+![B1 minus B2 on hits and on distinct families, for EGFR and Nipah: hits are above zero in all four cells, and distinct families never below zero](reports/figures/similarity-tool.svg)
+
+| B1 − B2 | hits | distinct families |
 | --- | --- | --- |
-| hits | **+5.30** [+3.15, +7.40] | +4.88 [+2.15, +7.47] |
-| distinct families | **+3.58** [+1.32, +5.83] | +4.28 [+1.93, +6.53] |
+| EGFR, deepseek | +7.15 [+1.65, +12.55] | +1.30 [−0.50, +3.15] |
+| EGFR, mimo | +3.85 [+0.55, +7.30] | +0.10 [−1.25, +1.50] |
+| **Nipah-G, deepseek** | **+5.30** [+3.15, +7.40] | **+3.58** [+1.32, +5.83] |
+| Nipah-G, mimo | +4.88 [+2.15, +7.47] | +4.28 [+1.93, +6.53] |
 
 * **Authorship is not the mechanism.** The tool is worth about five hits in sixty purchases on a
   pool where riding one author's series is impossible. The EGFR correlation is real, but it does
@@ -368,24 +372,28 @@ arm.
   unresolved is narrower: how much of *EGFR's* +7.15 and +3.85 rides authorship cannot be
   separated with this data, so that effect size keeps the caveat even though the mechanism does
   not depend on it.
-* **The diversity cost inverts.** On Nipah-G the similarity tool makes the agent find *more*
-  families, not fewer. The ratios say why: hits per family is 1.13–1.23 here against 3.40–4.22
-  on EGFR. Where hits are spread thinly over many small families, more hits almost mechanically
-  means more families and concentration has nowhere to go; on EGFR, hit-holding families are
-  large enough that an agent can spend a batch inside one. So the worry is **conditional on pool
-  structure** rather than inherent to hit-scored selection.
+* **The similarity tool is not what costs diversity.** Removing it never *raises* the family
+  count: the paired difference is strongly positive on Nipah-G and straddles zero on EGFR. The
+  EGFR deficit in the bullet above is measured against `random`, not against B2, and it is
+  worst in condition **A** — campaign tools only, 5.2 families, no similarity tool at all. So
+  the concentration comes from chasing hits with whatever is to hand, which is what the
+  objective rewards; the neighbour lookup is not its cause. Nipah-G shows why the two can be
+  confused: hits per family is 1.13–1.23 there against 3.10–4.22 on EGFR, so where hits are
+  spread thinly over small families, concentration has nowhere to go and more hits almost
+  mechanically means more families.
 
-(deepseek is the registered result on both rows. mimo's cell failed a completeness gate — one
-episode hit the turn limit with 45 of 60 purchases — so by the rule we wrote in advance it is
+(deepseek is the registered result on the Nipah-G rows. mimo's cell failed a completeness gate —
+one episode hit the turn limit with 45 of 60 purchases — so by the rule we wrote in advance it is
 reported as descriptive, not registered; dropping the pair moves hits to +4.74 [+1.92, +7.41].
 `docs/design-notes.md` section 18.)
 
 What survives is the first paragraph: the tool's value rests on hits being clustered, which is a
 property of how these pools were assembled. Nothing here distinguishes exploiting a
 neighbourhood from understanding one, so **"the agent learns sequence-activity relationships"
-remains unsupported.** Whether a diversity-scored objective reorders the players where
-concentration is possible is still open — `distinct_families` is recorded per episode but has
-never been scored — and it needs its own pre-registration and a fresh trial block.
+remains unsupported.** And the diversity question itself is still open — whether a
+diversity-scored objective would reorder the players is untested, since `distinct_families` is
+recorded per episode but has never been scored. That needs its own pre-registration and a fresh
+trial block.
 
 ### 3.5 How the agents play
 
@@ -453,10 +461,10 @@ reported weights but left the worst-first sort in place, only better documented.
   gate far sooner and close much of the agent's lead. The baselines are a reference point, not
   an attempt at the best possible script.
 * **Hits are the only scored objective.** They reward concentrating purchases in families that
-  already contain a hit. The agent does that where the pool allows it — on EGFR, where
-  hit-holding families are large — but not on Nipah-G, where the same tool raises family
-  diversity (section 3.4). A campaign judged on distinct binding families would be a different
-  experiment and might rank the players differently on pools of EGFR's shape.
+  already contain a hit, and on EGFR every agent condition ends with fewer distinct families
+  than `random` — worst of all condition A, which has no similarity tool (section 3.4). A
+  campaign judged on distinct binding families would be a different experiment and might rank
+  the players differently on pools of EGFR's shape.
 * **Sequence similarity only.** Families come from 3-mer sequence similarity, not structural
   comparison (TM-score, Foldseek), which is what a real campaign would likely add. The
   structure-comparison columns in Proteinbase could not be used: they cover only ~20% of

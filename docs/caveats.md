@@ -211,9 +211,11 @@ That is a statement about which tool, not about what the tool exploits. The pool
 second question, and the answer qualifies the finding in three ways.
 
 **Narrowed 2026-11-03.** The authorship and diversity qualifications below were written from E
-alone and read as properties of the method. The N-dev ablation (design notes section 18) tested
-both on a second pool and **neither generalises**: the tool pays where authorship cannot explain
-it, and there it *raises* family diversity. Each paragraph now says which pool it is about.
+alone and read as properties of `similar_designs`. Neither holds up. The N-dev ablation (design
+notes section 18) shows the tool pays where authorship cannot explain it, and running the
+matched `B1 - B2` contrast on both pools shows it costs no diversity on either. The diversity
+deficit against `random` is real but belongs to hit-chasing in general. Each paragraph now says
+which pool and which contrast it is about.
 
 **Hits are clustered, so a neighbour of a hit is a good bet by construction.** From
 `data/splits/clusters.csv` and `outcomes.parquet`:
@@ -278,33 +280,46 @@ concentration. But if the purpose of a first campaign is to find as many *distin
 families as possible, to be narrowed in a follow-up, the objective rewards the wrong behaviour
 and these rankings could invert.
 
-**On nipah the sign reverses, so this too is E's structure and not the tool's.** Same ablation,
-`distinct_families`: `B1 - B2` is **+3.58 [1.32, 5.83]** (deepseek) and +4.28 [1.93, 6.53]
-(mimo) -- the similarity tool makes the agent find *more* families. The ratios say why:
+**But `similar_designs` is not what costs the diversity.** The table above compares agent cells
+against `random`; the matched contrast is `B1 - B2`, and removing the tool never *raises* the
+family count:
 
-| | E | N-dev |
-| --- | --- | --- |
-| hits per family, agent cells | 3.10 to 4.22 | 1.13 to 1.23 |
-| hits per family, `random` | 1.33 | 1.04 |
+| `distinct_families` | E deepseek | E mimo | N-dev deepseek | N-dev mimo |
+| --- | --- | --- | --- | --- |
+| `B1 - B2` (the tool) | +1.30 [-0.50, 3.15] | +0.10 [-1.25, 1.50] | **+3.58 [1.32, 5.83]** | +4.28 [1.93, 6.53] |
+| `B1 - random` | -0.75 [-2.35, 0.90] | -1.70 [-3.25, -0.20] | +12.10 [10.25, 14.05] | +15.82 [13.72, 17.85] |
+| `A - random` | **-2.25 [-3.45, -1.10]** | -1.45 [-2.55, -0.40] | not played | not played |
 
-On nipah hits are spread thinly over many small families, so more hits almost mechanically
-means more families and concentration has nowhere to go; on E, families holding hits are large
-enough that an agent can spend a batch inside one. The diversity-objective worry is therefore
-**conditional on pool structure**: it is real where hit-holding families are large relative to
-the batch, and absent where they are not. It cannot be stated as a general property of
-hit-scored selection.
+Strongly positive on nipah, straddling zero on E. And E's deficit against `random` is **worst in
+condition A**, which has no similarity tool at all (5.2 families against B1's 6.7). So the
+concentration comes from chasing hits with whatever tools are to hand -- which is what a
+hits-only objective rewards -- and the neighbour lookup is not its cause.
+
+**Correction (same day).** An earlier revision of this entry read E's `B1 - random` against
+nipah's `B1 - B2` and called the difference a sign reversal. Those are different contrasts; the
+matched one is null on E, so there was no reversal to report. The error was caught by plotting
+the matched contrast on both pools, which is why the figure exists.
+
+Why the two are easy to confuse: hits per family is 3.10 to 4.22 on E against 1.13 to 1.23 on
+nipah (`random`: 1.33 and 1.04). Where hits are spread thinly over small families, concentration
+has nowhere to go and more hits almost mechanically means more families; on E, hit-holding
+families are large enough that an agent can spend a batch inside one. So the **diversity
+objective** worry stays conditional on pool structure -- real where hit-holding families are
+large relative to the batch -- but it is a worry about scoring hits, not about this tool.
 
 **What the write-up should say.** That the tool's value rests on **pool structure** -- hits
 being clustered, so a neighbour of a hit is a good bet by construction -- and that this is a
 property of how these pools were assembled rather than something the agent learned about
 binding. "The agent learns sequence-activity relationships" remains **not** supported: nothing
 here distinguishes exploiting a neighbourhood from understanding one. What the write-up should
-*not* say any more is that the gain is an authorship artefact or that it costs diversity; both
-were E-only and the ablation contradicts them on nipah. Where E's own numbers are quoted, the
-authorship entanglement still belongs beside them as a limit on that effect size.
+*not* say any more is that the gain is an authorship artefact or that this tool costs diversity;
+the first is contradicted on nipah, the second by the matched contrast on both pools. Where E's
+own numbers are quoted, the authorship entanglement still belongs beside them as a limit on that
+effect size, and the diversity deficit against `random` belongs wherever agents are compared
+with `random` on E -- attributed to the objective, not to a tool.
 
-**What is settled and what is not.** Settled: authorship is not the mechanism (above), and the
-diversity cost is conditional on pool structure, not inherent. Open: whether a
+**What is settled and what is not.** Settled: authorship is not the mechanism, and the diversity
+deficit is not caused by `similar_designs` (both above). Open: whether a
 **diversity-scored game** reorders the players where it bites. `distinct_families` is already
 computed per episode by `engine/scoring.py` and carried in every record, so scoring it needs no
 new measurement, only a new objective; running the existing baseline policies under it costs no
