@@ -164,7 +164,9 @@ seeing its data:
    (`deepseek-flash` and `mimo-v2.6-flash`) and two rounds of prompt and tool tuning.
 4. **Transfer set (EGFR).** Configuration frozen, a fresh block of never-played episodes.
 5. **Ablations.** Remove all advisor tools (condition A) or a single one (`similar_designs`,
-   condition B2) to see what carries the result.
+   condition B2) to see what carries the result. We repeated the single-tool ablation on
+   Nipah-G, whose families are multi-author, to test whether that tool's value is an authorship
+   artefact (section 3.4).
 6. **Final test on the Anthropic dataset: built, pre-registered, deliberately not yet played.**
    Four single-target games (Nipah-G, EGFR, BBF-14, BHRF1; 90 designs each, sharing no
    sequence with the development pools), conditions A, B1 and B2, both models, 20 trials, a
@@ -331,27 +333,59 @@ buy them" harvests a family whose odds are already known to be good. The agent s
 find the first hit and decide to follow it up, but the payoff for doing so is a property of how
 this pool is built, not something the agent learned about binding.
 
-Two consequences the numbers force us to state.
+EGFR raised two worries about that, both serious enough to test rather than argue about.
 
-* *We cannot say whether the structure is biological or sociological.* On EGFR a design's
-  nearest neighbour by 3-mer similarity is **the same author 74.3% of the time**, against a
-  4.7% chance baseline — and 79.8% among pairs of hits. (Figures for pairs where both authors
-  are known, 564 and 84 pairs; computed for this write-up, since the preliminary analysis
-  measured only Nipah-G, where the rate is 44.7%.) EGFR's authorship is also highly
-  concentrated: two authors account for 180 of its 826 designs. So a family is largely one
-  author's design series, and following up on a hit may be exploiting a shared backbone, a
-  shared pipeline, or both. This data cannot separate them. No tool shows the agent any author
-  metadata — the entanglement is inside the similarity measure itself, which is why the
-  safeguards in section 2.6 do not help here.
-* *The lead in hits comes with less diversity.* Counting distinct families among the designs
-  bought, B1 ends an EGFR campaign with 6.7 (deepseek) and 5.8 (mimo) families against
-  **7.5 for `random`** — while finding more than twice the hits. The agent concentrates its
-  purchases where hits already are, which is exactly what maximising hits rewards. If the point
-  of a first campaign is instead to find as many *distinct* binding families as possible, to be
-  narrowed down in a follow-up, then our objective rewards the wrong behaviour and these
-  rankings could invert. Nothing here measures that; `distinct_families` is recorded per
-  episode but was never scored. It is the clearest next experiment, and it needs its own
-  pre-registration and a fresh trial block.
+* *Is the structure biological or sociological?* On EGFR a design's nearest neighbour by 3-mer
+  similarity is **the same author 74.3% of the time**, against a 4.7% chance baseline — and
+  79.8% among pairs of hits. (Figures for pairs where both authors are known, 564 and 84 pairs;
+  computed for this write-up, since the preliminary analysis measured only Nipah-G, where the
+  rate is 44.7%.) EGFR's authorship is also concentrated: two authors account for 180 of its 826
+  designs. A family is therefore largely one author's design series, so following up on a hit
+  might be exploiting a shared pipeline rather than a shared backbone. No tool shows the agent
+  author metadata — the entanglement sits inside the similarity measure itself, which is why the
+  safeguards in section 2.6 do not help.
+* *Does the lead in hits cost diversity?* Counting distinct families among the designs bought,
+  B1 ends an EGFR campaign with 6.7 (deepseek) and 5.8 (mimo) families against **7.5 for
+  `random`** — while finding more than twice the hits. The agent concentrates its purchases
+  where hits already are, which is what maximising hits rewards. If the point of a first
+  campaign is instead to find as many *distinct* binding families as possible, to be narrowed in
+  a follow-up, our objective would be rewarding the wrong behaviour.
+
+**We tested both on Nipah-G, and neither survives.** Nipah-G is the control EGFR cannot be: its
+hit-holding families average **11.2 authors** and none is single-author, so there is no author
+series to ride. We pre-registered the contrast before running it
+([`docs/prereg-authorship.md`](docs/prereg-authorship.md)), on a fresh block of 40 trials per
+arm.
+
+| Nipah-G, B1 − B2 | deepseek | mimo |
+| --- | --- | --- |
+| hits | **+5.30** [+3.15, +7.40] | +4.88 [+2.15, +7.47] |
+| distinct families | **+3.58** [+1.32, +5.83] | +4.28 [+1.93, +6.53] |
+
+* **Authorship is not the mechanism.** The tool is worth about five hits in sixty purchases on a
+  pool where riding one author's series is impossible. The EGFR correlation is real, but it does
+  not license calling the gain a pipeline artefact — the gain is there without it. What stays
+  unresolved is narrower: how much of *EGFR's* +7.15 and +3.85 rides authorship cannot be
+  separated with this data, so that effect size keeps the caveat even though the mechanism does
+  not depend on it.
+* **The diversity cost inverts.** On Nipah-G the similarity tool makes the agent find *more*
+  families, not fewer. The ratios say why: hits per family is 1.13–1.23 here against 3.40–4.22
+  on EGFR. Where hits are spread thinly over many small families, more hits almost mechanically
+  means more families and concentration has nowhere to go; on EGFR, hit-holding families are
+  large enough that an agent can spend a batch inside one. So the worry is **conditional on pool
+  structure** rather than inherent to hit-scored selection.
+
+(deepseek is the registered result on both rows. mimo's cell failed a completeness gate — one
+episode hit the turn limit with 45 of 60 purchases — so by the rule we wrote in advance it is
+reported as descriptive, not registered; dropping the pair moves hits to +4.74 [+1.92, +7.41].
+`docs/design-notes.md` section 18.)
+
+What survives is the first paragraph: the tool's value rests on hits being clustered, which is a
+property of how these pools were assembled. Nothing here distinguishes exploiting a
+neighbourhood from understanding one, so **"the agent learns sequence-activity relationships"
+remains unsupported.** Whether a diversity-scored objective reorders the players where
+concentration is possible is still open — `distinct_families` is recorded per episode but has
+never been scored — and it needs its own pre-registration and a fresh trial block.
 
 ### 3.5 How the agents play
 
@@ -410,17 +444,19 @@ reported weights but left the worst-first sort in place, only better documented.
   intervals measure luck within *one* pool, not performance across targets. The Anthropic test
   adds four targets, but from a single design campaign, so they are not four independent
   replications.
-* **Small samples.** Each cell holds 20 paired episodes. Some intervals are wide, and one cell
-  (mimo on Nipah) still straddled its margin at the largest planned sample.
+* **Small samples.** Each cell holds 20 paired episodes, except the authorship ablation in
+  section 3.4, which holds 40. Some intervals are wide, and one cell (mimo on Nipah) still
+  straddled its margin at the largest planned sample.
 * **The baselines could be stronger.** Before the model gate opens, a baseline learner buys
   the top of one fixed column — on EGFR that finds 1 hit in round 1 and none in round 2. A
   fallback that spread its early purchases across sequence families instead might reach the
   gate far sooner and close much of the agent's lead. The baselines are a reference point, not
   an attempt at the best possible script.
 * **Hits are the only scored objective.** They reward concentrating purchases in families that
-  already contain a hit, which is what the agent does (section 3.4). A campaign judged on
-  distinct binding families would be a different experiment and might rank the players
-  differently.
+  already contain a hit. The agent does that where the pool allows it — on EGFR, where
+  hit-holding families are large — but not on Nipah-G, where the same tool raises family
+  diversity (section 3.4). A campaign judged on distinct binding families would be a different
+  experiment and might rank the players differently on pools of EGFR's shape.
 * **Sequence similarity only.** Families come from 3-mer sequence similarity, not structural
   comparison (TM-score, Foldseek), which is what a real campaign would likely add. The
   structure-comparison columns in Proteinbase could not be used: they cover only ~20% of
@@ -446,7 +482,8 @@ reported weights but left the worst-first sort in place, only better documented.
 Purpose-built tools make the same model find more binders: on both pools the point estimate is
 positive for both models, and three of the four intervals exclude zero. On EGFR the gain comes
 almost entirely from one tool, the similarity lookup that lets the agent follow up on its own
-hits.
+hits — and a pre-registered ablation on Nipah-G, where authorship cannot explain it, shows that
+tool paying about five hits in sixty purchases there too.
 
 Compared with the baseline policies, the tool-using agent is not better everywhere. A fixed
 rule wins when its assumptions hold: on Nipah-G the first sort column finds hits at once, the
@@ -586,6 +623,7 @@ episode and mark the game `final_test: true`, which puts it behind the run-once 
 | [`docs/caveats.md`](docs/caveats.md) | the conditions these results hold under; read before quoting them |
 | [`docs/prereg-anthropic.md`](docs/prereg-anthropic.md) | the final test, fixed before it is played |
 | [`docs/prereg-orientation.md`](docs/prereg-orientation.md) | the toolkit-defect experiment and its null result |
+| [`docs/prereg-authorship.md`](docs/prereg-authorship.md) | whether the similarity tool rides authorship, fixed before it was played |
 | [`reports/ladder.md`](reports/ladder.md) | every baseline policy, 100 seeds per game |
 | `reports/agent_study.csv` | the per-episode scores behind every figure |
 
