@@ -1,4 +1,4 @@
-"""Scripted policies (plan task T19). Every policy is ``choose(state, k, rng) -> ids``.
+"""Scripted policies. Every policy is ``choose(state, k, rng) -> ids``.
 
 Rules shared by all of them:
 
@@ -29,6 +29,8 @@ _FLOAT_GUARD = 1e-9
 
 def make_rng(seed: int, round_index: int) -> np.random.Generator:
     """The generator for one round of one episode."""
+    # Seeding on (seed, round) gives each round its own stream, so a round's draws do not
+    # depend on how many random numbers earlier rounds happened to use.
     return np.random.default_rng([seed, round_index])
 
 
@@ -57,6 +59,7 @@ def _top_and_explore(
 ) -> list[str]:
     """The top floor((1 - eps) * k) of ``ranked``, then the rest drawn uniformly from the
     remaining designs (never overlapping the top), in pool order."""
+    # The guard stops float error from losing one: (1 - 0.9) * 10 is 0.999... in floats.
     n_top = min(k, int(math.floor((1 - eps) * k + _FLOAT_GUARD)))
     top = ranked[:n_top]
     chosen = set(top)
@@ -97,6 +100,7 @@ class FixedMetric:
         """The top ``k`` by this metric (direction from ``higher_is_better``),
         ties broken by design id; designs without a value come last."""
         available, k = _available(state, k)
+        # sorted() is ascending, so negate higher-is-better values to put the best first.
         sign = -1.0 if self.higher_is_better else 1.0
 
         def key(design_id: str) -> tuple[bool, float, str]:
@@ -117,6 +121,9 @@ class Learner:
     model: ModelConfig = ModelConfig()  # noqa: RUF009 - frozen dataclass default
     eps: float = 0.2
     name: str = "learner"
+
+    # _fallback, _ranked and _scores are the hooks subclasses override: LearnerSim
+    # changes only _scores, the purchased variants only the preprocessing.
 
     def _fallback(self, state: CampaignState, k: int, rng: np.random.Generator) -> list[str]:
         return FixedMetric(self.first_column, self.first_higher_is_better).choose(state, k, rng)
@@ -156,6 +163,8 @@ class LearnerSim(Learner):
     def _scores(self, state: CampaignState, available: list[str], model_scores: np.ndarray):
         nearest = self.similarity.max_to_hits(state)
         sim = np.array([nearest[d][0] for d in available])
+        # A probability and a cosine similarity are on different scales, so they are
+        # fused as ranks, not as raw values. Higher rank = better on both.
         model_rank = rankdata(model_scores, method="dense")
         sim_rank = rankdata(sim, method="dense")
         return (1 - self.w) * model_rank + self.w * sim_rank

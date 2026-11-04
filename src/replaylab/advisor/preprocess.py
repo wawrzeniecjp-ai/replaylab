@@ -1,4 +1,4 @@
-"""Turn designs into a numeric matrix (decision D7: orientation is applied here).
+"""Turn designs into a numeric matrix. This is the one place orientation is applied.
 
 Fitted on the *pool* (all designs of the game) and never on outcomes, so it uses only
 what an agent could already see through ``column_summary`` and ``query_pool``.
@@ -14,6 +14,10 @@ Columns, in this order:
 
 A column with no variation in the pool, or a feature with no values at all, is dropped
 and listed in ``dropped``.
+
+The scaling statistics come from the whole pool, so they are fixed before the first
+purchase and do not move as the campaign buys. (The ``*_purchased`` policies rescale
+on the bought designs instead; see ``policies/purchased.py``.)
 """
 
 from __future__ import annotations
@@ -72,8 +76,12 @@ class Preprocessor:
             if not raw:
                 dropped.append(name)
                 continue
+            # Impute with the raw median first, then flip the sign: a missing value then
+            # sits in the middle of the column whichever way the column points.
             median = float(np.median(raw))
             values = np.array([d.features.get(name, median) for d in pool]) * orientation[name]
+            # A constant column would divide by zero when standardized, and carries no
+            # information anyway.
             if float(np.std(values)) < _CONSTANT:
                 dropped.append(name)
                 continue
@@ -126,4 +134,5 @@ class Preprocessor:
                 row.append((len(design.sequence) - self.means["length"]) / self.stds["length"])
             row.extend(1.0 if design.design_class == c else 0.0 for c in self.classes)
             rows.append(row)
+        # reshape keeps the column count right even for zero designs.
         return np.array(rows, dtype=float).reshape(len(rows), len(self.columns))

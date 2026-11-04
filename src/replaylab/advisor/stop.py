@@ -1,4 +1,4 @@
-"""Stop rules (spec section 3.5). They are advice: nothing enforces them.
+"""Stop rules. They are advice: nothing enforces them.
 
 Everything is evaluated on *delivered* purchases only, at the current round boundary
 (the state a caller sees between rounds is always at a boundary).
@@ -11,8 +11,8 @@ Everything is evaluated on *delivered* purchases only, at the current round boun
   rate is strictly greater than ``drop`` (0.05).
 
 Note: with a window of 15 one hit is 1/15 = 0.067 > 0.05, so ``decay`` fires on any
-decline of one hit from the best window. That is the rule as specified; the false-stop
-simulation (plan phase 5) measures how often it fires by chance.
+decline of one hit from the best window. That is the rule as specified; the ladder's
+false-stop simulation measures how often it fires by chance.
 """
 
 from __future__ import annotations

@@ -110,6 +110,8 @@ def similarity_to_hits(s: np.ndarray, hits: np.ndarray, *, own: bool) -> np.ndar
 def _estimator(settings: AnalysisSettings) -> LogisticRegression:
     if settings.penalty == "l2":  # the same estimator as advisor.model (ModelConfig)
         return LogisticRegression(C=settings.C, solver="lbfgs", max_iter=1000)
+    # l1_ratio=1 makes the elastic-net penalty pure lasso; saga is the solver that
+    # supports it, and converges slowly, hence the large max_iter.
     return LogisticRegression(
         C=settings.C, l1_ratio=1.0, solver="saga", max_iter=20000, random_state=0
     )
@@ -125,6 +127,8 @@ def _fit(x: np.ndarray, y: np.ndarray, settings: AnalysisSettings):
 
 def _auc(y: np.ndarray, p: np.ndarray) -> tuple[float, float]:
     """Mann-Whitney AUC and its Hanley-McNeil standard error."""
+    # AUC = probability that a random hit is ranked above a random non-hit, computed
+    # from the rank sum of the hits (ties get average ranks).
     n1, n0 = int(y.sum()), int(len(y) - y.sum())
     ranks = rankdata(p)
     auc = float((ranks[y == 1].sum() - n1 * (n1 + 1) / 2) / (n1 * n0))
@@ -168,6 +172,8 @@ def analyse(
     if settings.similarity and not use_sim:
         raise ValueError("similarity needs s_train and s_cand")
 
+    # 1. Optional similarity input: each design's largest similarity to a delivered hit,
+    #    standardized like the other inputs.
     if use_sim:
         sim_train = similarity_to_hits(s_train, hits, own=True)
         sim_cand = similarity_to_hits(s_cand, hits, own=False)
@@ -182,9 +188,12 @@ def analyse(
     else:
         full_train, full_cand = x_train, x_cand
 
+    # 2. The model the candidates are ranked with, fitted on every delivered design.
     model, converged = _fit(full_train, y, settings)
 
-    # leave-one-out predictions and the base-rate baseline
+    # 3. Leave-one-out validation: refit without design i, predict design i. With the
+    #    similarity input, it is rebuilt from the fold's own hits, so design i's label
+    #    never reaches its own input.
     loo = np.empty(n)
     for i in range(n):
         keep = np.arange(n) != i
@@ -203,15 +212,21 @@ def analyse(
             loo[i] = y[keep].mean()
         else:
             loo[i] = _fit(train_i, y[keep], settings)[0].predict_proba(held_i)[0, 1]
+    # The baseline predicts, for each design, the hit rate of the other n - 1 designs:
+    # the left-one-out version of "always guess the base rate".
     baseline = (y.sum() - y) / (n - 1)
     model_loss, base_loss = _log_loss(y, loo), _log_loss(y, baseline)
     difference = model_loss - base_loss
     auc, auc_se = _auc(y, loo)
 
+    # 4. Score the candidates.
     mean = model.predict_proba(full_cand)[:, 1]
     coef = tuple(float(c) for c in model.coef_[0])
     coef_sd = upper = None
     if settings.penalty == "l2":
+        # Laplace approximation: near its optimum the L2 posterior is roughly Gaussian,
+        # with precision = X' W X (W = p(1 - p), the logistic curvature) plus 1/C on
+        # each weight from the prior. The intercept (first column) is not penalized.
         design = np.c_[np.ones(n), full_train]
         p = model.predict_proba(full_train)[:, 1]
         precision = design.T @ (design * (p * (1 - p))[:, None])
@@ -219,6 +234,8 @@ def analyse(
         covariance = np.linalg.inv(precision + 1e-9 * np.eye(len(precision)))
         coef_sd = tuple(float(v) for v in np.sqrt(np.clip(np.diag(covariance)[1:], 0, None)))
         if settings.rank_by == "upper":
+            # Each candidate's log-odds has sd sqrt(x' Cov x); rank on log-odds + kappa * sd
+            # to favour designs the model is unsure about (optimism under uncertainty).
             cand = np.c_[np.ones(len(full_cand)), full_cand]
             sd = np.sqrt(np.clip(np.einsum("ij,jk,ik->i", cand, covariance, cand), 0, None))
             upper = 1 / (1 + np.exp(-(model.decision_function(full_cand) + settings.kappa * sd)))

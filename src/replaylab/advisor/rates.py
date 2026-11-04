@@ -1,6 +1,6 @@
 """Hit-rate estimates from delivered purchases (Beta posterior).
 
-Counting rules (decision D6): every delivered outcome is one purchase; only
+Counting rules: every delivered outcome is one purchase; only
 ``hit is True`` counts as a hit, so an inconclusive result (``hit is None``) is a
 purchase that is not a hit. Pending purchases are not counted.
 """
@@ -60,6 +60,8 @@ def beta_posterior(hits: int, n: int, prior: tuple[float, float] = (1.0, 1.0)) -
     """Posterior of the hit rate after ``hits`` successes in ``n`` purchases."""
     if n < 0 or hits < 0 or hits > n:
         raise ValueError(f"need 0 <= hits <= n, got hits={hits}, n={n}")
+    # Conjugate update: a Beta(a0, b0) prior plus `hits` successes and `n - hits`
+    # failures gives Beta(a0 + hits, b0 + n - hits). The default prior is uniform.
     a, b = prior[0] + hits, prior[1] + (n - hits)
     return RateEstimate(
         n=n,

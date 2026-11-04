@@ -87,7 +87,8 @@ def fit_model(
     """Fit the logistic model on the *delivered* purchases of a campaign.
 
     Pending designs are never fitted on (their outcomes are not known), and
-    inconclusive results (``hit is None``) are excluded from the labels (D6).
+    inconclusive results (``hit is None``) are excluded from the labels: they
+    count as purchases, but say nothing about binding.
 
     Args:
         state: the campaign snapshot; only ``state.outcomes`` is used.
@@ -102,6 +103,9 @@ def fit_model(
     n_purchases, n_hits = len(state.outcomes), state.n_hits
     conclusive = [(d, o.hit) for d, o in state.outcomes.items() if o.hit is not None]
     labels = {hit for _, hit in conclusive}
+    # The model gate. Below 2 hits (or with a single class) a logistic regression has
+    # nothing to separate, so the fit is undefined rather than merely noisy; the
+    # 8-purchase floor is a judgement call against fitting on a handful of rows.
     if n_hits < config.min_hits or n_purchases < config.min_purchases or len(labels) < 2:
         return InsufficientData(n_purchases, n_hits)
     matrix = preprocessor.transform(state.designs[d] for d, _ in conclusive)
@@ -113,6 +117,8 @@ def fit_model(
         class_weight=config.class_weight,
         max_iter=config.max_iter,
     )
+    # Record convergence warnings instead of printing them: thousands of fits run in a
+    # ladder, and "did it converge" is kept as data on the result.
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         estimator.fit(matrix, y)

@@ -25,6 +25,8 @@ class SimilarityIndex:
             return {d: (0.0, None) for d in unpurchased}
         rows = [self._row[d] for d in unpurchased]
         hit_rows = [self._row[d] for d in hits]
+        # Rows are unit-length k-mer vectors, so this product is the cosine similarity of
+        # every candidate (rows) to every hit (columns).
         similarity = (self._matrix[rows] @ self._matrix[hit_rows].T).toarray()
         best = similarity.argmax(axis=1)  # first maximum = smallest hit id
         return {

@@ -2,11 +2,14 @@
 
 The library's default learners standardize the features on the **pool** (medians
 and orientation are pool-wide, and so are the means and standard deviations).
-The legacy recipe Claude's exploratory script used instead standardized on the
-**delivered purchases**, recomputed every round; on the legacy game that is
-worth +6.27 hits for ``learner_sim`` (design-notes section 5), which is more
-than the 2-hit threshold, so the library keeps its pool-wide default and both
-variants are tracked side by side in every ladder run (decision D-2026-10-13).
+The recipe of the earlier exploratory analysis standardized on the **delivered
+purchases** instead, recomputed every round; on the legacy game that is worth
++6.27 hits for ``learner_sim`` (design-notes section 5), which is more than the
+2-hit threshold, so the library keeps its pool-wide default and both variants are
+tracked side by side in every ladder run (decided 2026-10-13).
+
+Why the scaler matters at all: the model's L2 penalty acts on the standardized
+weights, so the scaling decides how strongly each feature is shrunk.
 
 The two variants differ from their pool-wide twins in **nothing but the
 scaler**: same model, same fallback, same tie-breaks, same random stream. Any
