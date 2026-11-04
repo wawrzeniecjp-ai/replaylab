@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from replaylab.backends import ReplayBackend
@@ -330,6 +332,21 @@ def test_batch_ids_and_rounds_count_up():
 
 
 # --- stopping and finishing -------------------------------------------------------------
+
+
+def test_the_snapshot_says_whether_the_campaign_is_stopped():
+    campaign, _, _ = make_campaign()
+    assert campaign.state().stopped is False
+    campaign.stop("enough")
+    assert campaign.state().stopped is True and campaign.stopped is True
+
+
+def test_validation_reads_stopped_from_the_snapshot_it_is_given():
+    # _validate's contract is "this state allows this batch": it must not ask the store.
+    campaign, _, _ = make_campaign()  # not stopped in the store
+    stopped_state = replace(campaign.state(), stopped=True)
+    with pytest.raises(CampaignStopped):
+        campaign._validate(stopped_state, ["d0001"], submitting=False)
 
 
 def test_stop_blocks_buying_but_not_waiting():

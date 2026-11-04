@@ -41,7 +41,7 @@ class ReplayEnvironment:
         raising "no cluster for hit design(s)".
         """
         context = self.context if self.context.clusters else None
-        return score(self.campaign.state(), stopped=self.campaign.stopped, context=context)
+        return score(self.campaign.state(), context=context)
 
 
 def restore_backend(backend: ReplayBackend, store: CampaignStore, campaign_id: int) -> None:

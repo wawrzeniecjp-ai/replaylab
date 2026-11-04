@@ -50,7 +50,7 @@ def play(policy, designs, outcomes, seed, rounds=4, k=10, delay=0):
     for round_index in range(1, rounds + 1):
         campaign.submit(policy.choose(campaign.state(), k, make_rng(seed, round_index)))
     campaign.settle()
-    return score(campaign.state(), stopped=False).hits
+    return score(campaign.state()).hits
 
 
 def mean_hits(policy, designs, outcomes, seeds=30, **kwargs):

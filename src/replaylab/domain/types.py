@@ -157,7 +157,8 @@ class CampaignState:
 
     Policies and advisor functions receive only this object, never the store or
     a backend, so they can neither write nor peek. ``outcomes`` contains
-    delivered outcomes only.
+    delivered outcomes only. ``stopped`` is True once the campaign has been stopped
+    (stop is one-way, so a later snapshot never turns it back).
     """
 
     config: CampaignConfig
@@ -165,6 +166,7 @@ class CampaignState:
     batches: tuple[Batch, ...] = ()
     outcomes: Mapping[DesignId, Outcome] = field(default_factory=dict)
     clock: int = 0
+    stopped: bool = False
 
     def __post_init__(self) -> None:
         if self.clock < 0:
@@ -238,3 +240,8 @@ class CampaignState:
         """Unused batch slots: configured rounds minus batches that have left the process."""
         used = sum(1 for batch in self.batches if batch.status.is_purchased)
         return max(0, self.config.rounds - used)
+
+    @property
+    def finished(self) -> bool:
+        """True when no further batch can be submitted: stopped, or rounds or budget used up."""
+        return self.stopped or self.rounds_left == 0 or self.budget_remaining <= 0

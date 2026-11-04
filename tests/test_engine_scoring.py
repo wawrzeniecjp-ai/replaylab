@@ -38,7 +38,7 @@ def play(rounds=3, delay=0, first=("d0001", "d0002", "d0003"), second=("d0004", 
 
 def test_curve_and_boundaries_follow_purchase_order():
     campaign = play()
-    card = score(campaign.state(), stopped=False)
+    card = score(campaign.state())
     # purchases: d0001 (hit), d0002, d0003 (hit) | d0004, d0005 (hit)
     assert card.curve == (1, 1, 2, 2, 3)
     assert card.hits_at_boundaries == (2, 3)
@@ -47,38 +47,38 @@ def test_curve_and_boundaries_follow_purchase_order():
 
 def test_purchase_order_is_batch_order_then_position_in_the_batch():
     campaign = play(first=("d0003", "d0002", "d0001"), second=("d0005", "d0004"))
-    card = score(campaign.state(), stopped=False)
+    card = score(campaign.state())
     assert card.curve == (1, 1, 2, 3, 3)  # d0003 hit, d0002, d0001 hit | d0005 hit, d0004
 
 
 def test_best_kd_is_the_smallest_among_hits_that_have_one():
-    card = score(play().state(), stopped=False)
+    card = score(play().state())
     assert card.best_kd == pytest.approx(1e-8)  # d0005 has no KD; d0001 3e-8 and d0003 1e-8
-    no_kd = score(play(first=("d0002", "d0004", "d0007"), second=("d0006",)).state(), stopped=False)
+    no_kd = score(play(first=("d0002", "d0004", "d0007"), second=("d0006",)).state())
     assert no_kd.hits == 0 and no_kd.best_kd is None
 
 
 def test_inconclusive_outcomes_are_not_hits():
-    card = score(play(first=("d0006", "d0002", "d0004"), second=("d0007",)).state(), stopped=False)
+    card = score(play(first=("d0006", "d0002", "d0004"), second=("d0007",)).state())
     assert card.hits == 0 and card.curve == (0, 0, 0, 0)
 
 
 def test_distinct_families_counts_clusters_among_hits():
     state = play().state()
     separate = ScoringContext({"d0001": 0, "d0002": 0, "d0003": 1, "d0004": 1, "d0005": 2})
-    assert score(state, stopped=False, context=separate).distinct_families == 3
+    assert score(state, context=separate).distinct_families == 3
     shared = ScoringContext({"d0001": 0, "d0002": 0, "d0003": 0, "d0004": 1, "d0005": 2})
-    assert score(state, stopped=False, context=shared).distinct_families == 2  # d0001, d0003 share
-    assert score(state, stopped=False).distinct_families is None
+    assert score(state, context=shared).distinct_families == 2  # d0001, d0003 share
+    assert score(state).distinct_families is None
 
 
 def test_a_hit_without_a_cluster_is_an_error():
     with pytest.raises(ScoringError, match="no cluster"):
-        score(play().state(), stopped=False, context=ScoringContext({"d0001": 0}))
+        score(play().state(), context=ScoringContext({"d0001": 0}))
 
 
 def test_net_value_and_regret():
-    card = score(play().state(), stopped=False)  # curve (1, 1, 2, 2, 3), 5 purchases, 3 hits
+    card = score(play().state())  # curve (1, 1, 2, 2, 3), 5 purchases, 3 hits
     assert card.net_value(10) == 25
     assert card.net_value(1.5) == pytest.approx(-0.5)
     assert card.regret(10) == pytest.approx(0.0)  # buying everything was the best stopping point
@@ -90,35 +90,38 @@ def test_net_value_and_regret():
 
 
 def test_stopped_early_only_if_slots_and_budget_remained():
-    state_with_slots = play(rounds=3).state()  # one slot left
-    assert score(state_with_slots, stopped=True).stopped_early is True
-    assert score(state_with_slots, stopped=False).stopped_early is False
-    no_slots = play(rounds=2).state()
-    assert score(no_slots, stopped=True).stopped_early is False  # rounds were used up anyway
+    assert score(play(rounds=3).state()).stopped_early is False  # one slot left, not stopped
+    with_slots = play(rounds=3)
+    with_slots.stop("enough")
+    assert score(with_slots.state()).stopped_early is True
+    no_slots = play(rounds=2)
+    no_slots.stop("enough")
+    assert score(no_slots.state()).stopped_early is False  # rounds were used up anyway
 
 
 def test_scoring_is_refused_while_results_are_pending():
     campaign = play(delay=2)
     with pytest.raises(ScoringError, match="settle"):
-        score(campaign.state(), stopped=False)
+        score(campaign.state())
     campaign.settle()
-    assert score(campaign.state(), stopped=False).hits == 3
+    assert score(campaign.state()).hits == 3
 
 
 def test_delay_does_not_change_the_score():
-    immediate = score(play(delay=0).state(), stopped=False)
+    immediate = score(play(delay=0).state())
     campaign = play(delay=2)
     campaign.settle()
-    assert score(campaign.state(), stopped=False) == immediate
+    assert score(campaign.state()) == immediate
 
 
 def test_an_empty_campaign_scores_zero():
     config = CampaignConfig("t", "x", "replay", 3, 3, 1)
     designs = [Design(d, sequence="ACDEF" * 3) for d in IDS]
     campaign = Campaign.create(config, designs, CampaignStore.open(), ReplayBackend(outcomes()))
-    card = score(campaign.state(), stopped=False)
+    card = score(campaign.state())
     assert (card.hits, card.purchases, card.rounds_used) == (0, 0, 0)
     assert card.curve == () and card.hits_at_boundaries == ()
     assert card.best_kd is None and card.stopped_early is False
     assert card.net_value(10) == 0 and card.regret(10) == 0
-    assert score(campaign.state(), stopped=True).stopped_early is True  # stopped with slots left
+    campaign.stop("nothing worth buying")
+    assert score(campaign.state()).stopped_early is True  # stopped with slots left

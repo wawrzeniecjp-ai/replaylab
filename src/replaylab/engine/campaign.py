@@ -132,8 +132,8 @@ class Campaign:
 
     @property
     def stopped(self) -> bool:
-        """True once a ``campaign_stopped`` event exists (stop is one-way)."""
-        return any(e.kind == "campaign_stopped" for e in self._store.events(self._cid))
+        """True once the campaign has been stopped (stop is one-way)."""
+        return self.state().stopped
 
     def state(self) -> CampaignState:
         """An immutable snapshot of the campaign right now."""
@@ -141,13 +141,13 @@ class Campaign:
 
     def is_finished(self) -> bool:
         """True when no further batch can be submitted."""
-        state = self.state()
-        return self.stopped or state.rounds_left == 0 or state.budget_remaining <= 0
+        return self.state().finished
 
     # --- validation ----------------------------------------------------------------
 
     def _validate(self, state: CampaignState, ids: Sequence[str], *, submitting: bool) -> None:
-        if self.stopped:
+        # Checks only the snapshot it is given, never the store.
+        if state.stopped:
             raise CampaignStopped("campaign is stopped")
         if submitting and state.rounds_left == 0:
             raise NoRoundsLeft("no rounds left")

@@ -124,7 +124,7 @@ def run_game(
     # A pool without cluster rows (the small stop-game targets) is scored without
     # distinct_families rather than raising ScoringError for every hit.
     context = env.context if env.context.clusters else None
-    return score(env.campaign.state(), stopped=env.campaign.stopped, context=context)
+    return score(env.campaign.state(), context=context)
 
 
 @dataclass(frozen=True)
@@ -333,6 +333,7 @@ def run_ladder(
     rows: list[dict[str, Any]] = []
     traces: dict[tuple[str, str, int], list[StopAdvice]] = {}
     for game_id in selected:
+        # Refuse, before playing anything, the games the ladder must never play.
         game = games[game_id]
         if game.split == "heldout":
             raise ValueError(
@@ -352,6 +353,9 @@ def run_ladder(
             folds_path=folds_path,
             clusters_path=clusters_path,
         )
+
+        # Every policy on every seed. The stop advice is traced only for the stop game's
+        # named policies: it is what the stop-advice report reads.
         for seed in range(seeds):
             for policy in ladder_game.policies(seed, frozen=frozen):
                 key = (game_id, policy.name, seed)

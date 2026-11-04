@@ -43,17 +43,14 @@ class ScoreCard:
         return best - self.net_value(ratio)
 
 
-def score(
-    state: CampaignState, *, stopped: bool, context: ScoringContext | None = None
-) -> ScoreCard:
+def score(state: CampaignState, *, context: ScoringContext | None = None) -> ScoreCard:
     """Turn a settled campaign into a :class:`ScoreCard`.
 
     Purchase order is batch order, then position inside the batch, so
     the curve shows what an early stop would have been worth.
 
     Args:
-        state: the final campaign snapshot.
-        stopped: whether the campaign was stopped (decides ``stopped_early``).
+        state: the final campaign snapshot; its ``stopped`` decides ``stopped_early``.
         context: hidden cluster ids for ``distinct_families``; pass ``None``
             for pools the cluster table does not cover (families are then
             ``None`` rather than an error).
@@ -91,5 +88,5 @@ def score(
         distinct_families=families,
         best_kd=min(kds) if kds else None,
         rounds_used=len(purchased_batches),
-        stopped_early=bool(stopped and state.rounds_left > 0 and state.budget_remaining > 0),
+        stopped_early=bool(state.stopped and state.rounds_left > 0 and state.budget_remaining > 0),
     )

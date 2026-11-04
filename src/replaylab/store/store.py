@@ -577,4 +577,17 @@ class CampaignStore:
                 "SELECT * FROM outcomes WHERE campaign_id = ? ORDER BY rowid", (campaign_id,)
             )
         }
-        return CampaignState(config, designs, tuple(batches), outcomes, self.get_clock(campaign_id))
+        # Stop is an event, not a column. EXISTS stops at the first match and parses no
+        # payloads, unlike reading the whole log through events().
+        stopped = self._conn.execute(
+            "SELECT EXISTS(SELECT 1 FROM events WHERE campaign_id = ? AND kind = ?)",
+            (campaign_id, "campaign_stopped"),
+        ).fetchone()[0]
+        return CampaignState(
+            config,
+            designs,
+            tuple(batches),
+            outcomes,
+            self.get_clock(campaign_id),
+            stopped=bool(stopped),
+        )
