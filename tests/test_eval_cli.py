@@ -519,3 +519,20 @@ def test_smoke_is_not_blocked_by_a_dirty_tree(setup, dirty, tmp_path):
     # A probe writes no record, so it must stay usable while a fix is half applied.
     result = invoke(smoke_args(setup, tmp_path))
     assert "uncommitted" not in result.output
+
+
+def test_the_recorded_sha_is_the_commit_of_the_code_not_of_the_shell(setup, tmp_path, monkeypatch):
+    # A control run imports a worktree's src while the shell sits elsewhere; the sha must
+    # name the tree that was checked for cleanliness, not whatever "." happens to be.
+    from replaylab.eval.final_run import code_root
+    from replaylab.eval.records import git_info
+
+    expected, _ = git_info(code_root())
+    assert expected  # this checkout is a repository
+    elsewhere = tmp_path / "shell"
+    elsewhere.mkdir()  # not a git repository
+    monkeypatch.chdir(elsewhere)
+    done = invoke(scripted_args(setup, tmp_path / "run"))
+    assert done.exit_code == 0, done.output
+    records = read_records(tmp_path / "run" / "episodes.jsonl")
+    assert records and all(r["git_sha"] == expected for r in records)

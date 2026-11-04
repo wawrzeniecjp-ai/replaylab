@@ -137,8 +137,8 @@ def _uncommitted(*, check_tree: bool, allow: bool) -> bool:
     """Refuse to record episodes from an uncommitted tree; return whether it is dirty.
 
     ``config_hash`` pins what the model sees, but not the code behind the tools, the
-    policies or the scoring (nor ``features.yaml``/``games.yaml``), which are git-ignored
-    or simply not hashed. ``git_sha`` is the only record of those, so a dirty run would
+    policies or the scoring, nor ``features.yaml``/``games.yaml``, which are tracked but
+    not hashed. ``git_sha`` is the only record of those, so a dirty run would
     claim a commit it was not played from. ``allow`` is the escape hatch: the run goes
     ahead and every record it writes says ``git_dirty``.
     """
@@ -182,7 +182,7 @@ def _deps(
     allow_uncommitted: bool = False,
     check_tree: bool = True,
 ) -> RunnerDeps:
-    sha, _ = git_info()
+    sha, _ = git_info(code_root())
     git_dirty = _uncommitted(check_tree=check_tree, allow=allow_uncommitted)
     return RunnerDeps(
         tables_dir=tables,
@@ -247,7 +247,7 @@ def _final_permit(
         trials=len(trials),
         conditions=sorted({s.condition for s in specs}),
     )
-    sha, _ = git_info()
+    sha, _ = git_info(code_root())
     return acquire(lock_dir, final_leg, frozen=frozen, git_sha=sha or "", check_only=check_only)
 
 
