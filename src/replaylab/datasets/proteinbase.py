@@ -9,7 +9,7 @@ row) into three tables:
 * ``targets``  one row per target: sizes, hit rates, label conflicts and feature
   coverage.
 
-The definitions follow section 2 of the spec:
+The definitions (also under "Data definitions" in the README):
 
 * A design is a **hit** on a target if any of its binding records is True.
 * A design **conflicts** on a target if its binding records disagree.
@@ -273,6 +273,8 @@ def build_outcomes(long: pd.DataFrame) -> pd.DataFrame:
     """
     experimental = long[long["type"] == "experimental"]
 
+    # 1. Binding records -> hit and conflict. A pair is a hit if at least one record
+    #    says it binds; it conflicts if the records disagree.
     binding = experimental[
         (experimental["metric"] == "binding")
         & experimental["target"].notna()
@@ -288,6 +290,8 @@ def build_outcomes(long: pd.DataFrame) -> pd.DataFrame:
     outcomes["hit"] = outcomes["n_true"] > 0
     outcomes["conflict"] = (outcomes["n_true"] > 0) & (outcomes["n_true"] < outcomes["n_records"])
 
+    # 2. Strength labels -> the strongest one per pair (labels are normalised to title
+    #    case; anything that is not Strong/Medium/Weak is ignored).
     strength = experimental[
         (experimental["metric"] == "binding_strength") & experimental["target"].notna()
     ].copy()
@@ -304,6 +308,8 @@ def build_outcomes(long: pd.DataFrame) -> pd.DataFrame:
         best[["design_id", "target", "strength"]], how="left", on=["design_id", "target"]
     )
 
+    # 3. KD records -> the smallest (tightest) KD per pair, in molar. Left joins keep
+    #    every binding pair even when it has no strength or KD record.
     kd = _kd_records(experimental, outcomes)
     kd_min = (
         kd.dropna(subset=["target", "kd_molar"])

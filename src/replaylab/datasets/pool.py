@@ -6,7 +6,7 @@
   reads them, and it refuses the held-out split and a final-test game unless
   ``final_run=True``.
 
-Feature values stay raw here (decision D7): orientation is applied later, in the
+Feature values stay raw here: orientation is applied later, in the
 advisor's preprocessing, so agents see original values such as the lower-is-better
 ProteinMPNN score.
 """
@@ -40,7 +40,7 @@ class DesignPool:
     """One game's candidate designs, keyed by *real* id.
 
     Everything an agent may see is in ``designs`` (visible features only,
-    raw orientation per D7); ``clusters`` and the outcomes stay hidden until
+    values never reoriented); ``clusters`` and the outcomes stay hidden until
     scoring or purchase.
     """
 
@@ -89,7 +89,7 @@ def load_pool(
     The pool is every design of the game's target, restricted to the split
     (``all`` keeps everything; ``dev``/``heldout`` follow ``folds_path``).
     Only *visible* feature columns are kept, missing values are dropped, and
-    feature values stay raw (D7: orientation is applied later, in the
+    feature values stay raw (orientation is applied later, in the
     advisor).
 
     Args:
@@ -107,6 +107,8 @@ def load_pool(
     """
     tables_dir = Path(tables_dir)
     designs = pd.read_parquet(tables_dir / "designs.parquet")
+    # Only the two columns that say which designs belong to the target are read, never
+    # the result columns: the pool must be buildable without touching any outcome.
     outcomes = pd.read_parquet(tables_dir / "outcomes.parquet", columns=["design_id", "target"])
     missing_columns = [n for n in feature_config.names if n not in designs.columns]
     if missing_columns:
@@ -116,6 +118,8 @@ def load_pool(
     table = designs.set_index("design_id").loc[ids]
     pool_designs: dict[str, Design] = {}
     for design_id, row in table.iterrows():
+        # A missing metric is left out of the mapping rather than stored as NaN, so a
+        # player sees "no value" instead of a number that is not one.
         features = {
             name: float(row[name]) for name in feature_config.names if not _is_missing(row[name])
         }
@@ -148,6 +152,7 @@ def load_outcomes(
     final_run: bool = False,
 ) -> dict[str, Outcome]:
     """Hidden outcomes of the game's pool, keyed by real design id."""
+    # The two guards run before any file is opened, so a refused call reads nothing.
     if game.split == "heldout" and not final_run:
         raise HeldOutAccessError(
             f"game {game.id}: the held-out split's outcomes may only be read in the final run"

@@ -1,4 +1,4 @@
-"""Grouped, stratified folds with an explicit balance rule (decision D5).
+"""Grouped, stratified folds with an explicit balance rule.
 
 Folds are built with ``StratifiedGroupKFold`` so that every sequence family (cluster)
 lands in exactly one fold and hits are spread across folds. A plain grouped split
@@ -47,6 +47,8 @@ def assign_folds(groups: Sequence, y: Sequence[int], seed: int, n_splits: int = 
         raise ValueError("groups and y must have the same length")
     splitter = StratifiedGroupKFold(n_splits=n_splits, shuffle=True, random_state=seed)
     folds = np.full(len(y_array), -1, dtype=int)
+    # Each of the k splits holds one fold out as its "test" part, so the test indices of
+    # split f are exactly the rows of fold f. The X argument is unused by the splitter.
     for fold, (_, test_index) in enumerate(
         splitter.split(np.zeros(len(y_array)), y_array, group_array)
     ):
@@ -97,6 +99,7 @@ def select_folds(
         sizes, hits = fold_counts(folds, y, n_splits)
         if is_balanced(sizes, hits, size_tol, hit_tol):
             return FoldSelection(seed=seed, folds=folds, sizes=sizes, hits=hits)
+        # Remember the most even failure, so the error message can say how close it came.
         spread = max(sizes) - min(sizes) + max(hits) - min(hits)
         if best is None or spread < best[0]:
             best = (spread, seed, sizes, hits)

@@ -86,11 +86,15 @@ def review_numeric_metrics(
         coverage = n_with / len(pool)
         rate_with = float(hits[has_value].mean()) if n_with else None
         rate_without = float(hits[~has_value].mean()) if n_without else None
+        # How well "has a value" alone predicts a hit: 0.5 means no information. Reported
+        # as evidence only; the decision below uses the hit-rate gap.
         auc = None
         if n_with and n_without and hits.nunique() == 2:
             auc = float(roc_auc_score(hits, has_value))
         if coverage < min_coverage:
             decision, reason = "exclude", REASON_COVERAGE
+        # The leak test needs enough designs on both sides; with fewer, a rate gap is
+        # mostly noise, and a near-complete column cannot leak much anyway.
         elif (
             n_with >= min_group
             and n_without >= min_group

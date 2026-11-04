@@ -1,4 +1,4 @@
-"""Author and nearest-neighbour checks (Phase 0.5).
+"""Author and nearest-neighbour checks (part of the preliminary analysis).
 
 Two questions from the exploratory analysis:
 

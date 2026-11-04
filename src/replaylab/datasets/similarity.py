@@ -42,6 +42,8 @@ def kmer_matrix(sequences: Sequence[str], k: int = DEFAULT_K) -> sparse.csr_matr
     """
     if k < 1:
         raise ValueError("k must be at least 1")
+    # Build the sparse matrix directly in CSR form: for each row, `indices` gets the
+    # column of every k-mer present and `indptr` marks where the row ends.
     vocabulary: dict[str, int] = {}
     indices: list[int] = []
     indptr = [0]
@@ -55,6 +57,8 @@ def kmer_matrix(sequences: Sequence[str], k: int = DEFAULT_K) -> sparse.csr_matr
         (data, np.asarray(indices, dtype=np.int64), np.asarray(indptr, dtype=np.int64)),
         shape=(len(sequences), len(vocabulary)),
     )
+    # Scale each row to unit length (a binary row with n ones has norm sqrt(n)), so the
+    # dot product of two rows is their cosine similarity. Empty rows stay zero.
     counts = np.diff(matrix.indptr).astype(np.float64)
     inverse_norm = np.divide(1.0, np.sqrt(counts), out=np.zeros_like(counts), where=counts > 0)
     return sparse.diags(inverse_norm).dot(matrix).tocsr()
@@ -106,6 +110,9 @@ def cluster_ids(
     n = matrix.shape[0]
     if n == 0:
         return np.zeros(0, dtype=np.int64)
+    # Rows are unit vectors, so each entry of M @ M.T is a cosine similarity, and only
+    # pairs sharing a k-mer are stored at all. Link a pair when its distance
+    # (1 - similarity) is at most max_distance; drop the diagonal (self-pairs).
     products = (matrix @ matrix.T).tocoo()
     keep = (products.data >= 1.0 - max_distance - _TOLERANCE) & (products.row != products.col)
     graph = sparse.coo_matrix(

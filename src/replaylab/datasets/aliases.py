@@ -1,6 +1,7 @@
-"""Episode-local aliases for design ids (decision D4).
+"""Episode-local aliases for design ids.
 
-Agents see ``d0001``, ``d0002``, ... instead of the real design ids. The mapping is a
+Agents see ``d0001``, ``d0002``, ... instead of the real design ids, so nothing they
+see can be joined to outside data, and two seeds cannot be lined up by alias. The mapping is a
 bijection that depends only on the set of ids and an integer seed. It is built by
 sorting ids on ``sha256(f'{seed}|{id}')``, so it is identical on every machine and
 Python/NumPy version (no random number generator is involved).
@@ -31,7 +32,7 @@ class Aliaser:
 
     @classmethod
     def from_seed(cls, real_ids: Iterable[str], seed: int) -> Aliaser:
-        """Build the seed-dependent mapping (decision D4).
+        """Build the seed-dependent mapping.
 
         Real ids are sorted on ``sha256(f'{seed}|{id}')`` and assigned
         ``d0001``, ``d0002``, ... in that order, so the result is identical
@@ -41,7 +42,10 @@ class Aliaser:
         ids = list(real_ids)
         if len(set(ids)) != len(ids):
             raise ValueError("real_ids must be unique")
+        # The hash acts as a seeded shuffle that needs no random generator. The id is a
+        # tie-breaker for the (practically impossible) case of two equal digests.
         ordered = sorted(ids, key=lambda design_id: (_digest(seed, design_id), design_id))
+        # At least four digits (d0001), more if the pool has 10,000 designs or more.
         width = max(4, len(str(len(ordered))))
         return cls({real: f"d{position:0{width}d}" for position, real in enumerate(ordered, 1)})
 

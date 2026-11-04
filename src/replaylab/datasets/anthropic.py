@@ -15,7 +15,7 @@ the release's own documentation, never by looking at outcomes):
 * **Features: the crosswalk** :data:`CROSSWALK` -- the four Proteinbase feature columns that
   also exist here, under their Proteinbase names. ``proteinmpnn_score`` and the shape
   complementarity have no counterpart in the release and are left out.
-* **Raw values** (D7). Within one target the release's metrics are comparable as published,
+* **Raw values.** Within one target the release's metrics are comparable as published,
   so nothing is rescaled here; the advisor standardizes later, as it does for every game.
 * **Seed-best rows.** ``design_summary`` reports, per predictor, the highest ``ipsae_min``
   over the five seeds at the design-complex stoichiometry on the design target. ipTM and
@@ -23,9 +23,9 @@ the release's own documentation, never by looking at outcomes):
   (:func:`seed_best`), and :func:`build_designs` checks the result against
   ``design_summary`` rather than trusting it.
 * **Hit label:** ``binder_final``, the release's own call on the human target from both
-  vendors and a standardized re-fit. ``kd_nM_final`` becomes ``kd_molar`` exactly (no
-  rounding, per the rules of engagement). The 120 mature GDF-8 designs have no call and are
-  dropped.
+  vendors and a standardized re-fit. ``kd_nM_final`` becomes ``kd_molar`` exactly
+  (dissociation constants are never rounded anywhere in replaylab). The 120 mature GDF-8
+  designs have no call and are dropped.
 * **Target ids** are the release's own codes under an ``ab-`` prefix
   (:func:`target_slug`): the prefix keeps them distinct from the Proteinbase targets of the
   same name, which carry different features. The biological target stays named on purpose --
