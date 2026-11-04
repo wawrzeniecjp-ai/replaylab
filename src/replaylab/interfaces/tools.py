@@ -1,7 +1,7 @@
 """The tool layer: every tool as a plain method, independent of any transport.
 
 The MCP server and the CLI both call this class, so what an agent sees through MCP is
-exactly what the tests check here. Rules enforced at this boundary (spec 6.3):
+exactly what the tests check here. Rules enforced at this boundary:
 
 * sequences, real design ids and unpurchased outcomes never appear in a response;
 * responses are deterministic given the campaign state;
@@ -64,9 +64,11 @@ ADVISOR_TOOLS = (
     "stop_advice",
     "campaign_summary",
 )
-# Condition C: the agent's own model, offered in place of fit_and_rank (section 13).
+# Condition C: the agent's own model, offered in place of fit_and_rank (design-notes
+# section 13).
 ANALYSIS_TOOLS = ("fit_custom_model",)
-KNOWLEDGE_TOOLS: tuple[str, ...] = ()  # registered in phase 8
+# Reserved for a planned knowledge layer; empty, so conditions may already name it.
+KNOWLEDGE_TOOLS: tuple[str, ...] = ()
 TOOL_GROUPS = {
     "campaign": CAMPAIGN_TOOLS,
     "advisor": ADVISOR_TOOLS,
@@ -83,6 +85,9 @@ CALIBRATION_MIN_ROUNDS = 3  # realized model predictions needed before calibrati
 _FLOAT_GUARD = 1e-9
 _Z90 = 1.6448536269514722  # 95th percentile of the standard normal
 
+# What the model reads about each tool. These strings are part of the experiment: they
+# are hashed into every run's config_hash, so editing one makes later runs a different
+# configuration (and tests/snapshots/tools.json must be refreshed and reviewed).
 TOOL_DESCRIPTIONS: dict[str, str] = {
     "describe_campaign": (
         "Show the campaign's state: budget, rounds left, batch size, counts of purchased and pending designs, "
@@ -210,6 +215,8 @@ def _finite_number(text: str) -> float | None:
 
 
 def _r6(value: float | None) -> float | None:
+    # Six decimals keep model-facing numbers short and identical across platforms.
+    # Not used for dissociation constants, which are always reported exactly.
     return None if value is None else round(float(value), 6)
 
 
@@ -448,6 +455,7 @@ class Toolbox:
             if unknown:
                 raise ToolFailure(f"unknown design id(s) {unknown[:3]}; use ids from query_pool")
             wanted = set(design_ids)
+        # An explicit id lookup returns those designs even if bought: rows carry no outcome.
         blocked = state.purchased_ids if exclude_purchased and wanted is None else frozenset()
         matching = []
         for design_id, design in state.designs.items():
@@ -455,8 +463,13 @@ class Toolbox:
                 continue
             if all(self._matches(design, c) for c in where or []):
                 matching.append(design)
+        # Sort by id first so ties in the value sort below come out in a fixed order.
         matching.sort(key=lambda d: d.design_id)
         if sort_by is not None:
+            # Values are raw, so descending=True puts the *worst* designs first on a
+            # lower-is-better column (proteinmpnn_score). That is documented to the agent
+            # through higher_is_better rather than corrected here. Missing values always go
+            # last, whichever the direction.
             with_value = [d for d in matching if self._value(d, sort_by) is not None]
             without = [d for d in matching if self._value(d, sort_by) is None]
             with_value.sort(key=lambda d: self._value(d, sort_by), reverse=descending)
@@ -612,6 +625,9 @@ class Toolbox:
         ]
 
     def _calibration(self, state: CampaignState, basis: str) -> s.CalibrationInfo:
+        # Every model-based proposal records a predicted hit rate; once its batch is
+        # delivered, realized - predicted is a residual. With enough residuals, the
+        # estimates can be corrected by their mean bias.
         residuals = self._residuals(state)
         return s.CalibrationInfo(
             basis=basis,  # type: ignore[arg-type]
@@ -636,12 +652,12 @@ class Toolbox:
     def _raw_direction(self, feature: str) -> float:
         """+1 or -1: the sign that turns an oriented weight into the raw-value direction.
 
-        The model fits on oriented features (D7: every column flipped so that higher means
-        more likely to bind), but every value the tools show is raw. Reporting an oriented
-        weight beside raw values invites reading a lower-is-better column backwards, so the
-        reported weight is multiplied by the column's orientation and a positive weight then
-        means "a higher **raw** value goes with binding". Magnitudes, and which weights l1
-        set to zero, are unchanged.
+        The model fits on oriented features (lower-is-better columns are flipped so that
+        higher always means more likely to bind), but every value the tools show is raw.
+        Reporting an oriented weight beside raw values invites reading a lower-is-better
+        column backwards, so the reported weight is multiplied by the column's orientation
+        and a positive weight then means "a higher **raw** value goes with binding".
+        Magnitudes, and which weights l1 set to zero, are unchanged.
         """
         return float(self._ctx.preprocessor.orientation.get(feature, 1.0))
 
@@ -699,6 +715,8 @@ class Toolbox:
             )
         except UnknownPolicy as error:
             raise ToolFailure(str(error)) from None
+        # The same generator a scripted run uses for this round, so asking a policy here
+        # gives the batch that policy would have bought on this seed.
         ids = scripted.choose(state, k, make_rng(self._ctx.seed, self._slot(state)))
         if not ids:
             raise ToolFailure("No unpurchased designs are left to propose.")
@@ -713,6 +731,7 @@ class Toolbox:
             basis = "model"
             scores = fitted.score(chosen)
             predicted = float(scores.mean())
+        # Recording the proposal with its prediction is what later feeds calibration.
         batch = self._campaign.propose(
             ids, predicted_rate=predicted, model=f"{scripted.name}:{basis}"
         )
@@ -722,6 +741,8 @@ class Toolbox:
         for index, design in enumerate(chosen):
             top: list[s.TopFeature] = []
             if not isinstance(fitted, InsufficientData):
+                # A feature's contribution to this design's log-odds is weight x
+                # standardized value; show the three largest in absolute size.
                 row = self._ctx.preprocessor.transform([design])[0]
                 contributions = sorted(
                     zip(fitted.columns, fitted.coef, row, strict=True),
@@ -772,6 +793,8 @@ class Toolbox:
             s.Ranked(design_id=available[i], score=_r6(scores[i]), log_odds=_r6(log_odds[i]))
             for i in order[:top_k]
         ]
+        # Same split as the scripted learners: the best share by score, the rest drawn at
+        # random from the remaining designs (see policies.core._top_and_explore).
         n_top = min(top_k, int(math.floor((1 - exploration) * top_k + _FLOAT_GUARD)))
         taken = {r.design_id for r in ranked[:n_top]}
         remaining = [d for d in available if d not in taken]
@@ -819,6 +842,7 @@ class Toolbox:
         state = self._state()
         preprocessor = self._preprocessor_for(state, features)
         fitted = self._fitted(state, preprocessor)  # the same data gate as fit_and_rank
+        # The scaler is the only thing "purchased" changes (as in the scripted variants).
         if scaling == "purchased":
             preprocessor = purchased_scale(preprocessor, state)
         delivered = sorted(d for d, o in state.outcomes.items() if o.hit is not None)
@@ -889,6 +913,7 @@ class Toolbox:
             raise ToolFailure(
                 f"unknown design id(s) {unknown[:3]}; use ids from query_pool or get_history"
             )
+        # Only unpurchased designs are returned: the point is to find designs to buy.
         given = set(design_ids)
         candidates = [d for d in state.unpurchased_ids if d not in given]
         rows = self._pool_similarity.nearest(list(given), candidates, min(k, MAX_SIMILAR))
@@ -952,6 +977,8 @@ class Toolbox:
         fitted = self._fitted(state)
         predicted = float(fitted.score([state.designs[d] for d in ids]).mean())
         residuals = self._residuals(state)
+        # Calibrated: shift the model's prediction by its mean past error, and take the
+        # 90% interval from the spread of those errors.
         if len(residuals) >= CALIBRATION_MIN_ROUNDS:
             adjusted = min(1.0, max(0.0, predicted + statistics.fmean(residuals)))
             half = _Z90 * statistics.stdev(residuals)
@@ -959,6 +986,8 @@ class Toolbox:
             return s.NextBatchEstimate(
                 predicted_rate=_r6(adjusted), interval90=[_r6(i) for i in interval], calibrated=True
             )
+        # Not yet calibrated: treat the prediction as if k purchases had shown that rate,
+        # and report the 90% interval of the matching Beta distribution.
         k = len(ids)
         a, b = 1 + predicted * k, 1 + (1 - predicted) * k
         return s.NextBatchEstimate(

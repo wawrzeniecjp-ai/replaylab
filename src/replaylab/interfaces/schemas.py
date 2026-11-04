@@ -1,6 +1,9 @@
-"""Response and argument models for every tool (spec section 5 and plan 6.2).
+"""Response and argument models for every tool.
 
 All responses are Pydantic models, so a tool can never return an undocumented field.
+The class docstrings below become part of each tool's output schema, which an MCP
+client may show to its model (the evaluation loop sends input schemas only), so they
+are written for that reader and changed only deliberately.
 Floats in responses are rounded to 6 decimals by the toolbox (raw metric values returned
 by ``query_pool`` and ``get_history`` are not rounded).
 """
@@ -178,6 +181,9 @@ class Reason(_Model):
     similarity: float
 
 
+# Calibration rule: once at least 3 model-based predictions have been realized, the next
+# predicted rate is clip(raw + mean residual) with a 90% interval of +/- 1.645 x sd of the
+# residuals (see Toolbox._next_batch_estimate).
 class CalibrationInfo(_Model):
     """How the predicted rate was produced and whether it is calibrated (decision D12)."""
 

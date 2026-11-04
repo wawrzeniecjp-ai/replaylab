@@ -20,7 +20,7 @@ from replaylab.policies import (
     RandomPolicy,
 )
 
-# Both scaling variants are offered (decision D13): the ladder tracks pool-wide
+# Both scaling variants are offered: the ladder tracks pool-wide
 # and purchased-row scaling side by side, so an agent must be able to reach the
 # scripted bar (learner_sim_purchased) and its pool-wide twin.
 POLICY_NAMES = ("learner_sim", "learner_sim_purchased", "learner", "learner_purchased", "random")

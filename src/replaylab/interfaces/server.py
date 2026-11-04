@@ -37,6 +37,8 @@ ProposePolicy = Literal[
 
 
 def _call(method: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
+    # A ToolFailure is the agent's mistake, not a crash: turn it into the protocol's tool
+    # error so the agent sees the message and can retry. Anything else still propagates.
     try:
         return method(*args, **kwargs)
     except ToolFailure as failure:
@@ -47,6 +49,11 @@ def build_server(toolbox: Toolbox, tools: str | None = None) -> MCPServer:
     """Create the server and register the selected tools (``tools`` is a ``--tools`` string)."""
     selected = resolve_tool_selection(tools, REGISTERED_TOOLS)
     server = MCPServer("replaylab")
+
+    # One thin async wrapper per tool. The MCP SDK builds each tool's input schema from
+    # the wrapper's signature and type hints, which is why these are written out rather
+    # than generated. They are async so every call runs on the server's one event-loop
+    # thread (SQLite connections must stay on the thread that made them).
 
     async def describe_campaign() -> s.DescribeCampaign:
         return _call(toolbox.describe_campaign)
@@ -188,6 +195,7 @@ def build_server(toolbox: Toolbox, tools: str | None = None) -> MCPServer:
             fit_custom_model,
         )
     }
+    # Register only the tools this condition allows; the others do not exist for the agent.
     for name in selected:
         server.add_tool(functions[name], name=name, description=TOOL_DESCRIPTIONS[name])
     return server
