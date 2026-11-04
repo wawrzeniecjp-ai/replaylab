@@ -1,7 +1,7 @@
 """Core domain types.
 
 Standard library only. This package must never import anything else, and nothing
-here performs I/O. The types encode the leak rules from the spec (section 4.3):
+here performs I/O. The types encode the leak rules (outcomes stay hidden until bought):
 
 * ``CampaignState`` is an immutable snapshot that holds delivered outcomes only.
 * A design counts as purchased once it belongs to a batch that has left the
@@ -169,10 +169,14 @@ class CampaignState:
     def __post_init__(self) -> None:
         if self.clock < 0:
             raise ValueError("clock cannot be negative")
+        # The dataclass is frozen, so normal assignment is blocked; object.__setattr__ is
+        # the standard way to store read-only copies during construction.
         object.__setattr__(self, "designs", _freeze(self.designs))
         object.__setattr__(self, "outcomes", _freeze(self.outcomes))
         object.__setattr__(self, "batches", tuple(self.batches))
 
+        # Check the snapshot is a state the game rules allow. The last check is the leak
+        # rule itself: an outcome for a design that was never bought must not exist here.
         purchased: set[DesignId] = set()
         for batch in self.batches:
             unknown = [d for d in batch.design_ids if d not in self.designs]
@@ -189,6 +193,7 @@ class CampaignState:
         for design_id, outcome in self.outcomes.items():
             if outcome.design_id != design_id:
                 raise ValueError(f"outcome keyed {design_id!r} has design_id {outcome.design_id!r}")
+        # Cached: the derived views below all start from the purchased set.
         object.__setattr__(self, "_purchased", frozenset(purchased))
 
     # --- derived views -------------------------------------------------

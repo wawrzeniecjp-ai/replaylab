@@ -117,7 +117,7 @@ class GameConfig:
     section 8): they are excluded from the default ladder, from ``frozen_v1`` and
     from every decision rule, and are only run when asked for explicitly.
 
-    A ``final_test`` game is the pre-registered final test (CLAUDE.md, direction A): it is
+    A ``final_test`` game is the pre-registered final test (``docs/prereg-anthropic.md``): it is
     never served, laddered or replayed, and only the runner plays it, once, under a permit
     from :mod:`replaylab.eval.final_run`.
     """
@@ -172,7 +172,7 @@ class GameConfig:
 
         Args:
             features: the visible feature names (from the feature config).
-            seed: the episode seed; it also decides the aliases (D4).
+            seed: the episode seed; it also decides the per-seed design aliases.
             mode: ``replay`` against recorded outcomes, or ``live``.
         """
         return CampaignConfig(

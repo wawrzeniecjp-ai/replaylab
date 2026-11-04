@@ -1,9 +1,11 @@
-"""The frozen list of visible computational features and their orientation.
+"""The visible computational features of a target and their orientation.
 
-Week 0 finalizes this list per target (coverage and leakage review). Until then
-this is the working default taken from the exploratory analysis. Orientation is a
-per-column flag, applied once at load time, so every covariate points the same
-way (higher is better) before any policy sees it.
+The per-target lists live in ``config/features.yaml`` (chosen by a coverage and
+missingness review before any experiment); ``DEFAULT_FEATURES`` below is the
+Nipah-G list, used when no config is given. Orientation is a per-column flag
+(``higher_is_better``). Feature values stay raw everywhere a player can see them;
+the flag is applied only where a model is fitted (``advisor.preprocess``) and where
+a column is sorted, so "best first" always means the good end.
 """
 
 from __future__ import annotations
