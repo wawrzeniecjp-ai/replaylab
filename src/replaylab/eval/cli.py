@@ -31,9 +31,12 @@ from replaylab.eval.final_run import (
     FinalLeg,
     FinalRunPermit,
     FinalRunRefused,
+    UncommittedTree,
     acquire,
+    code_root,
     dirty_paths,
     frozen_hash,
+    uncommitted_frozen_paths,
 )
 from replaylab.eval.llm import OpenAICompatClient
 from replaylab.eval.llm_anthropic import AnthropicClient
@@ -130,6 +133,36 @@ def show_conditions(conditions_config: ConditionsConfig = Path("config/condition
     _emit({n: {"count": len(c.tools), "tools": list(c.tools)} for n, c in conditions.items()})
 
 
+def _uncommitted(*, check_tree: bool, allow: bool) -> bool:
+    """Refuse to record episodes from an uncommitted tree; return whether it is dirty.
+
+    ``config_hash`` pins what the model sees, but not the code behind the tools, the
+    policies or the scoring (nor ``features.yaml``/``games.yaml``), which are git-ignored
+    or simply not hashed. ``git_sha`` is the only record of those, so a dirty run would
+    claim a commit it was not played from. ``allow`` is the escape hatch: the run goes
+    ahead and every record it writes says ``git_dirty``.
+    """
+    if not check_tree:
+        return False
+    dirty = uncommitted_frozen_paths()
+    if not dirty:
+        return False
+    if allow:
+        typer.echo(
+            "warning: recording a run from an uncommitted tree, marked git_dirty: "
+            + "; ".join(dirty),
+            err=True,
+        )
+        return True
+    shown = "; ".join(dirty[:5])
+    rest = "" if len(dirty) <= 5 else f" (and {len(dirty) - 5} more)"
+    raise UncommittedTree(
+        "src, prompts or config have uncommitted changes, so the episodes could not be"
+        f" reproduced from their recorded commit: {shown}{rest}. Commit them, or pass"
+        " --allow-uncommitted to record the run as dirty."
+    )
+
+
 def _deps(
     *,
     tables: Path,
@@ -146,8 +179,11 @@ def _deps(
     passback: bool = False,
     reasoning_field: str = "reasoning_content",
     store_dir: Path | None = None,
+    allow_uncommitted: bool = False,
+    check_tree: bool = True,
 ) -> RunnerDeps:
     sha, _ = git_info()
+    git_dirty = _uncommitted(check_tree=check_tree, allow=allow_uncommitted)
     return RunnerDeps(
         tables_dir=tables,
         games_path=games_config,
@@ -159,6 +195,7 @@ def _deps(
         model=model,
         config_hash=cfg_hash,
         git_sha=sha,
+        git_dirty=git_dirty,
         folds_path=folds if folds.exists() else None,
         clusters_path=clusters if clusters.exists() else None,
         guard=guard,
@@ -185,7 +222,7 @@ def _final_permit(
     if len(names) != 1 or names[0] not in games or not games[names[0]].final_test:
         raise FinalRunRefused(f"--final-run plays exactly one final-test game, got {names}")
     game = games[names[0]]
-    dirty = dirty_paths()
+    dirty = dirty_paths(code_root())
     if dirty:
         raise FinalRunRefused(
             "the final run needs a committed src, prompts and config; uncommitted: "
@@ -230,6 +267,7 @@ def scripted(
     system_prompt: SystemPrompt = Path("prompts/system.md"),
     final_run: FinalRun = False,
     lock_dir: LockDir = Path("reports/final-test"),
+    allow_uncommitted: Annotated[bool, typer.Option("--allow-uncommitted")] = False,
 ) -> None:
     """Play scripted policies on the same episode seeds as the LLM episodes."""
     try:
@@ -238,6 +276,7 @@ def scripted(
             features_config=features_config, conditions_config=conditions_config,
             system_prompt=system_prompt, llm=None, model=None,
             cfg_hash=config_hash({"scripted": _split(policies)}),
+            allow_uncommitted=allow_uncommitted,
         )  # fmt: skip
         if final_run:
             specs = expand_matrix(
@@ -321,6 +360,7 @@ def _prepare(
     *, model, games, conditions, trials, first_trial, max_usd, concurrency, dry_run, run_dir, tables, folds, clusters,
     games_config, features_config, conditions_config, system_prompt, models_config, prices_config,
     final_run=False, lock_dir=Path("reports/final-test"),
+    allow_uncommitted=False, check_tree=True,
 ):  # fmt: skip
     if not 1 <= concurrency <= MAX_CONCURRENCY:
         raise _fail(f"--concurrency must be between 1 and {MAX_CONCURRENCY}", 2)
@@ -348,6 +388,7 @@ def _prepare(
             system_prompt=system_prompt, llm=llm, model=cfg.key, cfg_hash=cfg_hash, guard=guard,
             passback=cfg.reasoning_passback, reasoning_field=cfg.reasoning_field,
             store_dir=run_dir / "stores",
+            allow_uncommitted=allow_uncommitted, check_tree=check_tree,
         )  # fmt: skip
         specs = expand_matrix(_split(games), _split(conditions), trials, first_trial)
         if final_run:
@@ -410,6 +451,7 @@ def pilot(
     prices_config: PricesConfig = Path("config/prices.yaml"),
     final_run: FinalRun = False,
     lock_dir: LockDir = Path("reports/final-test"),
+    allow_uncommitted: Annotated[bool, typer.Option("--allow-uncommitted")] = False,
 ) -> None:
     """Run the first episodes, then write a cost projection for the whole matrix (pilot.json)."""
     deps, specs = _prepare(
@@ -420,6 +462,7 @@ def pilot(
         conditions_config=conditions_config, system_prompt=system_prompt,
         models_config=models_config, prices_config=prices_config,
         final_run=final_run, lock_dir=lock_dir,
+        allow_uncommitted=allow_uncommitted, check_tree=not dry_run,
     )  # fmt: skip
     if dry_run:
         _emit({"dry_run": True, "pilot_episodes": min(n, len(specs)), **_plan(specs, deps)})
@@ -522,6 +565,7 @@ def smoke(
         folds=folds, clusters=clusters, games_config=games_config,
         features_config=features_config, conditions_config=conditions_config,
         system_prompt=system_prompt, models_config=models_config, prices_config=prices_config,
+        check_tree=False,  # a probe writes no record, and is how a dirty fix is iterated on
     )  # fmt: skip
     deps.limits = Limits(max_turns=turns)
     before = deps.guard.total_usd
@@ -561,6 +605,7 @@ def run(
     prices_config: PricesConfig = Path("config/prices.yaml"),
     final_run: FinalRun = False,
     lock_dir: LockDir = Path("reports/final-test"),
+    allow_uncommitted: Annotated[bool, typer.Option("--allow-uncommitted")] = False,
 ) -> None:
     """Play every missing episode of the matrix. Needs a pilot first; refuses a run projected over the cap."""
     deps, specs = _prepare(
@@ -571,6 +616,7 @@ def run(
         conditions_config=conditions_config, system_prompt=system_prompt,
         models_config=models_config, prices_config=prices_config,
         final_run=final_run, lock_dir=lock_dir,
+        allow_uncommitted=allow_uncommitted, check_tree=not dry_run,
     )  # fmt: skip
     pilot_file = run_dir / "pilot.json"
     projection: Projection | None = None

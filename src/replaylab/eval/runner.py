@@ -79,6 +79,7 @@ class RunnerDeps:
     model: str | None
     config_hash: str
     git_sha: str | None = None
+    git_dirty: bool = False
     index_version: str | None = None
     folds_path: Path | None = None
     clusters_path: Path | None = None
@@ -227,6 +228,7 @@ async def run_llm_episode(spec: EpisodeSpec, deps: RunnerDeps) -> EpisodeRecord:
         model=deps.model,
         config_hash=deps.config_hash,
         git_sha=deps.git_sha,
+        git_dirty=deps.git_dirty,
         index_version=deps.index_version,
         messages=trace.messages,
         tool_calls=trace.tool_calls,
@@ -358,6 +360,7 @@ def run_scripted_matrix(
                 model=None,
                 config_hash=deps.config_hash,
                 git_sha=deps.git_sha,
+                git_dirty=deps.git_dirty,
                 index_version=deps.index_version,
                 messages=[],
                 tool_calls=[],

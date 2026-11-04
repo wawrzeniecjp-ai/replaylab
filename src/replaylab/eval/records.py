@@ -32,6 +32,11 @@ class EpisodeRecord:
     ``scores`` is the campaign's outcome, ``messages``/``tool_calls`` the full
     play-by-play, ``config_hash`` + ``git_sha`` pin what produced it, and
     ``reasoning`` (schema 2) holds one entry per assistant message.
+
+    ``git_dirty`` (optional, no schema bump) says the run was recorded while
+    ``src``/``prompts``/``config`` had uncommitted changes, so ``git_sha`` is not
+    the code that played it. Lines written before the field existed lack the key
+    and mean "not checked"; the runner refuses such a run unless it is asked to.
     """
 
     game: str
@@ -49,6 +54,7 @@ class EpisodeRecord:
     stop_reason: str
     turns: int
     scores: dict[str, Any]
+    git_dirty: bool = False  # declared after the non-default fields; see the docstring
     flags: dict[str, int] = field(default_factory=dict)
     reasoning: list[str | None] = field(default_factory=list)
     schema_version: int = SCHEMA_VERSION

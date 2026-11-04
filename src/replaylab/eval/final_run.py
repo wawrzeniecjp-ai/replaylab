@@ -46,6 +46,47 @@ class FinalRunRefused(SetupError):
     """The final test cannot be played with these settings (it would be a second run)."""
 
 
+class UncommittedTree(SetupError):
+    """A recording run was asked for while ``src``/``prompts``/``config`` were uncommitted.
+
+    ``config_hash`` covers what the model *sees* (prompts, conditions, tool
+    descriptions, model parameters), not the code that runs the tools, the policies or
+    the scorer. ``git_sha`` is the only pin on those, so a dirty tree would leave
+    records claiming a commit that did not produce them.
+    """
+
+
+def code_root() -> Path:
+    """The repository root of the *imported* package -- not of the working directory.
+
+    A control run is played from a git worktree with ``PYTHONPATH=<worktree>/src``
+    while the shell stays in the main checkout; resolving ``"."`` would then check the
+    wrong tree and stamp the wrong sha.
+    """
+    import replaylab
+
+    return Path(replaylab.__file__).resolve().parents[2]
+
+
+def uncommitted_frozen_paths(repo_dir: Path | str | None = None) -> list[str]:
+    """Uncommitted changes under :data:`FROZEN_PATHS`, for the repo that holds the code.
+
+    Raises:
+        UncommittedTree: the repository cannot be located, so cleanliness cannot be
+            checked; treating that as clean is the trap this guard exists to close.
+    """
+    root = code_root() if repo_dir is None else Path(repo_dir)
+    if not (root / ".git").exists():
+        raise UncommittedTree(
+            f"{root} is not a git repository, so it cannot be shown that src, prompts and "
+            "config are committed"
+        )
+    try:
+        return dirty_paths(root)
+    except FinalRunRefused as error:
+        raise UncommittedTree(str(error)) from None
+
+
 @dataclass(frozen=True)
 class FinalLeg:
     """One leg of the final run: one model (or the scripted ladder) on one trial block."""

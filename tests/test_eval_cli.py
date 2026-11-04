@@ -92,6 +92,9 @@ def setup(tmp_path_factory, monkeypatch):
         "--prices-config",
         str(root / "prices.yaml"),
     ]
+    # The guard asks git about the repo that holds the imported package, which is dirty
+    # whenever this feature itself is uncommitted. The guard has its own tests below.
+    monkeypatch.setattr(eval_cli, "uncommitted_frozen_paths", lambda: [])
     return {"common": common, "model": model_args, "root": root}
 
 
@@ -158,6 +161,7 @@ def test_pilot_then_run_then_compare_end_to_end(setup, tmp_path):
     assert summary["completed"] == 4 and summary["skipped"] == 2 and summary["failed"] == 0
     records = read_records(tmp_path / "episodes.jsonl")
     assert len(records) == 6 and len({r["config_hash"] for r in records}) == 1
+    assert all(r["git_dirty"] is False for r in records)  # a clean tree says so
     spend = json.loads((tmp_path / "spend.json").read_text())
     assert spend["totals"]["total"] == pytest.approx(sum(r["cost_usd"] for r in records))
     # scripted baselines on the same seeds, then a paired comparison
@@ -469,3 +473,49 @@ def test_smoke_fails_when_no_thinking_came_back_to_test_the_pass_back(setup, tmp
     assert result.exit_code == 1
     report = json.loads((tmp_path / "smoke.json").read_text())
     assert report["checks"]["passback_accepted"] is None and not report["ok"]
+
+
+# --- the uncommitted-tree guard -----------------------------------------------------------
+
+
+@pytest.fixture()
+def dirty(monkeypatch):
+    """Make the CLI believe src/ has uncommitted changes."""
+    monkeypatch.setattr(
+        eval_cli, "uncommitted_frozen_paths", lambda: [" M src/replaylab/eval/loop.py"]
+    )
+
+
+def scripted_args(setup, run_dir):
+    return ["scripted", "--run-dir", str(run_dir), "--games", "G",
+            "--policies", "random", "--trials", "1", *setup["common"]]  # fmt: skip
+
+
+def test_a_dirty_tree_refuses_to_record_episodes(setup, dirty, tmp_path):
+    refused = invoke(scripted_args(setup, tmp_path))
+    assert refused.exit_code == 2
+    assert "uncommitted" in refused.output
+    assert "src/replaylab/eval/loop.py" in refused.output  # says what to commit
+    assert not (tmp_path / "episodes.jsonl").exists()
+
+
+def test_allow_uncommitted_records_the_run_as_dirty(setup, dirty, tmp_path):
+    done = invoke([*scripted_args(setup, tmp_path), "--allow-uncommitted"])
+    assert done.exit_code == 0, done.output
+    records = read_records(tmp_path / "episodes.jsonl")
+    assert records and all(r["git_dirty"] is True for r in records)
+
+
+def test_a_dry_run_is_not_blocked_by_a_dirty_tree(setup, dirty, tmp_path):
+    args = ["pilot", "--run-dir", str(tmp_path), "--model", "m", "--games", "G",
+            "--conditions", "A", "--trials", "1", "--max-usd", "5", "--dry-run",
+            *setup["common"], *setup["model"]]  # fmt: skip
+    result = invoke(args)
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout)["dry_run"] is True
+
+
+def test_smoke_is_not_blocked_by_a_dirty_tree(setup, dirty, tmp_path):
+    # A probe writes no record, so it must stay usable while a fix is half applied.
+    result = invoke(smoke_args(setup, tmp_path))
+    assert "uncommitted" not in result.output

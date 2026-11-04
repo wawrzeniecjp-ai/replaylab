@@ -12,6 +12,7 @@ import json
 import subprocess
 from dataclasses import replace
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 import yaml
@@ -29,11 +30,14 @@ from replaylab.eval import cli as eval_cli
 from replaylab.eval.final_run import (
     FinalLeg,
     FinalRunRefused,
+    UncommittedTree,
     acquire,
+    code_root,
     dirty_paths,
     frozen_hash,
     lock_path,
     read_lock,
+    uncommitted_frozen_paths,
 )
 from replaylab.eval.ladder import run_game, run_ladder
 from replaylab.eval.records import read_records
@@ -320,6 +324,36 @@ def test_dirty_paths_refuses_when_git_cannot_answer(tmp_path):
         dirty_paths(tmp_path / "not-a-repo")
 
 
+def test_uncommitted_frozen_paths_ignores_the_docs_folder(tmp_path):
+    git(tmp_path, "init", "-q")
+    for folder in ("src", "prompts", "config", "docs"):
+        (tmp_path / folder).mkdir()
+        (tmp_path / folder / "f.txt").write_text("x")
+    git(tmp_path, "add", ".")
+    git(tmp_path, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "init")
+    assert uncommitted_frozen_paths(tmp_path) == []
+    (tmp_path / "docs" / "f.txt").write_text("changed")  # prose must never block a run
+    assert uncommitted_frozen_paths(tmp_path) == []
+    (tmp_path / "prompts" / "f.txt").write_text("changed")
+    assert any("prompts/f.txt" in d for d in uncommitted_frozen_paths(tmp_path))
+
+
+def test_uncommitted_frozen_paths_refuses_where_it_cannot_tell(tmp_path):
+    # "no git" must not read as "clean": that is the trap the guard closes.
+    with pytest.raises(UncommittedTree, match="not a git repository"):
+        uncommitted_frozen_paths(tmp_path)
+
+
+def test_the_checked_tree_is_the_one_that_holds_the_imported_package():
+    # A control run imports the worktree's src while the shell stays in the main
+    # checkout; checking "." would then stamp the wrong commit.
+    import replaylab
+
+    assert code_root() == Path(replaylab.__file__).resolve().parents[2]
+    # ...and this checkout is a repository, so the guard can answer here.
+    assert isinstance(uncommitted_frozen_paths(), list)
+
+
 # --- the command line -------------------------------------------------------------------
 
 
@@ -335,7 +369,7 @@ def final_setup(setup, monkeypatch):  # noqa: F811 - the fixture imported above
     common = list(setup["common"])
     common[3] = str(path)
     dirty: list[str] = []
-    monkeypatch.setattr(eval_cli, "dirty_paths", lambda: list(dirty))
+    monkeypatch.setattr(eval_cli, "dirty_paths", lambda *args: list(dirty))
     monkeypatch.setattr(eval_cli, "git_info", lambda: (SHA, False))
     return {**setup, "common": common, "dirty": dirty}
 

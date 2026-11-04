@@ -165,8 +165,19 @@ def test_records_round_trip_and_keys(tmp_path):
     assert [(r["trial"], r["condition"]) for r in records] == [(0, "A"), (1, "B1")]
     assert records[0]["schema_version"] == 2 and records[0]["seed"] == episode_seed("G", 0)
     assert records[0]["reasoning"] == []  # default when nothing was captured
+    assert records[0]["git_dirty"] is False  # default when the tree was not dirty
     assert completed_keys(records) == {("G", "A", 0), ("G", "B1", 1)}
     assert make_record().key == ("G", "A", 0)
+
+
+def test_a_record_written_before_git_dirty_existed_still_reads(tmp_path):
+    # Lines already in runs/ have no such key; nothing may require it.
+    path = tmp_path / "episodes.jsonl"
+    line = make_record().to_dict()
+    del line["git_dirty"]
+    path.write_text(json.dumps(line) + "\n")
+    (record,) = read_records(path)
+    assert "git_dirty" not in record and record["scores"]["hits"] == 4
 
 
 def test_a_line_written_before_schema_2_still_reads(tmp_path):
