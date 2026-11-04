@@ -327,6 +327,9 @@ def _prepare(
     cfg, guard, price = _model_setup(model, models_config, prices_config, run_dir, max_usd)
     try:
         prompt_text = load_system_prompt(system_prompt)
+        # Everything that shapes what the model sees or how it is billed goes into the hash,
+        # so two records with the same hash were played under the same configuration.
+        # (The source code is not hashed; the git commit is recorded beside it.)
         cfg_hash = config_hash(
             {
                 "model": _hashed(cfg),

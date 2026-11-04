@@ -1,4 +1,4 @@
-"""Episode seeds (decision D4).
+"""Episode seeds.
 
 The seed depends on the game and the trial only, never on the condition, so every condition
 (and every scripted policy) plays the same pool shuffle and the same design aliases: results

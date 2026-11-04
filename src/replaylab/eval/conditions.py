@@ -1,4 +1,4 @@
-"""Eval conditions: tool allow-lists (spec 8.1). The system prompt is the same for all."""
+"""Eval conditions: tool allow-lists. The system prompt is the same for all."""
 
 from __future__ import annotations
 

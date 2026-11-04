@@ -1,4 +1,4 @@
-"""Connect an MCP client to an OpenAI-style function-calling loop (plan 7.1).
+"""Connect an MCP client to an OpenAI-style function-calling loop.
 
 * ``tool_specs`` turns each MCP tool into ``{"type": "function", "function": {name, description,
   parameters}}`` with ``parameters`` equal to the tool's input schema.

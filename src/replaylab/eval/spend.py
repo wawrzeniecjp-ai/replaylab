@@ -1,4 +1,4 @@
-"""Prices and the spend guard (plan 7.5). Nothing is guessed: prices come from a file.
+"""Prices and the spend guard. Nothing is guessed: prices come from a file.
 
 ``config/prices.yaml`` holds, per model key, the provider's prices and the date you checked
 them. The guard adds the cost after every model call, persists the total in ``spend.json``
@@ -167,6 +167,8 @@ class SpendGuard:
             "currency": self._price.currency,
             "totals": self._state,
         }
+        # Write a temporary file and rename it over the old one: the rename is atomic, so a
+        # crash leaves either the old total or the new one, never a half-written file.
         temporary = self._path.with_suffix(".tmp")
         temporary.write_text(json.dumps(payload, sort_keys=True, indent=2))
         os.replace(temporary, self._path)

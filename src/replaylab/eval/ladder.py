@@ -1,4 +1,4 @@
-"""The ladder runner: play every scripted policy on a game for many seeds (plan task T20).
+"""The ladder runner: play every scripted policy on a game for many seeds.
 
 ``run_game`` plays one policy on one game and returns its :class:`ScoreCard`.
 ``LadderGame`` holds everything that is built once per game (the pool, the
@@ -8,7 +8,7 @@ the whole table and ``summarize`` turns it into the markdown report.
 Two decisions the task card leaves ambiguous, fixed here:
 
 * **The ``SimilarityIndex`` is built per seed, not once per game.** Aliases depend
-  on the seed (decision D4), so an index keyed by one seed's aliases points at the
+  on the seed, so an index keyed by one seed's aliases points at the
   wrong sequences for every other seed. The ``Preprocessor`` is seed-independent
   (it sees only feature values) and is built once per game, as the card asks.
 * **Pools without a cluster table are scored without ``distinct_families``.**
@@ -247,7 +247,7 @@ class LadderGame:
         model = frozen.model if frozen else ModelConfig()
         eps = frozen.eps if frozen else 0.2
         w = frozen.w if frozen else 0.5
-        # Per seed: aliases depend on the seed (D4), so the similarity index must
+        # Per seed: aliases depend on the seed, so the similarity index must
         # be keyed by this seed's ids to see the right sequences.
         similarity = SimilarityIndex(self.aliased_designs(seed))
         learner = Learner(first, self.preprocessor, first_higher, model=model, eps=eps)

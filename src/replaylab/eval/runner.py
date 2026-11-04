@@ -184,12 +184,16 @@ async def run_llm_episode(spec: EpisodeSpec, deps: RunnerDeps) -> EpisodeRecord:
     The episode is recorded only if it ends normally (see ``run_episode``);
     failures raise, so the caller leaves it unrecorded and a later run replays it.
     """
+    # The seed depends on game and trial only, so every condition and model of a trial
+    # plays the same pool under the same aliases: that is what makes comparisons paired.
     seed = episode_seed(spec.game, spec.trial)
     condition = deps.conditions[spec.condition]
     store = _store_path(deps.store_dir, f"{spec.game}_{spec.condition}_{spec.trial}")
     runtime = _runtime(spec.game, seed, store, deps)
     campaign = runtime.env.campaign
     try:
+        # The condition is applied here: the server registers only its tools. Server and
+        # client run in the same process, talking MCP in memory (no subprocess).
         server = build_server(Toolbox(runtime.tool_context()), condition.tools_arg)
         try:
             async with Client(server) as client:
@@ -207,7 +211,10 @@ async def run_llm_episode(spec: EpisodeSpec, deps: RunnerDeps) -> EpisodeRecord:
                     reasoning_field=deps.reasoning_field,
                 )
         except BaseExceptionGroup as group:
+            # The MCP client wraps errors in an ExceptionGroup, which would hide a
+            # SpendCapReached from the handler in run_matrix; re-raise the real error.
             raise unwrap(group) from None
+        # Collect any outcomes still pending, so the score covers every purchase.
         campaign.settle()
         scores = scores_dict(runtime.env.score())
     finally:
@@ -254,6 +261,8 @@ async def run_matrix(
     validate_specs(specs, deps)
     records_path = Path(records_path)
     _check_permit(specs, deps.final_permit, records_path)
+    # Resumability: whatever already has a record is skipped, so a rerun plays only the
+    # missing episodes.
     done = completed_keys(read_records(records_path))
     todo = [s for s in specs if s.key not in done]
     summary = RunSummary(skipped=len(specs) - len(todo))
@@ -269,6 +278,7 @@ async def run_matrix(
             try:
                 record = await run_llm_episode(spec, deps)
             except SpendCapReached:
+                # The cap is shared: once one episode hits it, no new episode starts.
                 abort.set()
                 summary.aborted_on_cap = True
                 return
@@ -276,6 +286,7 @@ async def run_matrix(
                 summary.failed.append((spec.key, f"{type(error).__name__}: {error}"))
                 _log_error(errors, spec, error)
                 return
+            # One writer at a time, so two finished episodes never interleave in the file.
             async with write_lock:
                 append_record(records_path, record)
             summary.completed.append(spec.key)

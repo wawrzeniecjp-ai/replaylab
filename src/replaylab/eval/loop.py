@@ -1,4 +1,4 @@
-"""The agent loop (plan 7.2): model, tools, repeat, with hard limits.
+"""The agent loop: model, tools, repeat, with hard limits.
 
 One call to the model per turn. Every tool call the model makes in a turn is executed, in
 order. An episode ends with exactly one ``stop_reason``:
@@ -159,11 +159,14 @@ async def run_episode(
     A spend cap or model failure raises instead -- such an episode is never
     recorded, and a later run plays it again.
     """
+    # The tool list is whatever the condition registered on the MCP server: the
+    # condition is enforced there, not here.
     tools = await bridge.tool_specs()
     offered = [spec["function"]["name"] for spec in tools]
     trace = EpisodeTrace(messages=initial_messages(system_prompt, user_prompt))
 
     for turn in range(1, limits.max_turns + 1):
+        # The money guard: refuse the call before spending, if the cap is already reached.
         if guard is not None:
             guard.check()
         reply = await llm.complete(trace.messages, tools)
@@ -186,6 +189,8 @@ async def run_episode(
             )
         )
         trace.reasoning.append(reply.reasoning)
+        # A truncated reply would otherwise look like "no tool call" and be logged as
+        # agent_ended; raising instead discards the episode so it is played again.
         if reply.finish_reason == "length":
             raise ResponseTruncated(
                 f"turn {turn}: the reply hit the output-token limit "
@@ -195,6 +200,9 @@ async def run_episode(
             trace.stop_reason = "agent_ended"
             return trace
 
+        # Run every call of the turn in order. Each problem goes back to the model as an
+        # "ERROR: ..." tool message it can correct, and is counted in a flag, so tool-use
+        # quality can be checked before any hit count is read.
         for call in reply.tool_calls:
             arguments, problem = _parse_arguments(call.arguments)
             record: dict[str, Any] = {"turn": turn, "name": call.name, "arguments": arguments}
@@ -233,6 +241,7 @@ async def run_episode(
             trace.tool_calls.append(record)
             trace.messages.append(tool_message(call.id, text))
 
+        # Check the campaign only after the whole turn: a turn may submit the last batch.
         current = status()
         if current.finished:
             trace.stop_reason = "agent_stopped" if current.stopped else "finished"

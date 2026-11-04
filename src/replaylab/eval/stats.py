@@ -1,4 +1,4 @@
-"""Paired bootstrap over seeds (plan 7.4).
+"""Paired bootstrap over seeds.
 
 Conditions are compared on the same episode seeds (same pool shuffle, same aliases), so the
 unit of resampling is the seed. ``a - b`` is positive when ``a`` is better.
@@ -55,6 +55,8 @@ def paired_bootstrap(
         raise ValueError("a paired bootstrap needs at least 2 pairs")
     if not 0 < ci < 1:
         raise ValueError("ci must be between 0 and 1")
+    # Pairing: one difference per seed. The bootstrap then resamples those differences
+    # (with replacement) and the interval is read off the distribution of their means.
     keys = sorted(a, key=str)
     diffs = np.array([a[k] - b[k] for k in keys], dtype=float)
     rng = np.random.default_rng(seed)

@@ -1,4 +1,4 @@
-"""Episode records: one JSON line per episode (spec 8.2).
+"""Episode records: one JSON line per episode.
 
 Lines are appended and flushed, so a crash can only damage the last line; readers ignore a
 half-written last line. Scripted policies write the same format with the condition
@@ -85,6 +85,8 @@ def append_record(path: Path | str, record: EpisodeRecord | Mapping[str, Any]) -
     path.parent.mkdir(parents=True, exist_ok=True)
     _drop_partial_tail(path)
     with path.open("a", encoding="utf-8") as handle:
+        # One write per record, then flush Python's buffer and ask the OS to put it on
+        # disk, so a record that was reported as saved survives a crash.
         handle.write(line + "\n")
         handle.flush()
         os.fsync(handle.fileno())
