@@ -1,4 +1,4 @@
-.PHONY: test test-all lint fix data
+.PHONY: test test-all lint fix data audit
 
 # CI set: everything that needs no data, subprocess, network or key.
 test:
@@ -17,3 +17,10 @@ fix:
 data:
 	uv run python data/build_tables.py --check
 	uv run python data/build_clusters.py --check
+
+# Check the recorded results from outside the package (scripts/audit/README.md).
+audit:
+	uv run python scripts/audit/rescore.py
+	uv run python scripts/audit/leaks.py
+	uv run python scripts/audit/controls.py --positive-control
+	uv run python scripts/audit/pairing.py
