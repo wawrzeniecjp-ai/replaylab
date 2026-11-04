@@ -180,8 +180,8 @@ reference:
 
     - title: Advisor
       desc: >-
-        The agent's brain, as pure functions over a CampaignState snapshot:
-        preprocessing (orientation applied here, D7), the logistic model
+        The analysis behind the advisor tools, as pure functions over a
+        CampaignState snapshot: preprocessing (orientation applied here, D7), the logistic model
         (fits delivered purchases only), 3-mer similarity to hits, hit-rate
         estimates and the stop rules.
       contents:
@@ -290,8 +290,8 @@ reference:
 
     - title: Agent interfaces
       desc: >-
-        The 14 tools an agent gets over MCP (stdio), plus the same tools on
-        the command line. Every tool is a plain method over one campaign,
+        The 15 tools an agent can get over MCP (stdio), plus the same tools on
+        the command line; a condition picks which of them an agent receives. Every tool is a plain method over one campaign,
         so what an agent sees is what the tool tests check. This is the one
         package allowed to see every layer -- and nothing may import it.
       contents:

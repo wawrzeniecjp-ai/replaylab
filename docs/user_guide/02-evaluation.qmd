@@ -5,45 +5,44 @@ guide-section: "Understanding replaylab"
 
 # Evaluating an agent
 
-The `replaylab-eval` command plays a language model through the same campaign
-any scripted policy plays: same pools, same hidden outcomes, same scoring, the
-only difference being that batches come from a model reasoning over the tools
-you gave it. The whole workflow is one command family (install the extras
-first: `uv sync --extra eval`).
+`replaylab-eval` plays a language model through exactly the campaign a scripted
+policy plays: the same pools, the same hidden outcomes and the same scoring. The
+only difference is that each batch comes from a model reasoning with the tools it
+was given. Install the extras first with `uv sync --extra eval`.
 
 ## The pieces
 
-**Conditions** are experiment arms defined in `config/conditions.yaml`: an
-`include` list (tool groups or tool names) and an optional `exclude`. Every
-condition sees the *same* system prompt — only the tool set changes, so a
-comparison between conditions measures exactly that difference. Print the
-resolved tool list of each one with:
+**Conditions** are the arms of an experiment, defined in
+`config/conditions.yaml` as an `include` list (tool groups or tool names) and an
+optional `exclude` list. Every condition receives the *same* system prompt; only
+the tool set changes, so comparing two conditions measures exactly that
+difference. To print the resolved tool list of each condition:
 
 ```bash
 replaylab-eval conditions
 ```
 
-**Models and prices** live in `config/models.yaml` and `config/prices.yaml`
-(one entry per model key; the API key is read from the environment variable
-named in the config, never from the repository). Prices feed the spend guard —
-an unpriced model cannot run.
+**Models and prices** live in `config/models.yaml` and `config/prices.yaml`, one
+entry per model key. The API key is read from the environment variable named in
+the config, never from the repository. Prices feed the spend guard, so a model
+without a price cannot run.
 
-**One records file per experiment.** Every finished episode appends a single
-JSON line to `<run-dir>/episodes.jsonl` holding the outcome (`scores`), the
-full conversation (`messages`), a per-call audit (`tool_calls`), token usage
-and cost, the stop reason, quality `flags`, and the `config_hash`/`git_sha`
-that produced it. Episodes that fail (provider error, truncated reply, spend
-cap) leave **no line at all** — rerunning the same command plays exactly the
-missing ones and skips everything recorded.
+**One records file per experiment.** Each finished episode appends one JSON line
+to `<run-dir>/episodes.jsonl`. The line holds the outcome (`scores`), the full
+conversation (`messages`), a per-call audit (`tool_calls`), token usage and cost,
+the stop reason, quality `flags`, and the `config_hash` and `git_sha` that
+produced it. An episode that fails (provider error, truncated reply, spending
+cap) writes **no line at all**, so rerunning the same command plays exactly the
+missing episodes and skips the recorded ones.
 
 ## The workflow
 
 ```bash
-# 1. the pilot: play n episodes, measure cost, project the whole matrix
+# 1. pilot: play a few episodes, measure their cost, project the whole matrix
 replaylab-eval pilot --run-dir runs/x --model deepseek \
     --games N-dev --conditions A,B1 --trials 20 --max-usd 1
 
-# 2. the run: play every missing episode of the matrix (resumable)
+# 2. run: play every missing episode of the matrix (resumable)
 replaylab-eval run --run-dir runs/x --model deepseek \
     --games N-dev --conditions A,B1 --trials 20 --max-usd 1
 
@@ -51,59 +50,60 @@ replaylab-eval run --run-dir runs/x --model deepseek \
 replaylab-eval scripted --run-dir runs/x --games N-dev \
     --policies random,learner,learner_sim,learner_sim_purchased --trials 20
 
-# 4. paired comparison: a minus b, bootstrap over seeds
+# 4. paired comparison: a minus b, bootstrapped over seeds
 replaylab-eval compare --records runs/x/episodes.jsonl \
     --game N-dev --a B1 --b scripted:learner_sim --ci 0.9
 
-# 5. read the whole run as a page
+# 5. read the whole run as one page
 replaylab-eval view --run-dir runs/x
 ```
 
-Both `pilot` and `run` refuse to start when the projected cost exceeds
-`--max-usd`; once running, the cap is checked before **every** model call and
-the running total persists in `spend.json`, so a resumed run keeps counting
-against the same cap. Caps are cumulative per run directory — when you extend
-an experiment, raise the cap to cover what is already spent plus the new
-projection.
+`pilot` and `run` both refuse to start when the projected cost exceeds
+`--max-usd`. Once a run has started, the cap is checked before **every** model
+call, and the running total is saved in `spend.json`, so a resumed run counts
+against the same cap. Caps are cumulative per run directory: to extend an
+experiment, raise the cap to cover what has been spent plus the new projection.
 
 ## Why the comparisons are fair
 
-* **Pairing.** The episode seed depends only on `(game, trial)` — never on
-  condition or model — so `B1` and `scripted:learner_sim` face the identical
-  pool shuffle and aliases. `compare` refuses to run unless the two sides have
-  exactly the same seeds, and reports the mean paired difference, a bootstrap
-  interval, and the win/tie/loss ledger (`--trial-range` restricts to a block
-  of trials).
+* **Pairing.** An episode's seed depends only on `(game, trial)`, never on the
+  condition or the model, so `B1` and `scripted:learner_sim` face the same pool
+  order and the same aliases. `compare` refuses to run unless both sides cover
+  exactly the same seeds. It reports the mean paired difference, a bootstrap
+  interval and the win/tie/loss count; `--trial-range` restricts it to a block of
+  trials.
 * **One configuration per claim.** `config_hash` covers the model, prices,
-  prompts, conditions, tool descriptions and limits. Two records with the same
-  hash came from the same configuration; the commit is stamped alongside it.
-* **Nothing is replayed for luck.** A recorded episode is never deleted or
-  re-dealt; a *failed* one is replayed because it never existed as data.
+  prompts, conditions, tool descriptions and limits, so two records with the
+  same hash come from the same configuration. The git commit is stored next to
+  it.
+* **No replaying for luck.** A recorded episode is never deleted or played again.
+  A *failed* episode is replayed, because it was never recorded as data.
 
 ## Reading a run
 
-`compare` prints one JSON object: `mean_diff` (a − b; positive = a better),
-`ci_low`/`ci_high`, `wins`/`ties`/`losses`, `n`. Before reading hit counts,
-check the run's health the way the reports do: no (or few) failure lines in
-`errors.jsonl`, every episode ending `finished` or `agent_stopped`, a single
-`config_hash`, all scripted rows present for the trials being judged — and
-read a couple of transcripts in the viewer, whose `flags` totals sit next to
-every verdict.
+`compare` prints one JSON object: `mean_diff` (a − b; positive means a did
+better), `ci_low` and `ci_high`, `wins`, `ties`, `losses` and `n`. Before reading
+any hit counts, check the run's health as the reports do: few or no failure
+lines in `errors.jsonl`, every episode ending `finished` or `agent_stopped`, a
+single `config_hash`, and every scripted row present for the trials being judged.
+Then read a couple of transcripts in the viewer, which shows the `flags` totals
+next to every verdict.
 
-The viewer (`replaylab-eval view`) turns the records file into one
-self-contained HTML page: the tool timeline of each episode, the hidden pool
-under its aliases, and optionally scripted episodes overlaid as ghosts —
-scripted plays are deterministic per seed, so the overlay is exact.
+The viewer (`replaylab-eval view`) turns a records file into one self-contained
+HTML page: each episode's tool timeline, the hidden pool under its aliases, and,
+optionally, scripted episodes overlaid as ghosts. Scripted play is deterministic
+for a given seed, so the overlay is exact. Because the page reveals outcomes the
+agent never bought, it is for people only and must never be shown to a model.
 
-Finally, when a campaign ends, the model is asked once more **without tools**
-for the plain-text summary the system prompt promises; it appears as the last
-message in the viewer. The epilogue is best effort: if the provider fails it,
-the finished episode is still recorded (flagged `closing_summary_failed`).
+When a campaign ends, the model is asked once more, **without tools**, for the
+plain-text summary the system prompt promises; it appears as the last message in
+the viewer. This step is best effort: if the provider fails, the finished
+episode is still recorded and flagged `closing_summary_failed`.
 
-## Before an experiment is believed
+## Before believing an experiment
 
-Every comparison above is only as good as its discipline: decide the question,
-the trials and the pass/fail rule *before* running, run the validity checks
-before reading outcomes, and report every comparison that was decided on — not
-only the flattering ones. The project's working notes hold the registrations
-and results in that order.
+A comparison is only as good as the discipline behind it. Decide the question,
+the trials and the pass/fail rule *before* running; check validity before
+reading outcomes; and report every comparison that was planned, not only the
+flattering ones. The project's working notes record each registration and its
+result in that order.

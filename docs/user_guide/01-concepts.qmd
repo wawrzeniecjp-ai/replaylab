@@ -3,123 +3,122 @@ title: "Glossary"
 guide-section: "Understanding replaylab"
 ---
 
-The vocabulary used in the code and documentation.
+The vocabulary used in the code and the documentation.
 
 # The game
 
 **pool** ([`DesignPool`](../reference/datasets.pool.DesignPool.qmd))
-: The designs of one game: one target, one split. What an agent may buy from.
-  It carries only the visible features; cluster ids and outcomes ride along
-  hidden, and nothing hands the object itself to an agent.
+: The designs of one game (one target, one split): what a player may buy from.
+  It exposes only the visible features; cluster ids and outcomes are stored on
+  it but hidden, and no player ever receives the object itself.
 
 **game / campaign**
-: A *game* is the static configuration (target, split, rounds, batch size,
-  budget, and delay, encapsulated in [`GameConfig`](../reference/config.GameConfig.qmd)). 
-  A *campaign* is one play of it against the
+: A *game* is a static configuration: target, split, rounds, batch size,
+  budget and delay ([`GameConfig`](../reference/config.GameConfig.qmd)). A
+  *campaign* is one play of a game, recorded in the
   [`CampaignStore`](../reference/store.CampaignStore.qmd).
 
 **alias**
-: Agents never see real design ids, only `d0001`-style aliases. The mapping is
-  built by sorting real ids on `sha256(f"{seed}|{id}")` and reshuffled by every
-  seed: a per-episode pseudonym, not a naming scheme. A real id is a stable
-  handle on the whole dataset -- anything holding one can join it to outside
-  knowledge or to an earlier run's transcript -- while an alias points at
-  nothing outside its own campaign, and two seeds cannot be lined up on
-  `d0001`. It is deterministic (no random generator), so one seed reproduces
-  the same mapping on any machine. **Consequence:** state keyed by alias
-  belongs to exactly one seed, which is why policies are built fresh per seed.
+: Players never see real design ids, only aliases such as `d0001`. The mapping
+  sorts the real ids on `sha256(f"{seed}|{id}")`, so it changes with every seed:
+  a per-episode pseudonym, not a naming scheme. A real id is a stable handle that
+  can be joined to outside knowledge or to an earlier run's transcript; an alias
+  means nothing outside its own campaign, and two seeds cannot be lined up on
+  `d0001`. The mapping uses no random generator, so a seed reproduces it on any
+  machine. **Consequence:** any state keyed by alias belongs to one seed, which
+  is why policies are built afresh for each seed.
 
 **round, tick, clock**
-: Rounds are *batch slots*. `state.clock` counts elapsed rounds. `Campaign.submit`
-  creates a batch, hands it to the backend, ingests what is ready, then ticks
-  once. A batch submitted at clock *t* with delay *d* delivers at *t + d*.
-  `Campaign.wait` (tick without buying any batch) is allowed only while something is pending.
+: Rounds are *batch slots*, and `state.clock` counts the rounds elapsed.
+  `Campaign.submit` creates a batch, hands it to the backend, ingests the
+  outcomes that are ready, and ticks the clock once. A batch submitted at clock
+  *t* with delay *d* is delivered at *t + d*. `Campaign.wait` ticks without
+  buying and is allowed only while something is pending.
 
 **batch**
-: Designs proposed or submitted together, moving only forward through state transitions
+: Designs proposed or submitted together. A batch only moves forward:
   `proposed → submitted → partial → complete`.
+
+**budget**
+: `rounds × batch_size`: the most designs a campaign can buy.
 
 # Status of a design
 
 | Term | Meaning |
 | --- | --- |
-| **purchased** | in a batch that left `proposed` (delivered *or* pending) |
-| **delivered** | outcome has arrived and is in the store |
-| **pending** | purchased but outcome has not arrived yet |
+| **purchased** | in a batch that has left `proposed` (delivered *or* pending) |
+| **delivered** | its outcome has arrived and is in the store |
+| **pending** | purchased, but its outcome has not arrived yet |
 | **unpurchased** | still available to buy |
 
 # Outcomes
 
 **hit**
-: any binding record for the (design, target) pair is True. An *inconclusive*
-  result (`hit is None`) is a purchase but not a hit, and is excluded from
-  model fitting.
+: At least one binding record for the (design, target) pair is true. An
+  *inconclusive* result (`hit is None`) counts as a purchase but not as a hit,
+  and is left out of model fitting.
 
 **conflict / strength / kd_molar**
-: conflicting binding records; the strongest label (Strong/Medium/Weak); the
-  smallest KD converted to molar units.
+: Whether the binding records disagree; the strongest label among them (Strong,
+  Medium, Weak); the smallest KD, converted to molar.
 
-**budget**
-: `rounds × batch_size`: upper bound on the total number of designs that can be bought 
-  during a campaign.
-
-# The agent side
+# The player side
 
 **snapshot** ([`CampaignState`](../reference/domain.CampaignState.qmd))
-: Immutable view of a campaign accessible to a policy or advisor function: 
-  designs, batches, delivered outcomes, clock, and derived views (`unpurchased_ids`,
-  `budget_remaining`, …). Everything the agent knows comes through this object.
+: The immutable view of a campaign that a policy or advisor function receives:
+  designs, batches, delivered outcomes, the clock, and derived views such as
+  `unpurchased_ids` and `budget_remaining`. Everything a player knows comes
+  through this object.
 
 **feature orientation**
-: Feature values stay *raw* in the pool (a lower-is-better ProteinMPNN score
-  looks lower); the ±1 orientation is applied once inside
-  [`Preprocessor`](../reference/advisor.preprocess.Preprocessor.qmd), so every
-  covariate points the same way before the model sees it. The direction is
-  declared once per target in `config/features.yaml` (`higher_is_better`), and
-  that declaration is also what every *raw* sort reads: round 1's
-  `first_column`, the fallback, and `fixed:<metric>`. It is a statement of
-  which way is good, not a modelling trick -- the model would learn the sign by
-  itself -- but with it declared, a positive weight reads as "better, more
-  hits" and nothing sorts a metric the wrong way.
+: For some metrics lower is better (the ProteinMPNN score, for example). The
+  pool keeps every value *raw*; the direction is declared once per target in
+  `config/features.yaml` (`higher_is_better`). Two things read that declaration.
+  [`Preprocessor`](../reference/advisor.preprocess.Preprocessor.qmd) multiplies
+  lower-is-better columns by −1 before fitting, so every covariate points the
+  same way, and every raw sort (round 1's `first_column`, the fallback,
+  `fixed:<metric>`) sorts the good end first. The tools report the direction to
+  the agent: the pool-describing tools return `higher_is_better` for each column,
+  and the fit tools report weights in the raw-value direction.
 
 **policy**
-: `choose(state, k, rng) -> ids` returns a batch proposal given the current campaign state. 
-  Returns `[]` to mean *stop*. 
-  The baseline policies are: `random`, `fixed:<metric>`, `learner`, `learner_sim`;
-  each can be optionally wrapped in `WithStop`.
+: `choose(state, k, rng) -> ids`: a batch proposal for the current state. An
+  empty list means *stop*. The baseline policies are `random`, `fixed:<metric>`,
+  `learner`, `learner_sim`, `learner_purchased` and `learner_sim_purchased`; any
+  of them can be wrapped in `WithStop`.
 
 **stop rules**
-: Advice on when to stop the campaign, evaluated at round boundaries on delivered purchases only.
-  `low_yield` (the default): fires from 20 purchases when the cumulative hit
-  rate is below 0.03.
+: Advice on when to end a campaign, evaluated at round boundaries on delivered
+  purchases only. The default, `low_yield`, fires from 20 purchases onward when
+  the cumulative hit rate is below 0.03.
 
 **frozen configuration**
-: `config/frozen_v1.yaml` pins the model hyper-parameters chosen on `N-dev`
+: `config/frozen_v1.yaml` pins the model hyperparameters, chosen on `N-dev`
   only.
 
 # Splits and evaluation
 
 **cluster** (a family)
-: Designs grouped by 3-mer cosine distance ≤ 0.4 -- the connected components of
-  that pair graph, built once by `data/build_clusters.py`. Hidden from every
-  policy and every tool. It does two jobs: keeping a family whole when the
-  folds are cut, and scoring campaigns by `distinct_families`.
+: Designs linked by 3-mer cosine distance ≤ 0.4; a cluster is a connected
+  component of those links, built once by `data/build_clusters.py`. Hidden from
+  every policy and every tool. Used to keep families whole when the folds are cut
+  and to score campaigns by `distinct_families`.
 
 **fold**
-: One of three groups a target's designs are split into, with
-  `StratifiedGroupKFold` on the cluster as *group* (a family never straddles a
-  fold) and the hit as *label* (equal hit rates), taking the first seed that
-  lands every fold within ±2 designs and ±2 hits. **Fold 2 is the held-out
-  fold.** Frozen in `data/splits/folds.csv`.
+: One of the three groups a target's designs are split into, using
+  `StratifiedGroupKFold` with the cluster as *group* (a family never spans two
+  folds) and the hit as *label* (equal hit rates). The builder keeps the first
+  seed that puts every fold within ±2 designs and ±2 hits. **Fold 2 is held
+  out.** Frozen in `data/splits/folds.csv`.
 
 **dev / held-out split**
-: `dev` is folds 0 and 1 (`N-dev` and the other development games), `heldout`
-  is fold 2 (`N-held`), `all` ignores folds. Held-out outcomes can only be read
-  with `final_run=True`, the evaluation runner refuses held-out games entirely,
+: `dev` is folds 0 and 1 (`N-dev` and the other development games), `heldout` is
+  fold 2 (`N-held`), and `all` ignores folds. Held-out outcomes can be read only
+  with `final_run=True`; the evaluation runner refuses held-out games outright,
   and `replaylab serve` exits with code 2 for them.
 
 **replay vs live**
 : `mode="replay"` plays recorded outcomes through the
-  [`ReplayBackend`](../reference/backends.ReplayBackend.qmd); `mode="live"`
-  will drive a real campaign through the pinned OpenAPI spec.
-  Both implement the same three-method `LabBackend` interface.
+  [`ReplayBackend`](../reference/backends.ReplayBackend.qmd); `mode="live"` will
+  drive a real campaign through the pinned OpenAPI spec. Both implement the same
+  three-method `LabBackend` interface.

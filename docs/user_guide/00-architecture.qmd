@@ -3,20 +3,24 @@ title: "Architecture"
 guide-section: "Understanding replaylab"
 ---
 
-# Architecture overview
+# Overview
 
-replaylab decides **which designed proteins to test in a wet lab**. A pool of
-designs has predicted metrics; an agent buys batches under a budget, results
-come back (immediately or after a delay), and the agent decides what to buy
-next and when to stop. Every strategy is validated offline by **replaying**
-recorded real outcomes (Adaptyv's Proteinbase data); the same code is meant to
-drive a live campaign later.
+replaylab decides **which designed proteins to send to a wet lab**. A game
+gives a player (a scripted policy or a language-model agent) a pool of designs
+with predicted metrics and a budget. Each round the player buys a batch, the lab
+reports which designs bind, and the player decides what to buy next or whether
+to stop. Offline, the lab is a **replay** of recorded outcomes from Adaptyv's
+Proteinbase data; the same code is meant to drive a live campaign later.
 
-# Data flow
- 
-The following charts summarize the data flow in replaylab.
+This page follows the data from the raw CSV to a scored campaign, then shows how
+the packages are layered and how the hidden outcomes are kept out of reach.
 
-*Build phase*
+# From raw data to a game
+
+The build scripts turn the Proteinbase export into three tables, derive the
+sequence clusters and folds from them, and expose two things to a game: the pool
+of designs with their visible features, and the hidden outcomes.
+
 ```{d2}
 direction: right
 
@@ -44,210 +48,181 @@ tables -> pool
 tables -> hidden
 ```
 
-## Derived tables: clusters and folds
+`data/build_clusters.py` and `data/build_folds.py` write the two derived tables
+under `data/splits/`, where they are committed and treated as frozen: `--check`
+only compares against the committed summary and prints `OK` or `DIFF`, and
+overwriting either file takes `--force`.
 
-Both files in that box come from `data/build_clusters.py` and
-`data/build_folds.py`, are committed under `data/splits/`, and are then treated
-as frozen: `--check` only prints `OK` or `DIFF` against the committed summary,
-and rewriting one deliberately takes `--force`.
+**Clusters group variants of the same design.** Each sequence becomes a binary
+3-mer vector (`kmer_matrix`), designs within cosine distance 0.4 of each other
+are linked, and a cluster is a connected component of those links. Designs that
+close are almost always one family, often by one author. Clusters serve two
+offline purposes:
 
-**Clusters: which designs are the same design, twice.** Each sequence becomes a
-binary 3-mer vector (`kmer_matrix`), and designs within cosine distance 0.4 of
-each other are joined into one *cluster* -- the connected components of that
-pair graph. Sequences that close are almost always the same family, often the
-same author, so a cluster is this repo's unit of "variants of one thing".
-Clusters do two jobs, both offline:
+* **Cutting the split.** A family is never divided across folds, so no design
+  sits in the held-out set while its close relatives sit in a development game.
+* **Scoring.** `ScoreCard.distinct_families` counts how many clusters the hits
+  came from: four hits in one family is a different result from four hits in
+  four families.
 
-* **cutting the split** (next paragraph): a family is never divided across
-  folds, so no design's cousins sit in the development games while it sits in
-  the held-out set;
-* **scoring**: `ScoreCard.distinct_families` counts how many clusters the hits
-  came from -- four hits from one family is a different result from four
-  families.
+Clusters never inform a decision. They live on `DesignPool` and in the scoring
+context, not on `CampaignState`, and no tool returns one. An agent gets
+`similar_designs` instead: the same 3-mer geometry, computed live over the
+campaign's designs and returned only as similarity values.
 
-Clusters never reach a decision: they live on `DesignPool` and in the scoring
-context, not on `CampaignState`, and no tool can return one. What an agent gets
-instead is `similar_designs` -- the same 3-mer geometry, computed live from the
-campaign's designs and returned as similarity values only.
+**Folds are the train/test split.** Each design of a target is assigned to one of
+three folds with `StratifiedGroupKFold`, using its cluster as the *group* (a
+family stays whole) and its hit label as the *label* (hit rates stay equal). The
+builder tries seeds until all three folds are within ±2 designs and ±2 hits of
+each other. **Fold 2 is held out.** This gives the three splits used in
+`config/games.yaml`: `dev` (folds 0 and 1), `heldout` (fold 2) and `all`, which
+ignores folds (the stop games, `E` and `E-long`).
 
-**Folds: the train/test cut.** Every design of a target lands in one of three
-folds, assigned with `StratifiedGroupKFold` where the *group* is its cluster
-(family integrity) and the *label* is its hit (equal hit rates). The builder
-tries seeds until one split puts all three folds within ±2 designs and ±2 hits
-of each other. **Fold 2 is the held-out fold**, which gives the three splits in
-`config/games.yaml`: `dev` = folds 0 and 1, `heldout` = fold 2, and `all` ignores
-folds entirely (the stop games, `E`, `E-long`).
+Because the split is committed rather than drawn at run time, `folds.csv` is an
+argument to `build_replay_campaign`: it decides **which designs a game
+contains**, and both `load_pool` and `load_outcomes` filter through it. No model
+is cross-validated on the folds; a model is only ever fitted on what a campaign
+has bought.
 
-So `folds.csv` *is* the train/test split, frozen and committed instead of drawn
-at run time. That is why it is an argument to `build_replay_campaign`: it
-decides **which designs the game contains** -- `load_pool` and `load_outcomes`
-both filter through it -- and no model is cross-validated on it; a model is fit
-only on what a campaign has actually bought.
+# Playing a campaign
 
-*Campaign phase*
+`build_replay_campaign` assembles a game for one seed: it loads the pool and the
+hidden outcomes for the game's split and assigns the per-seed aliases. Each
+round, the player reads a `CampaignState` snapshot and chooses a batch;
+`Campaign.submit` records it and advances the clock, and the replay backend
+delivers the outcomes that are due. After the last round, `settle` collects any
+outcomes still pending and `score` produces a `ScoreCard`.
+
 ```{d2}
-direction: right
+direction: down
 
-inputs: {
-  pool: "DesignPool"
-  clusters: "clusters"
-  folds: "folds"
-  hidden: "hidden outcomes"
+setup: "build_replay_campaign\n(game + seed)"
+
+round: "each round" {
+  grid-columns: 2
+  grid-gap: 70
+  state: "CampaignState\nsnapshot"
+  choose: "policy or agent\nchooses a batch"
+  poll: "ReplayBackend.poll\ndue outcomes arrive"
+  submit: "Campaign.submit\nclock ticks"
+  state -> choose
+  choose -> submit
+  submit -> poll
+  poll -> state
 }
 
-vars: {
-  d2-config: {
-    layout-engine: elk
-  }
-}
+score: "settle + score\n→ ScoreCard"
 
-env: "build_replay_campaign\n(aliases by seed)"
-state: "CampaignState\nsnapshot"
-batch: "batch of\ndesign ids"
-submit: "Campaign.submit\n(ticks the clock,\nstores events)"
-backend: "Backend.poll\n(outcomes arrive)"
-score: "settle + score"
-card: "ScoreCard"
-
-inputs.pool -> env
-inputs.clusters -> env
-inputs.folds -> env
-inputs.hidden -> env
-env -> state
-state -> batch: policy chooses\na batch
-batch -> submit
-submit -> backend
-backend -> state
-submit -> score
-score -> card
+setup -> round
+round -> score: "after the\nlast round"
 ```
 
-# Layers
+# Package layers
+
+The packages fall into two groups: the *world* that defines and plays a game,
+and the *players* and *drivers* that act on it. In the two charts below, an
+arrow means **may import**, not data flow: `a → b` means package `a` is allowed
+to import package `b`. The map is enforced by `tests/test_import_boundaries.py`,
+which fails the build when a package imports outside its lane.
+
+**The world.** `engine` holds the game rules and wires everything else together.
+Every package ends at `domain`, which imports nothing from replaylab (standard
+library only) and holds the shared vocabulary: `Design`, `Outcome`,
+`CampaignState` and the feature specs. It is the floor the other packages stand
+on, not a funnel things flow into.
+
 ```{d2}
-direction: right
-
-classes: {
-  module: {
-    width: 170
-    style.font-size: 13
-  }
-}
-
 vars: {
   d2-config: {
     layout-engine: elk
   }
 }
 
-world: "The world" {
-  direction: down
+direction: down
+engine: "engine\ngame rules"
+store: "store\nSQLite"
+backends: "backends\ndeliver outcomes"
+datasets: "datasets\npools, similarity"
+config: "config\nYAML loading"
+domain: "domain\ncore types · stdlib only"
+engine -> store
+engine -> backends
+engine -> datasets
+engine -> config
+datasets -> config
+store -> domain
+backends -> domain
+datasets -> domain
+config -> domain
+```
 
-  engine: "engine (game rules)"
-  store: "store (SQLite)"
-  backends: "backends\n(deliver outcomes)"
-  datasets: "datasets"
-  config: "config (YAML loading)"
-  domain: "domain (core types)\nstdlib only -- imports nothing"
+**Players and drivers.** `interfaces` exposes the 15 tools over MCP and the
+command line; it may import every package, and none may import it back.
+`eval` runs experiments and may import anything (dashed). The agent side,
+`policies` and `advisor`, may import neither `engine`, `store` nor `backends`.
+`domain` is omitted here for clarity: every package may import it.
 
-  engine -> store
-  engine -> backends
-  engine -> datasets
-  engine -> config
-  store -> domain
-  backends -> domain
-  datasets -> domain
-  datasets -> config
-  config -> domain
-}
+```{d2}
+direction: down
+interfaces: "interfaces\n15 tools · MCP server · CLI"
+eval: "eval\nruns experiments"
+policies: "policies"
+advisor: "advisor"
+world: "engine · store · backends"
+datasets: "datasets"
 
-agent: "The agent" {
-  direction: down
-
-  policies: "policies"
-  advisor: "advisor"
-
-  policies -> advisor
-}
-
-eval: "eval"
-
-# the agent-facing layer: imports every lane, and nothing imports it
-interfaces: "interfaces\n(14 tools: MCP server + CLI)"
-
-world.engine.class: module
-world.store.class: module
-world.backends.class: module
-world.datasets.class: module
-world.config.class: module
-world.domain.class: module
-
-agent.policies.class: module
-agent.advisor.class: module
-
-eval.class: module
-interfaces.class: module
-
-agent.policies -> world.domain
-agent.advisor -> world.domain
-agent.advisor -> world.datasets
-eval -> world.engine { style.stroke-dash: 4 }
-eval -> agent.policies { style.stroke-dash: 4 }
+interfaces -> policies
 interfaces -> world
-interfaces -> agent
+eval -> policies: {style.stroke-dash: 4}
+eval -> world: {style.stroke-dash: 4}
+policies -> advisor
+advisor -> datasets
+world -> datasets
+policies -> world: "may not import" {
+  style.stroke: "#c0392b"
+  style.font-color: "#c0392b"
+  style.stroke-dash: 3
+}
 ```
-
-In this chart the arrows are **imports, not data flow**: `a -> b` means package
-`a` may import package `b`, which is exactly the map
-`tests/test_import_boundaries.py` enforces (dashed edges: `eval` drives that
-layer and may import anything). The lane that reaches both sides is
-`interfaces` -- the 14 tools, the MCP server and the command line: it may
-import every package shown here, and none of them may import it back (the same
-boundary test, which exempts `eval`, the driver). Every arrow ends at `domain`
-because `domain` imports nothing from replaylab -- standard library only. It holds the shared
-vocabulary (`Design`, `Outcome`, `CampaignState`, the feature specs) that all
-the other packages are written in, so it is the floor everything stands on,
-not a funnel things flow into.
-
-The split is not cosmetic: `tests/test_import_boundaries.py` fails the build
-if a package imports outside its lane.
 
 ::: {.callout-note}
 **The rule that matters:** `advisor` and `policies` never import `store`,
 `backends` or `engine`. They receive a
 [`CampaignState`](../reference/domain.CampaignState.qmd) snapshot and nothing
-else, so they *cannot* write and *cannot* see outcomes the campaign has not
-bought. That is the architectural half of the leak protection; the rest is
-below.
+else, so they *cannot* write to the campaign and *cannot* see an outcome it has
+not bought. This is the architectural half of the leak protection; the rest is
+described below.
 :::
-
-# Persistence and kill-and-resume
-
-The [`CampaignStore`](../reference/store.CampaignStore.qmd) (SQLite) records
-every mutation as one transaction, and batches only ever move forward:
-`proposed → submitted → partial → complete`. Alongside the tables there is an
-**append-only event log**. `build_replay_campaign` replays that log to
-reconstruct the replay backend's exact state, so a process that is killed mid
-campaign picks up where it stopped and ends in *exactly* the same state as an
-uninterrupted run (verified for delay 0 and delay 2).
 
 # The leak rules
 
-Hidden outcomes must never reach a strategy before it buys the design. Three
+A hidden outcome must never reach a player before it buys the design. Three
 independent layers enforce this:
 
-1. **Architecture** — the import boundaries above; policies only see snapshots.
-2. **API shape** — the [`ReplayBackend`](../reference/backends.ReplayBackend.qmd)
-   serves an outcome only via `Campaign.submit` + `ReplayBackend.poll` after its delay; there is no
-   bulk accessor to leak through.
-3. **Guards** — `load_outcomes` refuses to read the held-out split outside the
-   final run (`HeldOutAccessError`), and the evaluation runner refuses
-   held-out games with `ValueError`. Real ids never appear in state or in any
-   file the store writes: agents see `d0001`-style aliases.
+1. **Architecture.** The import boundaries above: players see snapshots only.
+2. **API shape.** The [`ReplayBackend`](../reference/backends.ReplayBackend.qmd)
+   releases an outcome only through `Campaign.submit` followed by
+   `ReplayBackend.poll`, once its delay has passed. There is no bulk accessor to
+   leak through.
+3. **Guards.** `load_outcomes` refuses to read the held-out split outside the
+   final run (`HeldOutAccessError`), and the evaluation runner refuses held-out
+   games with a `ValueError`. Real design ids never appear in the state or in
+   any file the store writes: players see `d0001`-style aliases.
+
+# Persistence and kill-and-resume
+
+The [`CampaignStore`](../reference/store.CampaignStore.qmd) (SQLite) writes
+every change in a single transaction, and batches only move forward:
+`proposed → submitted → partial → complete`. Alongside the tables it keeps an
+**append-only event log**. `build_replay_campaign` replays that log to rebuild
+the replay backend's exact state, so a process killed mid-campaign resumes where
+it stopped and ends in *exactly* the same state as an uninterrupted run (tested
+with delays of 0 and 2 rounds).
 
 # Determinism
 
-No global random state, no `hash()` of strings, no dependence on dict or set
-ordering for output. Randomness comes only from a seeded
-`numpy.random.Generator` that is passed in (`make_rng(seed, round)`), so the
-same state and the same seed always produce the same batch — which is what
-makes 100-seed evaluation tables reproducible.
+replaylab uses no global random state, never calls `hash()` on strings, and
+never lets dict or set ordering reach its output. All randomness comes from a
+seeded `numpy.random.Generator` passed in explicitly (`make_rng(seed, round)`),
+so the same state and seed always produce the same batch. This is what makes the
+100-seed evaluation tables reproducible.
