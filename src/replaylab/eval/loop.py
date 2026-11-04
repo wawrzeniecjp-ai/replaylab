@@ -95,6 +95,19 @@ def _parse_arguments(raw: str) -> tuple[dict[str, Any] | None, str | None]:
     return value, None
 
 
+def _usage_row(turn: int, reply: Any, cost: float, **extra: Any) -> dict[str, Any]:
+    """One row of ``EpisodeTrace.usage``: the tokens a model call used and what it cost."""
+    return {
+        "turn": turn,
+        **extra,
+        "input_miss": reply.usage.input_miss,
+        "input_cached": reply.usage.input_cached,
+        "output": reply.usage.output,
+        "input_cache_write": reply.usage.input_cache_write,
+        "cost_usd": cost,
+    }
+
+
 async def _closing_summary(
     llm: LLMClient,
     trace: EpisodeTrace,
@@ -122,22 +135,68 @@ async def _closing_summary(
         return
     cost = guard.record_call(reply.usage) if guard is not None else 0.0
     trace.cost_usd += cost
-    trace.usage.append(
-        {
-            "turn": turn,
-            "closing": True,
-            "input_miss": reply.usage.input_miss,
-            "input_cached": reply.usage.input_cached,
-            "output": reply.usage.output,
-            "input_cache_write": reply.usage.input_cache_write,
-            "cost_usd": cost,
-        }
-    )
+    trace.usage.append(_usage_row(turn, reply, cost, closing=True))
     if reply.tool_calls or not reply.content or not reply.content.strip():
         # tools were not offered, and a reply without text leaves no epilogue to record
         trace.flags["closing_summary_failed"] = 1
         return
     trace.messages.append({"role": "assistant", "content": reply.content})
+
+
+# How the bridge classifies a failed call -> the flag it counts towards.
+_ERROR_FLAGS = {
+    "validation": "validation_errors",
+    "unknown_tool": "fabricated_tool_calls",
+    "tool_error": "tool_errors",
+}
+
+
+async def _execute_call(
+    call: Any, *, turn: int, offered: list[str], bridge: McpBridge, trace: EpisodeTrace
+) -> None:
+    """Run one tool call, or refuse it, and append its audit row and its tool message.
+
+    Three outcomes: arguments that are not a JSON object, a tool the condition does not
+    offer (both answered here, without reaching the server), or a real call to the
+    server, whose result (or error) is passed back as it is.
+    """
+    arguments, problem = _parse_arguments(call.arguments)
+    record: dict[str, Any] = {"turn": turn, "name": call.name, "arguments": arguments}
+
+    if problem is not None:
+        text = f"ERROR: {call.name}: {problem}"
+        # Keep the raw string: there is no parsed object to record.
+        record.update(
+            arguments=call.arguments,
+            ok=False,
+            error_kind="bad_json",
+            truncated=False,
+            chars=len(text),
+        )
+        trace.flags["bad_json"] += 1
+
+    elif call.name not in offered:
+        available = ", ".join(offered)
+        text = f"ERROR: unknown tool {call.name!r}. The available tools are: {available}"
+        record.update(ok=False, error_kind="unknown_tool", truncated=False, chars=len(text))
+        trace.flags["fabricated_tool_calls"] += 1
+
+    else:
+        result = await bridge.call(call.name, arguments or {})
+        text = result.text
+        record.update(
+            ok=result.ok,
+            error_kind=result.error_kind,
+            truncated=result.truncated,
+            chars=result.chars,
+        )
+        if result.error_kind in _ERROR_FLAGS:
+            trace.flags[_ERROR_FLAGS[result.error_kind]] += 1
+        if result.truncated:
+            trace.flags["truncated_outputs"] += 1
+
+    trace.tool_calls.append(record)
+    trace.messages.append(tool_message(call.id, text))
 
 
 async def run_episode(
@@ -173,16 +232,7 @@ async def run_episode(
         trace.turns = turn
         cost = guard.record_call(reply.usage) if guard is not None else 0.0
         trace.cost_usd += cost
-        trace.usage.append(
-            {
-                "turn": turn,
-                "input_miss": reply.usage.input_miss,
-                "input_cached": reply.usage.input_cached,
-                "output": reply.usage.output,
-                "input_cache_write": reply.usage.input_cache_write,
-                "cost_usd": cost,
-            }
-        )
+        trace.usage.append(_usage_row(turn, reply, cost))
         trace.messages.append(
             assistant_message(
                 reply, passback_reasoning=passback_reasoning, reasoning_field=reasoning_field
@@ -204,42 +254,7 @@ async def run_episode(
         # "ERROR: ..." tool message it can correct, and is counted in a flag, so tool-use
         # quality can be checked before any hit count is read.
         for call in reply.tool_calls:
-            arguments, problem = _parse_arguments(call.arguments)
-            record: dict[str, Any] = {"turn": turn, "name": call.name, "arguments": arguments}
-            if problem is not None:
-                text = f"ERROR: {call.name}: {problem}"
-                record.update(
-                    arguments=call.arguments,
-                    ok=False,
-                    error_kind="bad_json",
-                    truncated=False,
-                    chars=len(text),
-                )
-                trace.flags["bad_json"] += 1
-            elif call.name not in offered:
-                available = ", ".join(offered)
-                text = f"ERROR: unknown tool {call.name!r}. The available tools are: {available}"
-                record.update(ok=False, error_kind="unknown_tool", truncated=False, chars=len(text))
-                trace.flags["fabricated_tool_calls"] += 1
-            else:
-                result = await bridge.call(call.name, arguments or {})
-                text = result.text
-                record.update(
-                    ok=result.ok,
-                    error_kind=result.error_kind,
-                    truncated=result.truncated,
-                    chars=result.chars,
-                )
-                if result.error_kind == "validation":
-                    trace.flags["validation_errors"] += 1
-                elif result.error_kind == "unknown_tool":
-                    trace.flags["fabricated_tool_calls"] += 1
-                elif result.error_kind == "tool_error":
-                    trace.flags["tool_errors"] += 1
-                if result.truncated:
-                    trace.flags["truncated_outputs"] += 1
-            trace.tool_calls.append(record)
-            trace.messages.append(tool_message(call.id, text))
+            await _execute_call(call, turn=turn, offered=offered, bridge=bridge, trace=trace)
 
         # Check the campaign only after the whole turn: a turn may submit the last batch.
         current = status()

@@ -96,12 +96,15 @@ def run_smoke(client: Any, model: str) -> SmokeReport:
     failure does not hide the rest.
     """
     report = SmokeReport(model=model)
+
+    # 1. Which models the endpoint lists (informational; a failure is not fatal).
     try:
         listing = client.models.list()
         report.available_models = sorted(m.id for m in getattr(listing, "data", listing))
     except Exception:  # noqa: BLE001
         report.available_models = []
 
+    # 2. One call that should come back as a tool call add(a=2, b=3).
     messages = [{"role": "user", "content": PROMPT}]
     response, probe = _try(client, model=model, messages=messages, tools=TOOLS)
     if response is None:
@@ -136,6 +139,8 @@ def run_smoke(client: Any, model: str) -> SmokeReport:
             report.tool_call_ok = True
             report.tool_call_detail = "ok"
 
+    # 3. Send the tool result back, once without and once with the reasoning text, to
+    #    learn whether the endpoint accepts (or needs) reasoning passed back.
     if report.tool_call_ok:
         assistant = {
             "role": "assistant",
@@ -162,6 +167,7 @@ def run_smoke(client: Any, model: str) -> SmokeReport:
                 client, model=model, messages=[*messages, with_reasoning, tool_result], tools=TOOLS
             )
 
+    # 4. Which optional request parameters the endpoint accepts.
     for name, extra in (
         ("temperature", {"temperature": 0}),
         ("seed", {"seed": 0}),

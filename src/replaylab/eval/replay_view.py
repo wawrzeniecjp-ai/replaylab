@@ -111,6 +111,7 @@ def timeline(record: Mapping[str, Any]) -> list[dict[str, Any]]:
     the running totals ``purchased`` and ``hits`` after it.
     """
     reasoning = list(record.get("reasoning") or [])
+    # Each tool result, by the id of the call it answers.
     replies = {
         m["tool_call_id"]: m.get("content") or ""
         for m in record.get("messages", [])
@@ -125,20 +126,38 @@ def timeline(record: Mapping[str, Any]) -> list[dict[str, Any]]:
         text = message.get("content") or None
         thought = reasoning[turn - 1] if turn - 1 < len(reasoning) else None
         calls = message.get("tool_calls") or []
+
+        # A reply without tool calls is one step of its own (call 0 of 0).
         if not calls:
             steps.append(
-                {"turn": turn, "call": 0, "calls": 0, "tool": None, "args": {}, "ok": True,
-                 "summary": "",
-                 "text": text, "reasoning": thought, "seen": [], "bought": [],
-                 "delivered": [], "purchased": purchased, "hits": hits}
-            )  # fmt: skip
+                {
+                    "turn": turn,
+                    "call": 0,
+                    "calls": 0,
+                    "tool": None,
+                    "args": {},
+                    "ok": True,
+                    "summary": "",
+                    "text": text,
+                    "reasoning": thought,
+                    "seen": [],
+                    "bought": [],
+                    "delivered": [],
+                    "purchased": purchased,
+                    "hits": hits,
+                }
+            )
             continue
+
         for index, call in enumerate(calls):
             name = call["function"]["name"]
-            arguments = _parse(call["function"].get("arguments")) or {}
+            parsed = _parse(call["function"].get("arguments")) or {}
+            arguments = parsed if isinstance(parsed, dict) else {}
             content = replies.get(call.get("id"), "")
             ok = not content.startswith("ERROR")
             data = _parse(content) if ok else None
+
+            # What this call bought and what it delivered, for the running totals.
             bought: list[str] = []
             delivered: list[dict[str, Any]] = []
             if ok and isinstance(data, dict) and name in DELIVERING_TOOLS:
@@ -156,10 +175,10 @@ def timeline(record: Mapping[str, Any]) -> list[dict[str, Any]]:
                     "call": index + 1,
                     "calls": len(calls),
                     "tool": name,
-                    "args": arguments if isinstance(arguments, dict) else {},
+                    "args": arguments,
                     "ok": ok,
-                    "summary": _summary(name, arguments if isinstance(arguments, dict) else {},
-                                        content, data),
+                    "summary": _summary(name, arguments, content, data),
+                    # The turn's text and reasoning go on its first call only.
                     "text": text if index == 0 else None,
                     "reasoning": thought if index == 0 else None,
                     "seen": _design_ids(data) if ok and name in LOOKING_TOOLS else [],
@@ -168,7 +187,7 @@ def timeline(record: Mapping[str, Any]) -> list[dict[str, Any]]:
                     "purchased": purchased,
                     "hits": hits,
                 }
-            )  # fmt: skip
+            )
     return steps
 
 

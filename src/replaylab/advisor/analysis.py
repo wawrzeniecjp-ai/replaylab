@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import math
 import warnings
+from collections.abc import Callable
 from dataclasses import dataclass
 
 import numpy as np
@@ -142,6 +143,60 @@ def _log_loss(y: np.ndarray, p: np.ndarray) -> np.ndarray:
     return -(y * np.log(p) + (1 - y) * np.log(1 - p))
 
 
+def _leave_one_out(
+    full_train: np.ndarray,
+    y: np.ndarray,
+    settings: AnalysisSettings,
+    *,
+    x_train: np.ndarray | None = None,
+    s_train: np.ndarray | None = None,
+    with_sim: Callable[[np.ndarray, np.ndarray], np.ndarray] | None = None,
+) -> np.ndarray:
+    """Leave-one-out predictions: for each design i, refit without it and predict it.
+
+    Without the similarity input the folds are plain row subsets of ``full_train``. With
+    it (``with_sim`` given, plus the raw ``x_train`` and ``s_train``), the input is
+    rebuilt from each fold's own hits, so design i's label never reaches its own input.
+    """
+    n = len(y)
+    hits = y == 1
+    loo = np.empty(n)
+    for i in range(n):
+        keep = np.arange(n) != i
+        if with_sim is not None:
+            fold_hits = hits[keep]
+            train_i = with_sim(
+                x_train[keep], similarity_to_hits(s_train[np.ix_(keep, keep)], fold_hits, own=True)
+            )
+            held_i = with_sim(
+                x_train[i : i + 1],
+                similarity_to_hits(s_train[i : i + 1][:, keep], fold_hits, own=False),
+            )
+        else:
+            train_i, held_i = full_train[keep], full_train[i : i + 1]
+
+        if len(set(y[keep])) < 2:  # one class left: the fold can only predict its rate
+            loo[i] = y[keep].mean()
+        else:
+            loo[i] = _fit(train_i, y[keep], settings)[0].predict_proba(held_i)[0, 1]
+    return loo
+
+
+def _laplace_covariance(model: LogisticRegression, x: np.ndarray, C: float) -> np.ndarray:
+    """Approximate covariance of (intercept, weights) of an L2-penalized logistic fit.
+
+    Laplace approximation: near its optimum the posterior is roughly Gaussian, with
+    precision = X' W X (W = p(1 - p), the logistic curvature) plus 1/C on each weight
+    from the prior. The intercept (first row and column) is not penalized. A tiny ridge
+    keeps the inverse defined when the inputs are collinear.
+    """
+    design = np.c_[np.ones(len(x)), x]
+    p = model.predict_proba(x)[:, 1]
+    precision = design.T @ (design * (p * (1 - p))[:, None])
+    precision += np.diag([0.0] + [1.0 / C] * x.shape[1])
+    return np.linalg.inv(precision + 1e-9 * np.eye(len(precision)))
+
+
 def analyse(
     x_train: np.ndarray,
     y: np.ndarray,
@@ -191,27 +246,13 @@ def analyse(
     # 2. The model the candidates are ranked with, fitted on every delivered design.
     model, converged = _fit(full_train, y, settings)
 
-    # 3. Leave-one-out validation: refit without design i, predict design i. With the
-    #    similarity input, it is rebuilt from the fold's own hits, so design i's label
-    #    never reaches its own input.
-    loo = np.empty(n)
-    for i in range(n):
-        keep = np.arange(n) != i
-        if use_sim:
-            fold_hits = hits[keep]
-            train_i = with_sim(
-                x_train[keep], similarity_to_hits(s_train[np.ix_(keep, keep)], fold_hits, own=True)
-            )
-            held_i = with_sim(
-                x_train[i : i + 1],
-                similarity_to_hits(s_train[i : i + 1][:, keep], fold_hits, own=False),
-            )
-        else:
-            train_i, held_i = full_train[keep], full_train[i : i + 1]
-        if len(set(y[keep])) < 2:  # one class left: the fold can only predict its rate
-            loo[i] = y[keep].mean()
-        else:
-            loo[i] = _fit(train_i, y[keep], settings)[0].predict_proba(held_i)[0, 1]
+    # 3. Leave-one-out validation, against a baseline that knows only the hit rate.
+    if use_sim:
+        loo = _leave_one_out(
+            full_train, y, settings, x_train=x_train, s_train=s_train, with_sim=with_sim
+        )
+    else:
+        loo = _leave_one_out(full_train, y, settings)
     # The baseline predicts, for each design, the hit rate of the other n - 1 designs:
     # the left-one-out version of "always guess the base rate".
     baseline = (y.sum() - y) / (n - 1)
@@ -224,14 +265,8 @@ def analyse(
     coef = tuple(float(c) for c in model.coef_[0])
     coef_sd = upper = None
     if settings.penalty == "l2":
-        # Laplace approximation: near its optimum the L2 posterior is roughly Gaussian,
-        # with precision = X' W X (W = p(1 - p), the logistic curvature) plus 1/C on
-        # each weight from the prior. The intercept (first column) is not penalized.
-        design = np.c_[np.ones(n), full_train]
-        p = model.predict_proba(full_train)[:, 1]
-        precision = design.T @ (design * (p * (1 - p))[:, None])
-        precision += np.diag([0.0] + [1.0 / settings.C] * full_train.shape[1])
-        covariance = np.linalg.inv(precision + 1e-9 * np.eye(len(precision)))
+        # Uncertainty of each weight, from the curvature of the fit at its optimum.
+        covariance = _laplace_covariance(model, full_train, settings.C)
         coef_sd = tuple(float(v) for v in np.sqrt(np.clip(np.diag(covariance)[1:], 0, None)))
         if settings.rank_by == "upper":
             # Each candidate's log-odds has sd sqrt(x' Cov x); rank on log-odds + kappa * sd

@@ -427,27 +427,15 @@ class Toolbox:
         ``design_ids`` restricts the rows to those designs, purchased ones included (a
         lookup of designs another tool named; rows never carry outcomes).
         """
+        # Check every argument before touching the pool.
         if limit < 1:
             raise ToolFailure("limit must be at least 1")
         limit = min(limit, MAX_QUERY_LIMIT)
-        checked: list[s.Condition] = []
-        for condition in where or []:
-            self._check_column(condition.column)
-            if condition.column == "design_class":
-                if condition.op not in ("==", "!=") or not isinstance(condition.value, str):
-                    raise ToolFailure("design_class compares only with == or != and a text value")
-            elif isinstance(condition.value, str):
-                number = _finite_number(condition.value)  # a quoted number is read as one
-                if number is None:
-                    raise ToolFailure(
-                        f"column {condition.column!r} is numeric; use a number as the value"
-                    )
-                condition = condition.model_copy(update={"value": number})
-            checked.append(condition)
-        where = checked
+        where = self._checked_conditions(where or [])
         if sort_by is not None:
             self._check_column(sort_by)
 
+        # Which designs are eligible at all: an id lookup, or the unpurchased pool.
         state = self._state()
         wanted: set[str] | None = None
         if design_ids is not None:
@@ -457,13 +445,16 @@ class Toolbox:
             wanted = set(design_ids)
         # An explicit id lookup returns those designs even if bought: rows carry no outcome.
         blocked = state.purchased_ids if exclude_purchased and wanted is None else frozenset()
+
+        # Filter.
         matching = []
         for design_id, design in state.designs.items():
             if design_id in blocked or (wanted is not None and design_id not in wanted):
                 continue
-            if all(self._matches(design, c) for c in where or []):
+            if all(self._matches(design, c) for c in where):
                 matching.append(design)
-        # Sort by id first so ties in the value sort below come out in a fixed order.
+
+        # Sort. Sort by id first so ties in the value sort below come out in a fixed order.
         matching.sort(key=lambda d: d.design_id)
         if sort_by is not None:
             # Values are raw, so descending=True puts the *worst* designs first on a
@@ -474,6 +465,8 @@ class Toolbox:
             without = [d for d in matching if self._value(d, sort_by) is None]
             with_value.sort(key=lambda d: self._value(d, sort_by), reverse=descending)
             matching = with_value + without  # stable: ties keep ascending design id
+
+        # One row per design, raw values only; total_matching counts beyond the limit.
         rows = []
         for design in matching[:limit]:
             row: dict[str, float | int | str | None] = {"design_id": design.design_id}
@@ -481,6 +474,24 @@ class Toolbox:
                 row[column] = self._value(design, column)
             rows.append(row)
         return s.QueryPoolResult(rows=rows, total_matching=len(matching))
+
+    def _checked_conditions(self, where: list[s.Condition]) -> list[s.Condition]:
+        """Validate query_pool's filters; a quoted number on a numeric column becomes one."""
+        checked: list[s.Condition] = []
+        for condition in where:
+            self._check_column(condition.column)
+            if condition.column == "design_class":
+                if condition.op not in ("==", "!=") or not isinstance(condition.value, str):
+                    raise ToolFailure("design_class compares only with == or != and a text value")
+            elif isinstance(condition.value, str):
+                number = _finite_number(condition.value)
+                if number is None:
+                    raise ToolFailure(
+                        f"column {condition.column!r} is numeric; use a number as the value"
+                    )
+                condition = condition.model_copy(update={"value": number})
+            checked.append(condition)
+        return checked
 
     def _matches(self, design: Design, condition: s.Condition) -> bool:
         value = self._value(design, condition.column)
@@ -700,6 +711,8 @@ class Toolbox:
             policy = f"fixed:{feature}"
         elif feature is not None:
             raise ToolFailure("feature is used only with policy fixed")
+
+        # Refuse a request that cannot produce a batch, before any policy runs.
         state = self._state()
         if not 1 <= k <= state.config.batch_size:
             raise ToolFailure(f"k must be between 1 and the batch size {state.config.batch_size}")
@@ -709,6 +722,8 @@ class Toolbox:
             raise ToolFailure("The campaign is stopped; there is nothing to propose.")
         if state.rounds_left == 0:
             raise ToolFailure("No rounds left; there is nothing to propose.")
+
+        # Let the policy choose.
         try:
             scripted = make_policy(
                 policy, self._fc, self._ctx.preprocessor, self._ctx.similarity, eps=exploration
@@ -721,6 +736,8 @@ class Toolbox:
         if not ids:
             raise ToolFailure("No unpurchased designs are left to propose.")
 
+        # Predict the batch's hit rate: the model's mean score once it can be fitted,
+        # the Beta posterior of the hit rate before that.
         fitted = fit_model(state, self._ctx.preprocessor)
         chosen = [state.designs[d] for d in ids]
         if isinstance(fitted, InsufficientData):
@@ -736,23 +753,11 @@ class Toolbox:
             ids, predicted_rate=predicted, model=f"{scripted.name}:{basis}"
         )
 
+        # One reason per design: its score, what drives it, and its nearest bought hit.
         nearest = self._ctx.similarity.max_to_hits(state)
         reasons = []
         for index, design in enumerate(chosen):
-            top: list[s.TopFeature] = []
-            if not isinstance(fitted, InsufficientData):
-                # A feature's contribution to this design's log-odds is weight x
-                # standardized value; show the three largest in absolute size.
-                row = self._ctx.preprocessor.transform([design])[0]
-                contributions = sorted(
-                    zip(fitted.columns, fitted.coef, row, strict=True),
-                    key=lambda t: (-abs(t[1] * t[2]), t[0]),
-                )
-                top = [
-                    s.TopFeature(feature=name, contribution=_r6(coef * x))
-                    for name, coef, x in contributions[:3]
-                    if coef * x != 0
-                ]
+            top = [] if isinstance(fitted, InsufficientData) else self._top_features(design, fitted)
             similarity, hit_id = nearest[design.design_id]
             reasons.append(
                 s.Reason(
@@ -770,6 +775,23 @@ class Toolbox:
             calibration=self._calibration(state, basis),
             reasons=reasons,
         )
+
+    def _top_features(self, design: Design, fitted: Any) -> list[s.TopFeature]:
+        """The three features that move this design's log-odds the most.
+
+        A feature's contribution is its weight x the design's standardized value; ties
+        are broken by name, and zero contributions are left out.
+        """
+        row = self._ctx.preprocessor.transform([design])[0]
+        contributions = sorted(
+            zip(fitted.columns, fitted.coef, row, strict=True),
+            key=lambda t: (-abs(t[1] * t[2]), t[0]),
+        )
+        return [
+            s.TopFeature(feature=name, contribution=_r6(coef * x))
+            for name, coef, x in contributions[:3]
+            if coef * x != 0
+        ]
 
     def fit_and_rank(
         self, features: list[str] | None = None, top_k: int = 20, exploration: float = 0.2
@@ -829,16 +851,24 @@ class Toolbox:
         top_k: int = 20,
     ) -> s.FitCustomModelResult:
         """The agent's own logistic regression: options, leave-one-out validation, ranking."""
+        # Check the options first: a bad one costs the agent a message, not a fit.
         settings = AnalysisSettings(
-            penalty=penalty, C=C, similarity=similarity_feature, scaling=scaling,
-            rank_by=rank_by, kappa=kappa,
-        )  # fmt: skip
+            penalty=penalty,
+            C=C,
+            similarity=similarity_feature,
+            scaling=scaling,
+            rank_by=rank_by,
+            kappa=kappa,
+        )
         try:
             settings.check()
         except ValueError as error:
             raise ToolFailure(str(error)) from None
         if top_k < 1:
             raise ToolFailure("top_k must be at least 1")
+
+        # Inputs: standardized features of the delivered designs (to fit) and of the
+        # unpurchased ones (to rank), plus their similarity matrices if asked for.
         state = self._state()
         preprocessor = self._preprocessor_for(state, features)
         fitted = self._fitted(state, preprocessor)  # the same data gate as fit_and_rank
@@ -854,6 +884,8 @@ class Toolbox:
                 "s_train": self._pool_similarity.matrix(delivered, delivered),
                 "s_cand": self._pool_similarity.matrix(available, delivered),
             }
+
+        # Fit, validate by leave-one-out, and rank (advisor.analysis does the work).
         try:
             result = analyse(
                 preprocessor.transform(state.designs[d] for d in delivered),
@@ -865,6 +897,8 @@ class Toolbox:
             )
         except ValueError as error:
             raise ToolFailure(str(error)) from None
+
+        # Report the weights largest first, in the raw-value direction the agent sees.
         sds = result.coef_sd or (None,) * len(result.coef)
         weights = sorted(
             zip(result.columns, result.coef, sds, strict=True), key=lambda w: (-abs(w[1]), w[0])

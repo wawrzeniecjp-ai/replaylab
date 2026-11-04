@@ -155,9 +155,16 @@ def build_server(toolbox: Toolbox, tools: str | None = None) -> MCPServer:
         ] = 20,
     ) -> s.FitCustomModelResult:
         return _call(
-            toolbox.fit_custom_model, features, scaling, penalty, C, similarity_feature,
-            rank_by, kappa, top_k,
-        )  # fmt: skip
+            toolbox.fit_custom_model,
+            features=features,
+            scaling=scaling,
+            penalty=penalty,
+            C=C,
+            similarity_feature=similarity_feature,
+            rank_by=rank_by,
+            kappa=kappa,
+            top_k=top_k,
+        )
 
     async def similar_designs(design_ids: list[str], k: int = 10) -> s.SimilarDesignsResult:
         return _call(toolbox.similar_designs, design_ids, k)

@@ -11,6 +11,11 @@
     replaylab-eval smoke --model opus --run-dir runs/smoke --max-usd 1   # 3 real turns, no record
 
 Exit codes: 0 success, 1 the operation was refused or incomplete, 2 bad setup.
+
+How the file is laid out: the option types and the :class:`Files` bundle first, then
+the helpers every command shares (:func:`_deps` builds what the runner needs,
+:func:`_prepare` adds the model, the spend guard and the config hash for the LLM
+commands), then one function per command.
 """
 
 from __future__ import annotations
@@ -18,7 +23,9 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-from dataclasses import asdict
+from collections.abc import Iterator
+from contextlib import contextmanager
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -74,6 +81,36 @@ from replaylab.interfaces.tools import TOOL_DESCRIPTIONS
 app = typer.Typer(no_args_is_help=True, add_completion=False, help="Run and analyze eval episodes.")
 MAX_CONCURRENCY = 4
 
+# Errors that mean "the setup is wrong" (a missing file, a bad config, a refused game):
+# reported in one line with exit code 2 instead of a traceback.
+SETUP_ERRORS = (SetupError, OSError, ValueError)
+
+
+# --- options ----------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Files:
+    """The data and config files a command reads, one field per path option.
+
+    Every command declares the options it needs (Typer wants them in the signature),
+    then bundles them here once, so the helpers below take one argument instead of nine.
+    The defaults are the repository layout.
+    """
+
+    tables: Path = Path("data/processed")
+    folds: Path = Path("data/splits/folds.csv")
+    clusters: Path = Path("data/splits/clusters.csv")
+    games_config: Path = Path("config/games.yaml")
+    features_config: Path = Path("config/features.yaml")
+    conditions_config: Path = Path("config/conditions.yaml")
+    system_prompt: Path = Path("prompts/system.md")
+    models_config: Path = Path("config/models.yaml")  # LLM commands only
+    prices_config: Path = Path("config/prices.yaml")  # LLM commands only
+
+
+DEFAULT = Files()
+
 RunDir = Annotated[
     Path, typer.Option("--run-dir", help="Folder for episodes.jsonl, spend.json, ...")
 ]
@@ -104,6 +141,17 @@ FinalRun = Annotated[
 LockDir = Annotated[
     Path, typer.Option("--lock-dir", help="Folder of the final-test lock files (commit them).")
 ]
+AllowUncommitted = Annotated[
+    bool,
+    typer.Option(
+        "--allow-uncommitted",
+        help="Record episodes even though src, prompts or config have uncommitted changes"
+        " (every record is then marked git_dirty).",
+    ),
+]
+
+
+# --- small helpers ----------------------------------------------------------------------
 
 
 def _emit(payload: Any) -> None:
@@ -115,22 +163,32 @@ def _fail(message: str, code: int) -> typer.Exit:
     return typer.Exit(code)
 
 
+@contextmanager
+def _exit_on(code: int, *errors: type[Exception]) -> Iterator[None]:
+    """Turn the given errors into a one-line ``error: ...`` message and exit ``code``."""
+    try:
+        yield
+    except errors as error:
+        raise _fail(str(error), code) from None
+
+
 def _split(value: str) -> list[str]:
     return [part.strip() for part in value.split(",") if part.strip()]
 
 
 @app.command("conditions")
-def show_conditions(conditions_config: ConditionsConfig = Path("config/conditions.yaml")) -> None:
+def show_conditions(conditions_config: ConditionsConfig = DEFAULT.conditions_config) -> None:
     """Print the tool set of every condition."""
-    try:
+    with _exit_on(2, OSError, ValueError):
         conditions = load_conditions(conditions_config, REGISTERED_TOOLS)
-    except (OSError, ValueError) as error:
-        raise _fail(str(error), 2) from None
     for first, second in identical_conditions(conditions):
         typer.echo(
             f"warning: conditions {first} and {second} offer exactly the same tools", err=True
         )
     _emit({n: {"count": len(c.tools), "tools": list(c.tools)} for n, c in conditions.items()})
+
+
+# --- shared setup -----------------------------------------------------------------------
 
 
 def _uncommitted(*, check_tree: bool, allow: bool) -> bool:
@@ -164,44 +222,43 @@ def _uncommitted(*, check_tree: bool, allow: bool) -> bool:
 
 
 def _deps(
+    files: Files,
     *,
-    tables: Path,
-    folds: Path,
-    clusters: Path,
-    games_config: Path,
-    features_config: Path,
-    conditions_config: Path,
-    system_prompt: Path,
-    llm: Any,
-    model: str | None,
     cfg_hash: str,
-    guard: SpendGuard | None = None,
-    passback: bool = False,
-    reasoning_field: str = "reasoning_content",
-    store_dir: Path | None = None,
+    check_tree: bool,
     allow_uncommitted: bool = False,
-    check_tree: bool = True,
+    model: ModelConfig | None = None,
+    llm: Any = None,
+    guard: SpendGuard | None = None,
+    store_dir: Path | None = None,
 ) -> RunnerDeps:
+    """What every episode of a run shares. ``model`` is ``None`` for scripted runs.
+
+    ``check_tree`` is False for commands that write no record (a smoke test, a dry
+    run); otherwise an uncommitted tree is refused here, before anything is spent.
+    """
     sha, _ = git_info(code_root())
     git_dirty = _uncommitted(check_tree=check_tree, allow=allow_uncommitted)
     return RunnerDeps(
-        tables_dir=tables,
-        games_path=games_config,
-        features_path=features_config,
-        conditions=load_conditions(conditions_config, REGISTERED_TOOLS),
-        system_prompt=load_system_prompt(system_prompt),
+        tables_dir=files.tables,
+        games_path=files.games_config,
+        features_path=files.features_config,
+        conditions=load_conditions(files.conditions_config, REGISTERED_TOOLS),
+        system_prompt=load_system_prompt(files.system_prompt),
         user_prompt=USER_PROMPT,
         llm=llm,
-        model=model,
+        model=None if model is None else model.key,
         config_hash=cfg_hash,
         git_sha=sha,
         git_dirty=git_dirty,
-        folds_path=folds if folds.exists() else None,
-        clusters_path=clusters if clusters.exists() else None,
+        # The split and cluster files are optional: a game played on all designs, or
+        # without cluster ids, needs neither.
+        folds_path=files.folds if files.folds.exists() else None,
+        clusters_path=files.clusters if files.clusters.exists() else None,
         guard=guard,
         limits=Limits(),
-        passback_reasoning=passback,
-        reasoning_field=reasoning_field,
+        passback_reasoning=False if model is None else model.reasoning_passback,
+        reasoning_field="reasoning_content" if model is None else model.reasoning_field,
         store_dir=store_dir,
     )
 
@@ -209,40 +266,46 @@ def _deps(
 def _final_permit(
     deps: RunnerDeps,
     specs: list[EpisodeSpec],
+    files: Files,
     *,
     leg: str,
-    records: Path,
+    run_dir: Path,
     lock_dir: Path,
-    conditions_config: Path,
     check_only: bool,
 ) -> FinalRunPermit:
-    """Check the frozen state and take (or, for a dry run, only check) the final-run lock."""
+    """Check the frozen state and take (or, with ``check_only``, only check) the final-run lock."""
+    # Exactly one final-test game per invocation, so each game gets its own lock.
     games = load_games(deps.games_path)
     names = sorted({s.game for s in specs})
     if len(names) != 1 or names[0] not in games or not games[names[0]].final_test:
         raise FinalRunRefused(f"--final-run plays exactly one final-test game, got {names}")
     game = games[names[0]]
+
+    # No escape hatch here, unlike _uncommitted: the final run is played from a commit.
     dirty = dirty_paths(code_root())
     if dirty:
         raise FinalRunRefused(
             "the final run needs a committed src, prompts and config; uncommitted: "
             + "; ".join(dirty)
         )
-    trials = sorted({s.trial for s in specs})
+
+    # The lock records a hash of everything frozen for this game; a later leg (the
+    # other model, the scripted ladder) must match it.
     frozen = frozen_hash(
         system_prompt=deps.system_prompt,
         user_prompt=deps.user_prompt,
-        conditions_text=Path(conditions_config).read_text(),
+        conditions_text=Path(files.conditions_config).read_text(),
         tool_descriptions=TOOL_DESCRIPTIONS,
         limits=asdict(deps.limits),
         game=game,
         feature_config=load_feature_config(deps.features_path)[game.target],
     )
+    trials = sorted({s.trial for s in specs})
     final_leg = FinalLeg.make(
         game=game.id,
         leg=leg,
         config_hash=deps.config_hash,
-        records=records,
+        records=run_dir / "episodes.jsonl",
         first_trial=trials[0],
         trials=len(trials),
         conditions=sorted({s.condition for s in specs}),
@@ -251,75 +314,29 @@ def _final_permit(
     return acquire(lock_dir, final_leg, frozen=frozen, git_sha=sha or "", check_only=check_only)
 
 
-@app.command("scripted")
-def scripted(
-    run_dir: RunDir,
-    games: Annotated[str, typer.Option("--games", help="Comma-separated game ids.")],
-    policies: Annotated[str, typer.Option("--policies", help="Comma-separated policy names.")],
-    trials: Annotated[int, typer.Option("--trials")] = 5,
-    first_trial: FirstTrial = 0,
-    tables: Tables = Path("data/processed"),
-    folds: Folds = Path("data/splits/folds.csv"),
-    clusters: Clusters = Path("data/splits/clusters.csv"),
-    games_config: GamesConfig = Path("config/games.yaml"),
-    features_config: FeaturesConfig = Path("config/features.yaml"),
-    conditions_config: ConditionsConfig = Path("config/conditions.yaml"),
-    system_prompt: SystemPrompt = Path("prompts/system.md"),
-    final_run: FinalRun = False,
-    lock_dir: LockDir = Path("reports/final-test"),
-    allow_uncommitted: Annotated[bool, typer.Option("--allow-uncommitted")] = False,
-) -> None:
-    """Play scripted policies on the same episode seeds as the LLM episodes."""
-    try:
-        deps = _deps(
-            tables=tables, folds=folds, clusters=clusters, games_config=games_config,
-            features_config=features_config, conditions_config=conditions_config,
-            system_prompt=system_prompt, llm=None, model=None,
-            cfg_hash=config_hash({"scripted": _split(policies)}),
-            allow_uncommitted=allow_uncommitted,
-        )  # fmt: skip
-        if final_run:
-            specs = expand_matrix(
-                _split(games), [f"scripted:{p}" for p in _split(policies)], trials, first_trial
-            )
-            deps.final_permit = _final_permit(
-                deps, specs, leg=SCRIPTED_LEG, records=run_dir / "episodes.jsonl",
-                lock_dir=lock_dir, conditions_config=conditions_config, check_only=False,
-            )  # fmt: skip
-        summary = run_scripted_matrix(
-            _split(games),
-            _split(policies),
-            trials,
-            deps=deps,
-            records_path=run_dir / "episodes.jsonl",
-            first_trial=first_trial,
-        )
-    except (SetupError, OSError, ValueError) as error:
-        raise _fail(str(error), 2) from None
-    _emit({"completed": len(summary.completed), "skipped": summary.skipped})
-
-
 def _model_setup(
-    model: str, models_config: Path, prices_config: Path, run_dir: Path, max_usd: float
+    model: str, files: Files, run_dir: Path, max_usd: float
 ) -> tuple[ModelConfig, SpendGuard, Any]:
+    """The model's config, its price and a spend guard capped at ``max_usd``."""
     try:
-        models = load_models(models_config)
-        prices = load_prices(prices_config)
+        models = load_models(files.models_config)
+        prices = load_prices(files.prices_config)
     except (OSError, ModelConfigError, PriceError) as error:
         raise _fail(str(error), 2) from None
     if model not in models:
         raise _fail(f"unknown model {model!r}; valid: {sorted(models)}", 2)
     cfg = models[model]
     if cfg.price_key not in prices:
-        raise _fail(f"no entry {cfg.price_key!r} in {prices_config}", 2)
-    if cfg.api == "anthropic" and prices[cfg.price_key].cache_write_per_mtok is None:
+        raise _fail(f"no entry {cfg.price_key!r} in {files.prices_config}", 2)
+    price = prices[cfg.price_key]
+    if cfg.api == "anthropic" and price.cache_write_per_mtok is None:
         raise _fail(
-            f"{cfg.price_key!r} in {prices_config} needs cache_write_per_mtok: "
+            f"{cfg.price_key!r} in {files.prices_config} needs cache_write_per_mtok: "
             "the Anthropic API bills cache writes apart",
             2,
         )
-    guard = SpendGuard(run_dir, prices[cfg.price_key], cfg.key, max_usd=max_usd)
-    return cfg, guard, prices[cfg.price_key]
+    guard = SpendGuard(run_dir, price, cfg.key, max_usd=max_usd)
+    return cfg, guard, price
 
 
 def _hashed(item: Any) -> dict[str, Any]:
@@ -330,6 +347,25 @@ def _hashed(item: Any) -> dict[str, Any]:
     """
     unset = {"api": "openai_chat", "cache_write_per_mtok": None}
     return {k: v for k, v in asdict(item).items() if not (k in unset and v == unset[k])}
+
+
+def _llm_config_hash(cfg: ModelConfig, price: Any, files: Files) -> str:
+    """Hash of everything that shapes what the model sees or how it is billed.
+
+    Two records with the same hash were played under the same configuration. The
+    source code is not hashed; the git commit is recorded beside it.
+    """
+    return config_hash(
+        {
+            "model": _hashed(cfg),
+            "price": _hashed(price),
+            "system_prompt": text_hash(load_system_prompt(files.system_prompt)),
+            "user_prompt": text_hash(USER_PROMPT),
+            "conditions": Path(files.conditions_config).read_text(),
+            "tool_descriptions": text_hash(json.dumps(TOOL_DESCRIPTIONS, sort_keys=True)),
+            "limits": asdict(Limits()),
+        }
+    )
 
 
 def _make_llm(cfg: ModelConfig) -> OpenAICompatClient | AnthropicClient:
@@ -357,67 +393,62 @@ def _make_llm(cfg: ModelConfig) -> OpenAICompatClient | AnthropicClient:
 
 
 def _prepare(
-    *, model, games, conditions, trials, first_trial, max_usd, concurrency, dry_run, run_dir, tables, folds, clusters,
-    games_config, features_config, conditions_config, system_prompt, models_config, prices_config,
-    final_run=False, lock_dir=Path("reports/final-test"),
-    allow_uncommitted=False, check_tree=True,
-):  # fmt: skip
+    files: Files,
+    specs: list[EpisodeSpec],
+    *,
+    model: str,
+    run_dir: Path,
+    max_usd: float,
+    concurrency: int = 1,
+    dry_run: bool = False,
+    writes_records: bool = True,
+    allow_uncommitted: bool = False,
+    final_lock_dir: Path | None = None,
+) -> RunnerDeps:
+    """Everything an LLM command needs before its first episode, or exit with code 2.
+
+    Order matters: every refusal (bad concurrency, unknown model or price, dirty tree,
+    unknown condition, a final test that would be a second run) happens here, before
+    any money is spent. ``final_lock_dir`` is set only for ``--final-run``; the lock is
+    only *checked* here and written by the command just before it plays.
+    """
     if not 1 <= concurrency <= MAX_CONCURRENCY:
         raise _fail(f"--concurrency must be between 1 and {MAX_CONCURRENCY}", 2)
-    cfg, guard, price = _model_setup(model, models_config, prices_config, run_dir, max_usd)
-    try:
-        prompt_text = load_system_prompt(system_prompt)
-        # Everything that shapes what the model sees or how it is billed goes into the hash,
-        # so two records with the same hash were played under the same configuration.
-        # (The source code is not hashed; the git commit is recorded beside it.)
-        cfg_hash = config_hash(
-            {
-                "model": _hashed(cfg),
-                "price": _hashed(price),
-                "system_prompt": text_hash(prompt_text),
-                "user_prompt": text_hash(USER_PROMPT),
-                "conditions": Path(conditions_config).read_text(),
-                "tool_descriptions": text_hash(json.dumps(TOOL_DESCRIPTIONS, sort_keys=True)),
-                "limits": asdict(Limits()),
-            }
-        )
-        llm = None if dry_run else _make_llm(cfg)
+    cfg, guard, price = _model_setup(model, files, run_dir, max_usd)
+
+    with _exit_on(2, *SETUP_ERRORS):
         deps = _deps(
-            tables=tables, folds=folds, clusters=clusters, games_config=games_config,
-            features_config=features_config, conditions_config=conditions_config,
-            system_prompt=system_prompt, llm=llm, model=cfg.key, cfg_hash=cfg_hash, guard=guard,
-            passback=cfg.reasoning_passback, reasoning_field=cfg.reasoning_field,
+            files,
+            cfg_hash=_llm_config_hash(cfg, price, files),
+            check_tree=writes_records and not dry_run,
+            allow_uncommitted=allow_uncommitted,
+            model=cfg,
+            llm=None if dry_run else _make_llm(cfg),  # a dry run needs no API key
+            guard=guard,
             store_dir=run_dir / "stores",
-            allow_uncommitted=allow_uncommitted, check_tree=check_tree,
-        )  # fmt: skip
-        specs = expand_matrix(_split(games), _split(conditions), trials, first_trial)
-        if final_run:
-            # check only: the lock is written just before the first episode is played
+        )
+        if final_lock_dir is not None:
             deps.final_permit = _final_permit(
-                deps, specs, leg=str(deps.model), records=run_dir / "episodes.jsonl",
-                lock_dir=lock_dir, conditions_config=conditions_config, check_only=True,
+                deps, specs, files,
+                leg=cfg.key, run_dir=run_dir, lock_dir=final_lock_dir, check_only=True,
             )  # fmt: skip
         validate_specs(specs, deps)
-    except (SetupError, OSError, ValueError) as error:
-        raise _fail(str(error), 2) from None
-    return deps, specs
+    return deps
 
 
 def _take_final_lock(
-    deps: RunnerDeps, specs: list[EpisodeSpec], *, run_dir: Path, lock_dir: Path,
-    conditions_config: Path,
-) -> None:  # fmt: skip
-    """Write this leg into the lock, just before its first episode is played."""
-    try:
+    deps: RunnerDeps, specs: list[EpisodeSpec], files: Files, *, run_dir: Path, lock_dir: Path
+) -> None:
+    """Write this leg into the final-test lock, just before its first episode is played."""
+    with _exit_on(2, *SETUP_ERRORS):
         deps.final_permit = _final_permit(
-            deps, specs, leg=str(deps.model), records=run_dir / "episodes.jsonl",
-            lock_dir=lock_dir, conditions_config=conditions_config, check_only=False,
+            deps, specs, files,
+            leg=str(deps.model), run_dir=run_dir, lock_dir=lock_dir, check_only=False,
         )  # fmt: skip
-    except (SetupError, OSError, ValueError) as error:
-        raise _fail(str(error), 2) from None
 
 
 def _plan(specs, deps) -> dict[str, Any]:
+    """What a dry run reports: how many episodes, which conditions, under which hash."""
     return {
         "episodes": len(specs),
         "conditions": {
@@ -426,6 +457,65 @@ def _plan(specs, deps) -> dict[str, Any]:
         "model": deps.model,
         "config_hash": deps.config_hash,
     }
+
+
+# --- commands ---------------------------------------------------------------------------
+
+
+@app.command("scripted")
+def scripted(
+    run_dir: RunDir,
+    games: Annotated[str, typer.Option("--games", help="Comma-separated game ids.")],
+    policies: Annotated[str, typer.Option("--policies", help="Comma-separated policy names.")],
+    trials: Annotated[int, typer.Option("--trials")] = 5,
+    first_trial: FirstTrial = 0,
+    tables: Tables = DEFAULT.tables,
+    folds: Folds = DEFAULT.folds,
+    clusters: Clusters = DEFAULT.clusters,
+    games_config: GamesConfig = DEFAULT.games_config,
+    features_config: FeaturesConfig = DEFAULT.features_config,
+    conditions_config: ConditionsConfig = DEFAULT.conditions_config,
+    system_prompt: SystemPrompt = DEFAULT.system_prompt,
+    final_run: FinalRun = False,
+    lock_dir: LockDir = Path("reports/final-test"),
+    allow_uncommitted: AllowUncommitted = False,
+) -> None:
+    """Play scripted policies on the same episode seeds as the LLM episodes."""
+    files = Files(
+        tables=tables,
+        folds=folds,
+        clusters=clusters,
+        games_config=games_config,
+        features_config=features_config,
+        conditions_config=conditions_config,
+        system_prompt=system_prompt,
+    )
+    game_ids, policy_names = _split(games), _split(policies)
+    records = run_dir / "episodes.jsonl"
+
+    with _exit_on(2, *SETUP_ERRORS):
+        # Scripted records are recorded like any other, so the tree must be committed too.
+        deps = _deps(
+            files,
+            cfg_hash=config_hash({"scripted": policy_names}),
+            check_tree=True,
+            allow_uncommitted=allow_uncommitted,
+        )
+
+        # The scripted ladder is one leg of a final run, with its own entry in the lock.
+        if final_run:
+            conditions = [f"scripted:{p}" for p in policy_names]
+            specs = expand_matrix(game_ids, conditions, trials, first_trial)
+            deps.final_permit = _final_permit(
+                deps, specs, files,
+                leg=SCRIPTED_LEG, run_dir=run_dir, lock_dir=lock_dir, check_only=False,
+            )  # fmt: skip
+
+        summary = run_scripted_matrix(
+            game_ids, policy_names, trials, deps=deps, records_path=records, first_trial=first_trial
+        )
+
+    _emit({"completed": len(summary.completed), "skipped": summary.skipped})
 
 
 @app.command("pilot")
@@ -440,38 +530,55 @@ def pilot(
     n: Annotated[int, typer.Option("--n", help="Pilot size (episodes).")] = 10,
     concurrency: Annotated[int, typer.Option("--concurrency")] = MAX_CONCURRENCY,
     dry_run: Annotated[bool, typer.Option("--dry-run")] = False,
-    tables: Tables = Path("data/processed"),
-    folds: Folds = Path("data/splits/folds.csv"),
-    clusters: Clusters = Path("data/splits/clusters.csv"),
-    games_config: GamesConfig = Path("config/games.yaml"),
-    features_config: FeaturesConfig = Path("config/features.yaml"),
-    conditions_config: ConditionsConfig = Path("config/conditions.yaml"),
-    system_prompt: SystemPrompt = Path("prompts/system.md"),
-    models_config: ModelsConfig = Path("config/models.yaml"),
-    prices_config: PricesConfig = Path("config/prices.yaml"),
+    tables: Tables = DEFAULT.tables,
+    folds: Folds = DEFAULT.folds,
+    clusters: Clusters = DEFAULT.clusters,
+    games_config: GamesConfig = DEFAULT.games_config,
+    features_config: FeaturesConfig = DEFAULT.features_config,
+    conditions_config: ConditionsConfig = DEFAULT.conditions_config,
+    system_prompt: SystemPrompt = DEFAULT.system_prompt,
+    models_config: ModelsConfig = DEFAULT.models_config,
+    prices_config: PricesConfig = DEFAULT.prices_config,
     final_run: FinalRun = False,
     lock_dir: LockDir = Path("reports/final-test"),
-    allow_uncommitted: Annotated[bool, typer.Option("--allow-uncommitted")] = False,
+    allow_uncommitted: AllowUncommitted = False,
 ) -> None:
     """Run the first episodes, then write a cost projection for the whole matrix (pilot.json)."""
-    deps, specs = _prepare(
-        model=model, games=games, conditions=conditions, trials=trials, first_trial=first_trial,
+    files = Files(
+        tables=tables,
+        folds=folds,
+        clusters=clusters,
+        games_config=games_config,
+        features_config=features_config,
+        conditions_config=conditions_config,
+        system_prompt=system_prompt,
+        models_config=models_config,
+        prices_config=prices_config,
+    )
+    # The projection is for the whole matrix, though only the first n episodes are played.
+    specs = expand_matrix(_split(games), _split(conditions), trials, first_trial)
+    deps = _prepare(
+        files,
+        specs,
+        model=model,
+        run_dir=run_dir,
         max_usd=max_usd,
-        concurrency=concurrency, dry_run=dry_run, run_dir=run_dir, tables=tables, folds=folds,
-        clusters=clusters, games_config=games_config, features_config=features_config,
-        conditions_config=conditions_config, system_prompt=system_prompt,
-        models_config=models_config, prices_config=prices_config,
-        final_run=final_run, lock_dir=lock_dir,
-        allow_uncommitted=allow_uncommitted, check_tree=not dry_run,
-    )  # fmt: skip
+        concurrency=concurrency,
+        dry_run=dry_run,
+        allow_uncommitted=allow_uncommitted,
+        final_lock_dir=lock_dir if final_run else None,
+    )
+
+    # Dry run: report what would be played, spend nothing.
     if dry_run:
         _emit({"dry_run": True, "pilot_episodes": min(n, len(specs)), **_plan(specs, deps)})
         return
+
     if final_run:
-        _take_final_lock(
-            deps, specs, run_dir=run_dir, lock_dir=lock_dir, conditions_config=conditions_config
-        )
-    try:
+        _take_final_lock(deps, specs, files, run_dir=run_dir, lock_dir=lock_dir)
+
+    # Play the pilot episodes and project their mean cost over the whole matrix.
+    with _exit_on(1, ValueError):
         projection = asyncio.run(
             run_pilot(
                 specs,
@@ -480,10 +587,10 @@ def pilot(
                 n=n,
                 concurrency=concurrency,
                 errors_path=run_dir / "errors.jsonl",
-            )  # fmt: skip
+            )
         )
-    except ValueError as error:
-        raise _fail(str(error), 1) from None
+
+    # `run` reads this file to refuse a matrix projected over its cap.
     payload = {**asdict(projection), "n_pilot": n, "spent_usd": deps.guard.total_usd}
     (run_dir / "pilot.json").write_text(json.dumps(payload, sort_keys=True, indent=2))
     _emit(payload)
@@ -502,23 +609,26 @@ def smoke_report(record: Any, spent_usd: float) -> dict[str, Any]:
     * ``cost_matches_guard``: the episode's cost equals what the spend guard added.
     """
     assistants = [m for m in record.messages if m.get("role") == "assistant"]
+
+    # One row per model call: its usage, the tools it called, and its thinking blocks.
     turns = []
     for index, usage in enumerate(record.usage):
         blocks = assistants[index].get("provider_content") or [] if index < len(assistants) else []
+        calls = [c for c in record.tool_calls if c["turn"] == usage["turn"]]
+        thinking = [b for b in blocks if b.get("type") == "thinking"]
+        reasoning = record.reasoning[index] if index < len(record.reasoning) else None
         turns.append(
             {
                 **usage,
-                "tools": [c["name"] for c in record.tool_calls if c["turn"] == usage["turn"]],
-                "tool_errors": sum(
-                    1 for c in record.tool_calls if c["turn"] == usage["turn"] and not c["ok"]
-                ),
-                "thinking_blocks": sum(1 for b in blocks if b.get("type") == "thinking"),
-                "signed": all(b.get("signature") for b in blocks if b.get("type") == "thinking"),
-                "reasoning_chars": len(record.reasoning[index] or "")
-                if index < len(record.reasoning)
-                else 0,
+                "tools": [c["name"] for c in calls],
+                "tool_errors": sum(1 for c in calls if not c["ok"]),
+                "thinking_blocks": len(thinking),
+                "signed": all(b.get("signature") for b in thinking),
+                "reasoning_chars": len(reasoning or ""),
             }
         )
+
+    # The pass-back is tested only if some turn before the last returned thinking.
     thought_before_last = any(t["thinking_blocks"] for t in turns[:-1])
     later = turns[1:]
     checks = {
@@ -544,35 +654,50 @@ def smoke(
     game: Annotated[str, typer.Option("--game")] = "N-dev",
     condition: Annotated[str, typer.Option("--condition")] = "B1",
     turns: Annotated[int, typer.Option("--turns", min=2)] = 3,
-    tables: Tables = Path("data/processed"),
-    folds: Folds = Path("data/splits/folds.csv"),
-    clusters: Clusters = Path("data/splits/clusters.csv"),
-    games_config: GamesConfig = Path("config/games.yaml"),
-    features_config: FeaturesConfig = Path("config/features.yaml"),
-    conditions_config: ConditionsConfig = Path("config/conditions.yaml"),
-    system_prompt: SystemPrompt = Path("prompts/system.md"),
-    models_config: ModelsConfig = Path("config/models.yaml"),
-    prices_config: PricesConfig = Path("config/prices.yaml"),
+    tables: Tables = DEFAULT.tables,
+    folds: Folds = DEFAULT.folds,
+    clusters: Clusters = DEFAULT.clusters,
+    games_config: GamesConfig = DEFAULT.games_config,
+    features_config: FeaturesConfig = DEFAULT.features_config,
+    conditions_config: ConditionsConfig = DEFAULT.conditions_config,
+    system_prompt: SystemPrompt = DEFAULT.system_prompt,
+    models_config: ModelsConfig = DEFAULT.models_config,
+    prices_config: PricesConfig = DEFAULT.prices_config,
 ) -> None:
     """Play the first turns of one real episode (trial 999) and check the provider plumbing.
 
     Nothing is recorded in episodes.jsonl; the spend guard and its cap apply as in a run.
     Writes smoke.json. Exit code 1 if a check fails or the model call fails.
     """
-    deps, specs = _prepare(
-        model=model, games=game, conditions=condition, trials=1, first_trial=SMOKE_TRIAL,
-        max_usd=max_usd, concurrency=1, dry_run=False, run_dir=run_dir, tables=tables,
-        folds=folds, clusters=clusters, games_config=games_config,
-        features_config=features_config, conditions_config=conditions_config,
-        system_prompt=system_prompt, models_config=models_config, prices_config=prices_config,
-        check_tree=False,  # a probe writes no record, and is how a dirty fix is iterated on
-    )  # fmt: skip
+    files = Files(
+        tables=tables,
+        folds=folds,
+        clusters=clusters,
+        games_config=games_config,
+        features_config=features_config,
+        conditions_config=conditions_config,
+        system_prompt=system_prompt,
+        models_config=models_config,
+        prices_config=prices_config,
+    )
+    specs = expand_matrix(_split(game), _split(condition), 1, SMOKE_TRIAL)
+    deps = _prepare(
+        files,
+        specs,
+        model=model,
+        run_dir=run_dir,
+        max_usd=max_usd,
+        writes_records=False,  # a probe writes no record, and is how a dirty fix is iterated on
+    )
     deps.limits = Limits(max_turns=turns)
+
+    # Play one short episode; the guard's total before and after gives its cost.
     before = deps.guard.total_usd
     try:
         record = asyncio.run(run_llm_episode(specs[0], deps))
     except (LLMError, SpendCapReached) as error:
         raise _fail(f"{type(error).__name__}: {error}", 1) from None
+
     report = smoke_report(record, deps.guard.total_usd - before)
     (run_dir / "smoke.json").write_text(json.dumps(report, indent=2))
     _emit(report)
@@ -594,30 +719,46 @@ def run(
     concurrency: Annotated[int, typer.Option("--concurrency")] = MAX_CONCURRENCY,
     skip_pilot: Annotated[bool, typer.Option("--skip-pilot")] = False,
     dry_run: Annotated[bool, typer.Option("--dry-run")] = False,
-    tables: Tables = Path("data/processed"),
-    folds: Folds = Path("data/splits/folds.csv"),
-    clusters: Clusters = Path("data/splits/clusters.csv"),
-    games_config: GamesConfig = Path("config/games.yaml"),
-    features_config: FeaturesConfig = Path("config/features.yaml"),
-    conditions_config: ConditionsConfig = Path("config/conditions.yaml"),
-    system_prompt: SystemPrompt = Path("prompts/system.md"),
-    models_config: ModelsConfig = Path("config/models.yaml"),
-    prices_config: PricesConfig = Path("config/prices.yaml"),
+    tables: Tables = DEFAULT.tables,
+    folds: Folds = DEFAULT.folds,
+    clusters: Clusters = DEFAULT.clusters,
+    games_config: GamesConfig = DEFAULT.games_config,
+    features_config: FeaturesConfig = DEFAULT.features_config,
+    conditions_config: ConditionsConfig = DEFAULT.conditions_config,
+    system_prompt: SystemPrompt = DEFAULT.system_prompt,
+    models_config: ModelsConfig = DEFAULT.models_config,
+    prices_config: PricesConfig = DEFAULT.prices_config,
     final_run: FinalRun = False,
     lock_dir: LockDir = Path("reports/final-test"),
-    allow_uncommitted: Annotated[bool, typer.Option("--allow-uncommitted")] = False,
+    allow_uncommitted: AllowUncommitted = False,
 ) -> None:
     """Play every missing episode of the matrix. Needs a pilot first; refuses a run projected over the cap."""
-    deps, specs = _prepare(
-        model=model, games=games, conditions=conditions, trials=trials, first_trial=first_trial,
+    files = Files(
+        tables=tables,
+        folds=folds,
+        clusters=clusters,
+        games_config=games_config,
+        features_config=features_config,
+        conditions_config=conditions_config,
+        system_prompt=system_prompt,
+        models_config=models_config,
+        prices_config=prices_config,
+    )
+    specs = expand_matrix(_split(games), _split(conditions), trials, first_trial)
+    deps = _prepare(
+        files,
+        specs,
+        model=model,
+        run_dir=run_dir,
         max_usd=max_usd,
-        concurrency=concurrency, dry_run=dry_run, run_dir=run_dir, tables=tables, folds=folds,
-        clusters=clusters, games_config=games_config, features_config=features_config,
-        conditions_config=conditions_config, system_prompt=system_prompt,
-        models_config=models_config, prices_config=prices_config,
-        final_run=final_run, lock_dir=lock_dir,
-        allow_uncommitted=allow_uncommitted, check_tree=not dry_run,
-    )  # fmt: skip
+        concurrency=concurrency,
+        dry_run=dry_run,
+        allow_uncommitted=allow_uncommitted,
+        final_lock_dir=lock_dir if final_run else None,
+    )
+
+    # Project the cost from the pilot's mean episode cost; without a pilot, refuse
+    # unless --skip-pilot says to play with no projection.
     pilot_file = run_dir / "pilot.json"
     projection: Projection | None = None
     if pilot_file.exists():
@@ -629,19 +770,24 @@ def run(
             f"no pilot yet ({pilot_file} is missing): run the pilot command first, or pass --skip-pilot",
             1,
         )
-    try:
-        if projection is not None:
+
+    # Refuse before anything is played if the projection is over the cap.
+    if projection is not None:
+        with _exit_on(1, BudgetRefused):
             refuse_if_over(projection, max_usd)
-    except BudgetRefused as error:
-        raise _fail(str(error), 1) from None
+
+    # Dry run: report the projection and what would be played, spend nothing.
     if dry_run:
         projected = None if projection is None else projection.projected_usd
         _emit({"dry_run": True, "projected_usd": projected, **_plan(specs, deps)})
         return
+
+    # Write the final-test lock only now: after every refusal above, so a refused run
+    # does not use up the one final run, and before the first episode spends anything.
     if final_run:
-        _take_final_lock(
-            deps, specs, run_dir=run_dir, lock_dir=lock_dir, conditions_config=conditions_config
-        )
+        _take_final_lock(deps, specs, files, run_dir=run_dir, lock_dir=lock_dir)
+
+    # Play every episode not yet in episodes.jsonl (a rerun resumes where it stopped).
     summary = asyncio.run(
         run_matrix(
             specs,
@@ -649,8 +795,9 @@ def run(
             run_dir / "episodes.jsonl",
             concurrency=concurrency,
             errors_path=run_dir / "errors.jsonl",
-        )  # fmt: skip
+        )
     )
+
     _emit(
         {
             "completed": len(summary.completed),
@@ -683,6 +830,8 @@ def compare(
 ) -> None:
     """Paired bootstrap of a minus b over episode seeds."""
     loaded = read_records(records)
+
+    # Optionally keep one trial block, e.g. the confirmatory 100-119.
     bounds = None
     if trial_range is not None:
         first, _, last = trial_range.partition("-")
@@ -690,7 +839,9 @@ def compare(
             raise _fail(f"bad trial range {trial_range!r}; expected FIRST-LAST, e.g. 0-9", 2)
         bounds = [int(first), int(last)]
         loaded = [r for r in loaded if bounds[0] <= int(r["trial"]) <= bounds[1]]
-    try:
+
+    # Pair a and b by episode seed; a seed played by only one of them is an error.
+    with _exit_on(1, UnpairedError, ValueError):
         result = paired_bootstrap(
             metric_by_seed(loaded, game, a, metric),
             metric_by_seed(loaded, game, b, metric),
@@ -698,8 +849,6 @@ def compare(
             seed=seed,
             ci=ci,
         )
-    except (UnpairedError, ValueError) as error:
-        raise _fail(str(error), 1) from None
     _emit({"game": game, "a": a, "b": b, "metric": metric, "trial_range": bounds, **asdict(result)})
 
 
@@ -716,28 +865,29 @@ def view(
             help="Another run's episodes.jsonl with scripted records on the same seeds (repeatable).",
         ),
     ] = None,
-    tables: Tables = Path("data/processed"),
-    folds: Folds = Path("data/splits/folds.csv"),
-    clusters: Clusters = Path("data/splits/clusters.csv"),
-    games_config: GamesConfig = Path("config/games.yaml"),
-    features_config: FeaturesConfig = Path("config/features.yaml"),
+    tables: Tables = DEFAULT.tables,
+    folds: Folds = DEFAULT.folds,
+    clusters: Clusters = DEFAULT.clusters,
+    games_config: GamesConfig = DEFAULT.games_config,
+    features_config: FeaturesConfig = DEFAULT.features_config,
 ) -> None:
     """Write a self-contained HTML page that replays the run's agent episodes."""
     paths = PoolPaths(
         games=games_config, features=features_config, tables=tables, folds=folds, clusters=clusters
     )
     target = out or run_dir / "replay.html"
-    try:
+
+    with _exit_on(2, OSError, ValueError, KeyError):
         records = read_records(run_dir / "episodes.jsonl")
-        extra = [record for path in ghost_files or [] for record in read_records(path)]
+        ghosts = [record for path in ghost_files or [] for record in read_records(path)]
         page = build_page(
             records,
+            # The page rebuilds each episode's pool (aliases, features) from its seed.
             lambda game, seed: pool_view(game, seed, paths),
             title=f"replay: {run_dir.name}",
-            ghost_records=extra,
+            ghost_records=ghosts,
         )
         target.write_text(page, encoding="utf-8")
-    except (OSError, ValueError, KeyError) as error:
-        raise _fail(str(error), 2) from None
-    _emit({"episodes": sum(1 for r in records if not r["condition"].startswith("scripted:")),
-           "path": str(target)})  # fmt: skip
+
+    agent_episodes = sum(1 for r in records if not r["condition"].startswith("scripted:"))
+    _emit({"episodes": agent_episodes, "path": str(target)})
