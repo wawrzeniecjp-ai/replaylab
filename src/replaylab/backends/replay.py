@@ -31,10 +31,14 @@ class ReplayBackend:
         for key, outcome in outcomes.items():
             if outcome.design_id != key:
                 raise ValueError(f"outcome keyed {key!r} has design_id {outcome.design_id!r}")
+        # The answers. Kept private, and no method returns this mapping as a whole.
         self._outcomes = dict(outcomes)
         self._delay = delay_rounds
         self._clock = 0
+        # Every design id ever submitted, to refuse buying the same design twice.
         self._submitted: set[str] = set()
+        # backend_ref -> (clock at submission, design ids). The clock is what decides
+        # when the batch's outcomes may be released.
         self._submissions: dict[str, tuple[int, tuple[str, ...]]] = {}
 
     @property
@@ -52,8 +56,8 @@ class ReplayBackend:
 
         Raises:
             UnknownDesignError: an id has no recorded outcome.
-            DuplicateSubmissionError: an id was submitted before (by D9,
-                every design is bought at most once).
+            DuplicateSubmissionError: an id was submitted before (a rule of
+                the game: every design is bought at most once).
         """
         unknown = [d for d in batch.design_ids if d not in self._outcomes]
         if unknown:
@@ -61,17 +65,25 @@ class ReplayBackend:
         repeated = [d for d in batch.design_ids if d in self._submitted]
         if repeated:
             raise DuplicateSubmissionError(f"already submitted: {repeated[:3]}")
+        # References are numbered in submission order, so replaying the same submissions
+        # into a fresh backend reproduces the same references (restore_backend checks this).
         reference = f"replay-{len(self._submissions) + 1}"
         self._submissions[reference] = (self._clock, tuple(batch.design_ids))
         self._submitted.update(batch.design_ids)
         return SubmissionHandle(backend_ref=reference, batch_id=batch.batch_id)
 
     def poll(self, handle: SubmissionHandle) -> PollResult:
-        """Cumulative (D3): COMPLETE with every outcome once the clock has
-        reached submission + delay, otherwise SUBMITTED with nothing yet."""
+        """COMPLETE with every outcome once the clock has reached submission +
+        delay, otherwise SUBMITTED with nothing yet.
+
+        Polling is cumulative: each call returns *all* of the batch's outcomes
+        released so far, not only the new ones, so calling it twice is harmless
+        and the caller never has to remember what it has already seen.
+        """
         if handle.backend_ref not in self._submissions:
             raise BackendError(f"unknown submission {handle.backend_ref!r}")
         submitted_at, design_ids = self._submissions[handle.backend_ref]
+        # The whole batch is released at once: a replay has no partial deliveries.
         if self._clock >= submitted_at + self._delay:
             return PollResult(BatchStatus.COMPLETE, tuple(self._outcomes[d] for d in design_ids))
         return PollResult(BatchStatus.SUBMITTED, ())

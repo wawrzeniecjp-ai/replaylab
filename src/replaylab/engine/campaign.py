@@ -1,4 +1,4 @@
-"""The Campaign: the rules of the game (decisions D1 and D8, plan task T13).
+"""The Campaign: the rules of the game.
 
 Time model, verbatim:
 
@@ -45,6 +45,8 @@ from replaylab.store import CampaignStore
 
 _PENDING = (BatchStatus.SUBMITTED, BatchStatus.PARTIAL)
 _BATCH_NUMBER = re.compile(r"^b(\d+)$")
+# A safety net: with a finite delay settle needs at most `delay` ticks, so hitting this
+# limit means a backend that never completes a batch.
 _SETTLE_LIMIT = 10_000
 
 
@@ -71,6 +73,8 @@ class Campaign:
         self._store = store
         self._backend = backend
         self._cid = campaign_id
+        # batch id -> backend receipt, for batches still pending. In memory only: after a
+        # restart, resume() rebuilds it from the backend_ref stored with each batch.
         self._handles: dict[str, SubmissionHandle] = {}
 
     # --- construction ------------------------------------------------------------
@@ -174,6 +178,8 @@ class Campaign:
 
     @staticmethod
     def _slot(state: CampaignState) -> int:
+        # The round a new batch would occupy: purchased batches so far, plus one.
+        # Proposals do not use a slot until they are submitted.
         return sum(1 for b in state.batches if b.status.is_purchased) + 1
 
     # --- acting ------------------------------------------------------------------------
@@ -198,7 +204,8 @@ class Campaign:
 
     def submit(self, design_ids: Sequence[str]) -> SubmitResult:
         """Buy a batch: validate, hand it to the backend, ingest what is
-        ready, then tick the clock once and ingest again (decision D1).
+        ready, then tick the clock once and ingest again. The first ingest is
+        what lets a delay of 0 deliver within the same call.
 
         Validation runs in a fixed order and the first failure raises:
         stopped, no rounds left, empty, too large, duplicates, unknown,
@@ -207,6 +214,8 @@ class Campaign:
         state = self.state()
         self._validate(state, design_ids, submitting=True)
         ids = tuple(design_ids)
+        # Buying exactly a batch proposed earlier submits that proposal rather than
+        # recording a second batch with the same designs.
         proposal = next(
             (b for b in state.batches if b.status is BatchStatus.PROPOSED and b.design_ids == ids),
             None,
@@ -218,6 +227,8 @@ class Campaign:
         try:
             handle = self._backend.submit(proposal)
         except BackendError:
+            # The backend refused the batch, so nothing was bought: remove the record we
+            # just made, leaving the store as it was before the call.
             if created_here:
                 self._store.discard_batch(self._cid, proposal.batch_id)
             raise
@@ -225,6 +236,7 @@ class Campaign:
             self._cid, proposal.batch_id, BatchStatus.SUBMITTED, backend_ref=handle.backend_ref
         )
         self._handles[proposal.batch_id] = handle
+        # The clock at submission is what restore_backend replays after a restart.
         self._store.append_event(
             self._cid, "submission_clock", {"batch_id": proposal.batch_id, "clock": state.clock}
         )
@@ -268,6 +280,7 @@ class Campaign:
         return [b for b in state.batches if b.status in _PENDING]
 
     def _tick(self) -> list[Outcome]:
+        # Backend and store clocks move together, then anything now due is collected.
         self._backend.advance()
         self._store.set_clock(self._cid, self.state().clock + 1)
         return self._ingest()
@@ -278,6 +291,8 @@ class Campaign:
         fresh_all: list[Outcome] = []
         for batch in self._pending(state):
             result = self._backend.poll(self._handles[batch.batch_id])
+            # poll is cumulative (it repeats outcomes already seen), so keep only the new
+            # ones for the caller; the store itself ignores repeats.
             fresh = [o for o in result.delivered if o.design_id not in known]
             if result.delivered:
                 self._store.record_outcomes(self._cid, batch.batch_id, result.delivered)

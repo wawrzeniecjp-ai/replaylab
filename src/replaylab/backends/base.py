@@ -1,4 +1,4 @@
-"""The lab backend interface (decision D3: ``poll`` is cumulative).
+"""The lab backend interface.
 
 A backend takes a batch of designs (``submit``) and later reports what has been
 measured (``poll``). ``poll`` returns *everything delivered so far* for that
@@ -38,7 +38,7 @@ class SubmissionHandle:
 @dataclass(frozen=True)
 class PollResult:
     """What one ``poll`` returns: the batch's status and every outcome that
-    has arrived for it so far (cumulative, in batch order -- decision D3)."""
+    has arrived for it so far (cumulative, in batch order)."""
 
     status: BatchStatus  # submitted, partial or complete
     delivered: tuple[Outcome, ...]  # cumulative, in batch order

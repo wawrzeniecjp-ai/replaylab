@@ -1,6 +1,6 @@
 """The campaign store: durable, idempotent persistence for one or more campaigns.
 
-Rules enforced here (see the implementation plan, tasks T10 and T11):
+Rules enforced here:
 
 * Every mutating method is one transaction: it either fully succeeds or changes nothing.
 * A batch moves only forward: proposed -> submitted -> (partial) -> complete.
@@ -95,7 +95,13 @@ def _dumps(value: Any) -> str:
 
 
 class CampaignStore:
-    """SQLite-backed store. Use :meth:`open` to create one."""
+    """SQLite-backed store. Use :meth:`open` to create one.
+
+    Every mutating method wraps its work in ``with self._conn:``. For a sqlite3
+    connection that block is one transaction: it commits on success and rolls back
+    if anything inside raises, which is how "fully succeeds or changes nothing" is
+    kept.
+    """
 
     def __init__(self, conn: sqlite3.Connection, clock: Callable[[], str]) -> None:
         self._conn = conn
@@ -114,7 +120,11 @@ class CampaignStore:
         """
         conn = sqlite3.connect(str(path))
         conn.row_factory = sqlite3.Row
+        # SQLite does not enforce foreign keys unless asked to, per connection.
         conn.execute("PRAGMA foreign_keys = ON")
+        # Write-ahead logging makes each commit cheaper (one append instead of a journal
+        # rewrite). With WAL, synchronous=NORMAL cannot corrupt the file on a crash; at
+        # worst a power loss drops the last commit.
         if str(path) != ":memory:":
             conn.execute("PRAGMA journal_mode = WAL")
         conn.execute("PRAGMA synchronous = NORMAL")
@@ -418,6 +428,9 @@ class CampaignStore:
                     (campaign_id, batch_id),
                 )
             }
+            # Check every outcome before writing any, so a conflict anywhere in the
+            # delivery raises with nothing written. Repeats of a stored outcome are
+            # skipped: polling is cumulative, so the same outcome arrives many times.
             to_insert: dict[str, Outcome] = {}
             for outcome in outcomes:
                 if outcome.design_id not in members:

@@ -1,5 +1,5 @@
 """Scoring a finished (settled) campaign. Purchase order is batch order, then position
-inside the batch (decision D9)."""
+inside the batch, so the hit curve reads as if designs were bought one at a time."""
 
 from __future__ import annotations
 
@@ -48,7 +48,7 @@ def score(
 ) -> ScoreCard:
     """Turn a settled campaign into a :class:`ScoreCard`.
 
-    Purchase order is batch order, then position inside the batch (D9), so
+    Purchase order is batch order, then position inside the batch, so
     the curve shows what an early stop would have been worth.
 
     Args:

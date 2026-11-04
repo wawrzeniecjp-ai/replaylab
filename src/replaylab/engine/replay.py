@@ -50,19 +50,27 @@ def restore_backend(backend: ReplayBackend, store: CampaignStore, campaign_id: i
         raise EngineError("restore_backend needs a fresh backend (clock 0)")
     state = store.snapshot(campaign_id)
     batches = {b.batch_id: b for b in state.batches}
+    # The backend keeps its state in memory only, so after a restart it is rebuilt by
+    # replaying history: walk the clock forward and resubmit every batch at the round
+    # it was originally submitted, in the original order.
     for event in store.events(campaign_id):
         if event.kind != "submission_clock":
             continue
         batch = batches[event.payload["batch_id"]]
         while backend.clock < event.payload["clock"]:
             backend.advance()
+        # The clock only moves forward, so an event dated earlier than the current
+        # clock means the log is out of order or edited.
         if backend.clock != event.payload["clock"]:
             raise EngineError("the event log is inconsistent with the clock")
         handle = backend.submit(batch)
+        # The backend numbers submissions in order, so a faithful replay must hand back
+        # the reference the store recorded the first time.
         if handle.backend_ref != batch.backend_ref:
             raise EngineError(
                 f"restored backend_ref {handle.backend_ref} != stored {batch.backend_ref}"
             )
+    # Rounds may have passed after the last submission (a `wait`); catch up to them.
     while backend.clock < state.clock:
         backend.advance()
     if backend.clock != state.clock:
@@ -82,10 +90,10 @@ def build_replay_campaign(
 ) -> ReplayEnvironment:
     """Wire one game from the processed tables.
 
-    Builds the pool and the hidden outcomes, aliases every id with the seed
-    (D4), starts a fresh campaign -- or, if ``store_path`` already holds one,
-    restores the backend from the event log and resumes it, so a killed
-    process picks up exactly where it stopped.
+    Builds the pool and the hidden outcomes, replaces every real id with a
+    per-seed alias (``d0001``...), and starts a fresh campaign -- or, if
+    ``store_path`` already holds one, restores the backend from the event log
+    and resumes it, so a killed process picks up exactly where it stopped.
 
     Args:
         game: the game to play (target, split, budget, delay).
@@ -95,17 +103,22 @@ def build_replay_campaign(
         folds_path: folds.csv, needed for dev/heldout splits.
         clusters_path: clusters.csv, for distinct-family scoring.
         store_path: SQLite path, or ``":memory:"`` for a throwaway store.
-        final_run: must be True to read the held-out split (D-guard).
+        final_run: must be True to read the held-out split; anything else
+            raises, so the held-out fold cannot be played by accident.
 
     Returns:
         The environment: campaign plus the hidden scoring context.
     """
+    # 1. Load the game's designs and their answers, both still under real ids.
     pool = load_pool(
         tables_dir, game, feature_config, folds_path=folds_path, clusters_path=clusters_path
     )
     hidden = load_outcomes(tables_dir, game, folds_path=folds_path, final_run=final_run)
     game.check_pool_size(len(pool.designs))
 
+    # 2. Rename everything to per-seed aliases. From here on, real ids exist only inside
+    #    the aliaser: the store, the backend and every player see aliases, so nothing a
+    #    campaign writes can be joined to outside data or to another seed's run.
     aliaser = Aliaser.from_seed(pool.designs, seed)
     designs = [
         Design(
@@ -126,15 +139,22 @@ def build_replay_campaign(
         )
         for real, outcome in hidden.items()
     }
+    # Cluster ids are used only for scoring after the campaign, never by a player, so
+    # they go into the scoring context rather than into the campaign.
     context = ScoringContext({aliaser.alias(real): c for real, c in pool.clusters.items()})
 
+    # 3. The answers go to the backend, which releases them only after purchase.
     backend = ReplayBackend(outcomes, delay_rounds=game.delay_rounds)
     store = CampaignStore.open(store_path)
     config = game.to_campaign_config(feature_config.names, seed)
+
+    # 4. Start a new campaign, or resume the one this store already holds.
     existing = store.campaign_ids()
     if not existing:
         campaign = Campaign.create(config, designs, store, backend)
     else:
+        # Resuming into a store made for another game, seed or pool would silently mix
+        # two campaigns, so check both before touching anything.
         campaign_id = existing[0]
         if store.get_config(campaign_id) != config:
             raise EngineError("the store holds a different campaign (game or seed differ)")
