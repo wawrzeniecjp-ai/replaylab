@@ -1,20 +1,21 @@
-"""Calibration (D12): how far the recorded hit-rate predictions have been from what arrived.
+"""Calibration (D12): the recorded hit-rate predictions, read back for the tools.
 
 Every model-based ``propose_batch`` records a predicted hit rate with its batch. Once that
 batch is delivered, realized - predicted is a residual. ``propose_batch`` reports how many
 residuals exist, ``estimate_hit_rate`` corrects its next-batch prediction by their mean once
 there are enough, and ``campaign_summary`` lists every prediction beside what arrived.
+The arithmetic is in ``advisor/calibration.py``; this module reads the store and reports.
 """
 
 from __future__ import annotations
 
 import statistics
 
+from replaylab.advisor.calibration import is_calibrated, model_residuals
 from replaylab.domain.types import CampaignState
 from replaylab.interfaces import schemas as s
 from replaylab.interfaces.tools.context import ToolContext
 from replaylab.interfaces.tools.formatting import r6
-from replaylab.interfaces.tools.limits import CALIBRATION_MIN_ROUNDS
 
 
 def prediction_pairs(
@@ -40,11 +41,7 @@ def prediction_pairs(
 
 def residuals(ctx: ToolContext, state: CampaignState) -> list[float]:
     """realized - predicted for realized, model-based predictions only."""
-    return [
-        realized - predicted
-        for _, predicted, realized, model in prediction_pairs(ctx, state)
-        if realized is not None and model.endswith(":model")
-    ]
+    return model_residuals(prediction_pairs(ctx, state))
 
 
 def calibration_info(ctx: ToolContext, state: CampaignState, basis: str) -> s.CalibrationInfo:
@@ -54,5 +51,5 @@ def calibration_info(ctx: ToolContext, state: CampaignState, basis: str) -> s.Ca
         basis=basis,  # type: ignore[arg-type]
         n_realized=len(found),
         mean_residual=r6(statistics.fmean(found)) if found else None,
-        calibrated=len(found) >= CALIBRATION_MIN_ROUNDS,
+        calibrated=is_calibrated(found),
     )

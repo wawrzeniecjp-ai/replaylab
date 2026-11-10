@@ -21,7 +21,7 @@ see `docs/walkthrough.md`.
          |                                                    |
    interfaces/server.py  (MCP tool schemas)                   v
          |                                             engine/play.py  (the game loop)
-   interfaces/tools.py   Toolbox: the 15 tools  ------> policies/ (propose_batch)
+   interfaces/tools/     Toolbox: the 15 tools  ------> policies/ (propose_batch)
          |                                         \--> advisor/  (fit, similarity, rates, stop)
          v                                                    |
    engine/campaign.py   Campaign: submit / wait / settle / stop  <-------+
@@ -92,7 +92,9 @@ Read these with the files open; each step names the function to jump to.
 1. `interfaces/server.py`: the `submit_batch` closure validates the arguments against its
    schema and calls `Toolbox.submit_batch`; a `ToolFailure` becomes an MCP error that tells the
    agent how to fix the call.
-2. `interfaces/tools.py:Toolbox.submit_batch` → `engine/campaign.py:Campaign.submit`.
+2. `interfaces/tools/toolbox.py:Toolbox.submit_batch` (one line) →
+   `interfaces/tools/campaign.py:submit_batch`, which calls `engine/campaign.py:Campaign.submit`
+   and turns each engine error into a message saying what to do instead.
 3. `Campaign.submit` validates (stopped, rounds, size, duplicates, unknown, already bought,
    budget), records the batch in the store, hands it to `backends/replay.py:ReplayBackend`,
    ingests what is delivered, then ticks the clock. With `delay_rounds > 0` outcomes arrive
@@ -100,11 +102,13 @@ Read these with the files open; each step names the function to jump to.
 4. The response is a Pydantic model from `interfaces/schemas.py`: it cannot carry a field
    that is not declared, which is part of the leak protection.
 
-The advisor tools follow the same shape: `Toolbox.fit_and_rank` → `advisor/preprocess.py` +
-`advisor/model.py:fit_model`; `similar_designs` → 3-mer vectors from `datasets/similarity.py`;
-`propose_batch` → `policies/factory.py:make_policy` → `policies/`; `estimate_hit_rate`
-→ `advisor/rates.py`; `stop_advice` → `advisor/stop.py`; `fit_custom_model` (condition C) →
-`advisor/analysis.py`.
+Every tool has the same shape: a one-line `Toolbox` method → a function in the module of its
+group (`pool`, `campaign`, `models`, `estimates` under `interfaces/tools/`) → `advisor/`,
+`policies/` or `Campaign`. `fit_and_rank` → `advisor/preprocess.py` + `advisor/model.py:fit_model`;
+`similar_designs` → `advisor/similarity.py:SimilarityIndex.nearest`; `propose_batch` →
+`policies/factory.py:make_policy` → `policies/`; `estimate_hit_rate` → `advisor/rates.py`, and
+for a next batch `advisor/calibration.py` (D12); `stop_advice` → `advisor/stop.py`;
+`fit_custom_model` (condition C) → `advisor/analysis.py`.
 
 ### 3.3 One scripted episode
 
@@ -131,9 +135,9 @@ this order means you never meet a name you have not seen yet.
 | `store/` | `store.py:CampaignStore` | SQLite: designs, batches, outcomes, append-only event log; `snapshot()` returns a `CampaignState` | domain |
 | `backends/` | `replay.py:ReplayBackend` | holds the hidden outcomes; `submit` / `poll` / `advance`; `base.py` is the protocol a live backend will implement | domain |
 | `engine/` | `campaign.py:Campaign` | the rules of the game (clock, validation, delay); `replay.py` wires a game and resumes a killed one; `scoring.py` scores a settled campaign | domain, store, backends, datasets, config |
-| `advisor/` | `preprocess.py`, `model.py` | pure functions over a `CampaignState`: preprocessing (orientation applied here), logistic model with its gate (2 hits, 8 purchases), similarity, Beta hit rates, stop rules, custom analysis | domain, datasets |
+| `advisor/` | `preprocess.py`, `model.py` | pure functions over a `CampaignState`: preprocessing (orientation applied here), logistic model with its gate (2 hits, 8 purchases), similarity, Beta hit rates, calibration of predictions (D12), stop rules, custom analysis | domain, datasets |
 | `policies/` | `core.py` | `choose(state, k, rng) -> ids`: `RandomPolicy`, `FixedMetric`, `Learner`, `LearnerSim`, `WithStop`; `purchased.py` has the purchased-scaling variants; `factory.py:make_policy` builds any of them by name (the tools, the CLIs and the ladder all use it) | domain, advisor |
-| `interfaces/` | `tools.py:Toolbox` | the 15 tools (`CAMPAIGN_TOOLS`, `ADVISOR_TOOLS`, `ANALYSIS_TOOLS`); `schemas.py` the responses; `server.py` MCP; `runtime.py` one game + one seed; `cli.py` | everything above; **nothing imports it** |
+| `interfaces/` | `tools/toolbox.py:Toolbox` | the 15 tools, one line each, grouped into `tools/pool.py`, `campaign.py`, `models.py`, `estimates.py`; `tools/catalog.py` the names, groups and the descriptions the agent reads; `schemas.py` the responses; `server.py` MCP; `runtime.py` one game + one seed; `cli.py` | everything above; **nothing imports it** |
 | `eval/` | `runner.py`, `loop.py` | the experiment harness (next section) | anything; nothing imports it |
 
 ## 5. `eval/`, file by file
@@ -175,8 +179,9 @@ this order means you never meet a name you have not seen yet.
 2. `engine/play.py:play`, then `engine/campaign.py`: the game itself.
 3. `policies/core.py:Learner.choose` with `advisor/preprocess.py` and `advisor/model.py`: what
    "a scripted learner" means, including the model gate that explains the E result.
-4. `interfaces/tools.py`: skim `query_pool`, `submit_batch`, `fit_and_rank`, `similar_designs`,
-   the tools the agents actually use most.
+4. `interfaces/tools/toolbox.py`, the table of contents of the 15 tools; then follow
+   `query_pool`, `submit_batch`, `fit_and_rank` and `similar_designs`, the tools the agents
+   actually use most.
 5. `eval/runner.py:run_llm_episode` and `eval/loop.py:run_episode`: how an agent plays.
 6. Run something small to watch it move (no API key needed; `run-scripted` needs the built
    tables in `data/processed/`):

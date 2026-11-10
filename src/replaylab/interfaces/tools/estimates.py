@@ -2,15 +2,13 @@
 
 The computations live in ``advisor/`` (``similarity``, ``rates``, ``stop``); this module checks
 the agent's arguments and reports the result. Only ``estimate_hit_rate``'s next-batch
-prediction adds arithmetic of its own: the calibrated interval of decision D12.
+prediction is assembled here, from the model's score and the calibration of decision D12
+(``advisor/calibration.py``).
 """
 
 from __future__ import annotations
 
-import statistics
-
-from scipy.stats import beta
-
+from replaylab.advisor.calibration import next_batch_rate
 from replaylab.advisor.rates import estimate_hit_rate as rates_estimate
 from replaylab.advisor.stop import stop_advice as advisor_stop_advice
 from replaylab.domain.types import CampaignState
@@ -18,7 +16,7 @@ from replaylab.interfaces import schemas as s
 from replaylab.interfaces.tools.calibration import residuals
 from replaylab.interfaces.tools.context import ToolContext, ToolFailure
 from replaylab.interfaces.tools.formatting import r6, round_detail
-from replaylab.interfaces.tools.limits import CALIBRATION_MIN_ROUNDS, MAX_SIMILAR, Z90
+from replaylab.interfaces.tools.limits import MAX_SIMILAR
 from replaylab.interfaces.tools.models import fit_or_refuse
 
 # --- the tools ---------------------------------------------------------------------------
@@ -122,22 +120,9 @@ def next_batch_estimate(
         )
     fitted = fit_or_refuse(ctx, state)
     predicted = float(fitted.score([state.designs[d] for d in ids]).mean())
-    found = residuals(ctx, state)
-    # Calibrated: shift the model's prediction by its mean past error, and take the
-    # 90% interval from the spread of those errors.
-    if len(found) >= CALIBRATION_MIN_ROUNDS:
-        adjusted = min(1.0, max(0.0, predicted + statistics.fmean(found)))
-        half = Z90 * statistics.stdev(found)
-        interval = [max(0.0, adjusted - half), min(1.0, adjusted + half)]
-        return s.NextBatchEstimate(
-            predicted_rate=r6(adjusted), interval90=[r6(i) for i in interval], calibrated=True
-        )
-    # Not yet calibrated: treat the prediction as if k purchases had shown that rate,
-    # and report the 90% interval of the matching Beta distribution.
-    k = len(ids)
-    a, b = 1 + predicted * k, 1 + (1 - predicted) * k
+    estimate = next_batch_rate(predicted, len(ids), residuals(ctx, state))
     return s.NextBatchEstimate(
-        predicted_rate=r6(predicted),
-        interval90=[r6(beta.ppf(0.05, a, b)), r6(beta.ppf(0.95, a, b))],
-        calibrated=False,
+        predicted_rate=r6(estimate.rate),
+        interval90=[r6(estimate.lower), r6(estimate.upper)],
+        calibrated=estimate.calibrated,
     )
