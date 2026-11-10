@@ -26,7 +26,7 @@ from toolbox_env import make_env
 from replaylab.config import ConfigError, load_feature_config, load_games, parse_games
 from replaylab.datasets.pool import FinalTestAccessError, load_outcomes
 from replaylab.domain.features import FeatureConfig, FeatureSpec
-from replaylab.eval import cli as eval_cli
+from replaylab.eval import setup as eval_setup
 from replaylab.eval.final_run import (
     FinalLeg,
     FinalRunRefused,
@@ -369,8 +369,8 @@ def final_setup(setup, monkeypatch):  # noqa: F811 - the fixture imported above
     common = list(setup["common"])
     common[3] = str(path)
     dirty: list[str] = []
-    monkeypatch.setattr(eval_cli, "dirty_paths", lambda *args: list(dirty))
-    monkeypatch.setattr(eval_cli, "git_info", lambda *args: (SHA, False))
+    monkeypatch.setattr(eval_setup, "dirty_paths", lambda *args: list(dirty))
+    monkeypatch.setattr(eval_setup, "git_info", lambda *args: (SHA, False))
     return {**setup, "common": common, "dirty": dirty}
 
 
@@ -410,7 +410,7 @@ def test_the_cli_refuses_a_final_run_from_a_dirty_tree(final_setup, tmp_path):
 def test_a_final_pilot_dry_run_writes_no_lock_and_the_run_resumes_the_pilot_leg(
     final_setup, tmp_path, monkeypatch
 ):
-    monkeypatch.setattr(eval_cli, "_make_llm", lambda cfg: HeuristicLLM(batch=5))
+    monkeypatch.setattr(eval_setup, "make_llm", lambda cfg: HeuristicLLM(batch=5))
     locks = tmp_path / "locks"
     args = [
         "--run-dir", str(tmp_path / "run"), "--model", "m", "--games", "GF", "--conditions", "A",

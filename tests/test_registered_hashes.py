@@ -20,7 +20,7 @@ from pathlib import Path
 import pytest
 
 from replaylab.config import load_feature_config, load_games
-from replaylab.eval import cli
+from replaylab.eval import setup as eval_setup
 from replaylab.eval.final_run import frozen_hash
 from replaylab.eval.loop import Limits
 from replaylab.eval.models import load_models
@@ -29,10 +29,10 @@ from replaylab.eval.spend import load_prices
 from replaylab.interfaces.tools import TOOL_DESCRIPTIONS
 
 ROOT = Path(__file__).resolve().parents[1]
-FILES = cli.Files(
+FILES = eval_setup.Files(
     **{
-        name: ROOT / getattr(cli.DEFAULT, name)
-        for name in cli.Files.__dataclass_fields__  # every default path, from the repo root
+        name: ROOT / getattr(eval_setup.DEFAULT, name)
+        for name in eval_setup.Files.__dataclass_fields__  # every default path, from the repo root
     }
 )
 
@@ -56,7 +56,7 @@ FROZEN_HASHES = {
 def test_config_hash_is_unchanged(model):
     cfg = load_models(FILES.models_config)[model]
     price = load_prices(FILES.prices_config)[cfg.price_key]
-    assert cli._llm_config_hash(cfg, price, FILES) == CONFIG_HASHES[model]
+    assert eval_setup.llm_config_hash(cfg, price, FILES) == CONFIG_HASHES[model]
 
 
 @pytest.mark.parametrize("game_id", sorted(FROZEN_HASHES))

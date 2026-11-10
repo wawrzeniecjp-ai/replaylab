@@ -64,7 +64,7 @@ Read these with the files open; each step names the function to jump to.
 
 ### 3.1 One LLM episode (`replaylab-eval run`)
 
-1. `eval/cli.py:run` → `_prepare` loads the models, prices, conditions, prompt and games;
+1. `eval/cli.py:run` → `eval/setup.py:prepare` loads the models, prices, conditions, prompt and games;
    computes the `config_hash`; checks the pilot projection against `--max-usd`
    (`eval/spend.py:refuse_if_over`).
 2. `eval/runner.py:run_matrix` expands the matrix (`expand_matrix`), skips episodes already
@@ -144,7 +144,8 @@ this order means you never meet a name you have not seen yet.
 
 | file | role |
 | --- | --- |
-| `cli.py` | the `replaylab-eval` commands; `_prepare` and `_deps` assemble everything a run needs |
+| `cli.py` | the `replaylab-eval` commands, one function each |
+| `setup.py` | what a command sets up before its first episode: `prepare` and `runner_deps` assemble everything a run needs, `llm_config_hash` is the registered hash, and every refusal (dirty tree, unknown model or price, a second final run) happens here |
 | `runner.py` | the matrix: expand, skip completed, run concurrently, record; scripted matrix too |
 | `loop.py` | one agent episode: model call, tool calls, stop reasons, closing summary |
 | `mcp_bridge.py` | MCP tools ↔ OpenAI-style function specs; compact JSON, `ERROR: ` prefix, 20,000-character cut |
