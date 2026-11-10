@@ -1,7 +1,7 @@
 # Design notes
 
-The numbers behind every choice that the task cards ask to be recorded, plus the
-places where the T20 card was ambiguous and what was decided instead.
+The numbers behind every choice that the task specifications ask to be recorded, plus the
+places where the T20 specification was ambiguous and what was decided instead.
 Date: 2026-10-13.
 
 ## 1. Phase 0 analyses (`notes/week0/`, gitignored)
@@ -63,14 +63,14 @@ one extra component (632). Exact integer arithmetic over all 1030x1030 pairs
 agrees with the code: **631 clusters**, largest 125, 570 singletons.
 `data/splits/*` did not change (the rebuild is byte-identical).
 
-## 3. T20 decisions where the card was ambiguous
+## 3. T20 decisions where the specification was ambiguous
 
 1. **The `SimilarityIndex` is built per seed, not once per game.** The card says
    "built once per game ... not per seed", but aliases depend on the seed
    (decision D4, `sha256(seed|id)`), so an index keyed by one seed's aliases
    points at the *wrong sequences* for every other seed and `learner_sim` would
    silently learn from scrambled similarity. The `Preprocessor` (feature values
-   only, order-invariant) is built once per game as the card asks.
+   only, order-invariant) is built once per game as the specification asks.
    *Confirmed in practice:* the first `reproduce_legacy.py` run reused one policy
    object across all 100 seeds (so one cached index), and `legacy learner_sim`
    scored 20.0 instead of ~39 while the index-free `legacy learner` matched 25.93
@@ -98,7 +98,7 @@ agrees with the code: **631 clusters**, largest 125, 570 singletons.
    (ValueError before anything loads). `load_outcomes` already refuses held-out
    reads without `final_run=True`, so the split has three guards.
 5. **The legacy script's random stream** is `make_rng(seed, round)`, the same
-   stream the library uses; the card does not say. Tie-breaking in the legacy
+   stream the library uses; the specification does not say. Tie-breaking in the legacy
    top-k is `(-score, design id)` like the library.
 
 ## 4. Frozen configuration (T20 step 3)
@@ -163,10 +163,10 @@ Scaling comparison (same legacy script, both scalers, 100 seeds):
 | legacy learner | 25.93 | **27.00** | pool better by 1.07 (< 2) |
 | legacy learner_sim | **38.49** | 32.22 | purchased better by **6.27 (> 2)** |
 
-* For the plain learner the difference is under the card's 2-hit threshold and
+* For the plain learner the difference is under the specification's 2-hit threshold and
   the library keeps its pool-wide default (already the library behaviour).
 * For `learner_sim`, purchased-row scaling wins by **6.27 hits -- more than 2**,
-  so per the card the library must **not** be changed without asking first.
+  so per the specification the library must **not** be changed without asking first.
   Asked and decided 2026-10-13 (section 7): keep the library pool-wide and
   track both variants in the ladder, so the `learner_sim` rows in section 6
   (pool-wide) and the `learner_sim_purchased` rows are compared side by side
@@ -268,9 +268,8 @@ rules evaluated at every round boundary regardless of the wrapper):
 * ~~Replace the table in section 2.4 of the spec~~ — paste-ready replacement
   written: `docs/spec-updates.md` (sections 2.4 and 3.5; the project document
   itself lives outside this repo and still needs the paste).
-* ~~Send the pack author the T20 outputs~~ — the bundle is assembled in
-  `docs/phase6-handoff.md` (make test, ladder tables, legacy table,
-  features.yaml, llm_smoke.txt); sending it triggers the phase-6 pack
+* ~~Send the T20 outputs for review~~ — done (make test, ladder tables,
+  legacy table, features.yaml, llm_smoke.txt); the review opened phase 6
   (MCP server + CLI).
 * ~~Pin `spec/openapi.prod.json`~~ — done 2026-10-13: fetched from
   `https://devs.adaptyvbio.com/api/v1/openapi.json` (openapi 3.1.0,
@@ -280,7 +279,7 @@ rules evaluated at every round boundary regardless of the wrapper):
 
 ## 8. Pre-registration: does a longer horizon change what E measures? (2026-10-14)
 
-Written **before** the run, at the pack author's request: declare the question
+Written **before** the run, at the reviewer's request: declare the question
 and the horizons first, report every horizon, never the best one.
 
 **Question.** E fits a model in exactly one of its four rounds, so every
@@ -297,7 +296,7 @@ does the learner fit regularly, and at what purchase count does it cross
 * `fixed:esmfold_plddt` -- which is byte-for-byte what the learner's fallback
   buys -- scores 5.00 in 60 purchases and **4.00 after the first 45**, so
   the cold-start deficit against `random` (7.33 at 45 purchases) is **3.3 hits**:
-  the pack author's 3-4 estimate checks out. *(Correction written after the run:
+  the reviewer's 3-4 estimate checks out. *(Correction written after the run:
   this bullet originally claimed "1 hit after 45, deficit ~6". That came from
   misreading a three-seed trace -- 1 hit is the value at 30 purchases, 4 hits at
   45. The 100-seed curve in `reports/e_long.csv` is the authority.)*
@@ -437,7 +436,7 @@ that fails one is fixed and replayed, never analysed:
    trial (D4), never on condition or model. Every comparison pairs episodes by
    trial within one records file.
 2. *One draw per cell.* Each (model, condition, game, trial) is played once.
-   A failed episode leaves no record and is replayed (rule 4 of the handoff);
+   A failed episode leaves no record and is replayed (the project's recording rule);
    a recorded episode is never deleted or replayed to get another draw.
 3. *One configuration.* Every agent episode in a confirmatory comparison
    carries the same `config_hash`. The hash covers model, price, prompts,
@@ -567,7 +566,7 @@ it plays whole episodes or the hypothesis is reported as untested.
 
 **Sonnet 5.5** (`sonnet`, config hash `167e3086e8cd`): adaptive thinking,
 summarized, effort high (the model's default; at medium it did not think in
-the smoke run). Prices from the API reference, to be confirmed.
+the smoke run). Prices from the API reference, to be confirmed on the pricing page before a paid run.
 
 **Results** (`runs/sonnet1`, N-dev B1, trials 0-9, `--ci 0.9`, 10000
 resamples, seed 0). Not confirmatory: trials 0-3 were inspected before the
@@ -893,7 +892,7 @@ verdict. No confirmatory run is played; trials 140 onwards stay unused.
 
 ## 14. Closing the agent study (2026-10-29)
 
-The question (CLAUDE.md): does an LLM agent add anything over a ladder of
+The question (the project's own): does an LLM agent add anything over a ladder of
 scripted baselines on this task? Answer, from pre-registered tests on fresh
 seeds: **no, not over the best scripted player.**
 
@@ -1350,3 +1349,23 @@ better check on that than prose, because it has to be handed both arms explicitl
 ### Status of the block
 
 N-dev trials 140-179 are **used**. A new N-dev question starts at 180.
+
+## 19. Known gaps (2026-11-10)
+
+Open points that do not change any recorded result, kept here so they are not lost.
+
+* **Parameter descriptions are uneven, and not hashed** (found 2026-11-04; deliberately not
+  fixed). In `interfaces/server.py:build_server`, only `propose_batch` (4 of 4) and
+  `fit_custom_model` (8 of 8) annotate their parameters with `Field(description=...)`; the
+  other 19 parameters of the 15 tools reach the agent with name, type and default only. Every
+  recorded run saw this same schema, so comparisons are unaffected. Neither `config_hash`
+  (`eval/setup.py:llm_config_hash`) nor the final test's `frozen_hash` covers the input
+  schemas, only `TOOL_DESCRIPTIONS`; only `tests/snapshots/tools.json` would catch a change.
+  Describing every parameter and hashing the full schemas both change the config hash, and
+  with it the final test's registered hashes (`0fecb4a7e74a` / `c2c8dac7e136`), so they wait
+  until the final test is played, or come with a new pre-registration and a fresh block.
+* **mimo's maximum output** (131K tokens) comes from third-party listings only; the
+  provider's own pages did not state it.
+* **Three phase 7 mutants are left alive on purpose**: dropping `fsync` in
+  `eval/records.py:append_record`, an abort flag that only saves setup work, and a duplicated
+  held-out check (see the guards table in `docs/code-tour.md`, section 5).

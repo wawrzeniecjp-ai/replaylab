@@ -69,8 +69,8 @@ out of this.
 * **Game N-dev** (nipah development pool, 687 designs, 4 rounds x 15 purchases, budget 60).
 * **Trials 140-179**, a fresh block. N-dev trials 0-139 are used: 0-19 by design notes section
   9, 20-39 by the tuning log (section 11), 40-49 by condition C's development block (section
-  13), 100-139 reserved for and partly used by the confirmatory run (section 12). CLAUDE.md
-  records that a new N-dev idea starts at 140. This note uses 140-179, so the next N-dev
+  13), 100-139 reserved for and partly used by the confirmatory run (section 12). Design notes
+  section 12 records that a new N-dev idea starts at 140. This note uses 140-179, so the next N-dev
   idea starts at 180.
 * **Both models**, `deepseek` and `mimo`, in separate run directories (`runs/auth-ds`,
   `runs/auth-mimo`). deepseek is the headline, mimo the replication, judged by the same rule

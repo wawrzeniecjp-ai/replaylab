@@ -44,7 +44,7 @@ the same way. Values shown to the player are still raw (D7).
 * **Game E**, the pool where the defect bit hardest (62 of 160 episodes against N-dev's 12 of
   190): two features, one of them the inverted one, so it carries half the signal.
 * **Trials 140–159**, a fresh block. Trials 100–119 are used by §15/§16 and 120–139 were
-  deliberately left unplayed, so a new idea starts at 140 (CLAUDE.md).
+  deliberately left unplayed, so a new idea starts at 140.
 * **Both models**, `deepseek` and `mimo`, each in its own run directory, since the runner keys
   episodes without the model.
 * **n = 20 per arm per model**, fixed here and not extended after looking. Any extension needs

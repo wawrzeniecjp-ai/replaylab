@@ -1,4 +1,4 @@
-"""The final test's run-once guard (CLAUDE.md, planned direction A).
+"""The final test's run-once guard (``docs/prereg-anthropic.md``).
 
 A ``final_test`` game is refused everywhere a held-out game is, and on top of that the runner
 plays it only under a permit from the lock file, once: an identical resume is the only

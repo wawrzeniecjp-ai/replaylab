@@ -3,8 +3,7 @@
 ``config_hash`` is stamped into every LLM record; two records compare only if it matches.
 ``frozen_hash`` is what the final test's lock pins for each ``AB-`` game. The deepseek and mimo
 values below are the ones registered in ``docs/prereg-anthropic.md`` section 6; the others were
-recorded on 2026-11-10 (commit ``aaee2ce``) as the baseline for the legibility refactor
-(``docs/refactor-proposal.md``).
+recorded on 2026-11-10 (commit ``aaee2ce``) as the baseline for the legibility refactor.
 
 A failure means something the model sees (prompt, tool descriptions, conditions, limits, a
 model's request parameters or price) or a final-test game's frozen configuration has changed.

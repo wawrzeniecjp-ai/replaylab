@@ -2,7 +2,7 @@
 
 Written 2026-10-30, **before any episode of `AB-nipah`, `AB-egfr`, `AB-bbf14` or `AB-bhrf1`
 has been played** and before any hit rate of any of these pools was computed. It fixes the pools, the
-features, the label and the game shape. It is the plan the handoff calls direction A;
+features, the label and the game shape (the project's planned final test);
 `docs/design-notes.md` section 9 holds the decision rule this will be judged by, with the
 bar and the margin of section 5 below, and `docs/caveats.md` holds the conditions under which
 the result should be read.
@@ -61,7 +61,7 @@ So **four games**, all 90 designs and `1to1`: `AB-nipah`, `AB-egfr`, `AB-bbf14`,
 TNFa is the only target with more designs (150) and was **not** added: it folds as a trimer
 (`1to3`), so taking it would have meant amending filter 2 after the filters were written,
 which is the move a pre-registration exists to prevent. It remains available as a declared
-amendment if the author wants a larger pool, decided before any play.
+amendment if a larger pool is wanted, decided before any play.
 
 Cas9 is excluded by filter 2 rather than by a judgment about difficulty. `DATA_NOTES.md`
 note 20 separately records that its ipSAE is exactly zero for most of its designs.
@@ -224,7 +224,7 @@ more trials, and that distinction is the answer to a question raised in conversa
 
 While checking feature coverage, the counts of the `vendor_agreement` classes were printed
 for the whole release. Those counts bound the pooled binder count across all targets, so the
-approximate overall base rate **has been seen** by the assistant before this file was
+approximate overall base rate **has been seen** by the AI coding assistant before this file was
 written. It was not sought, and it is disclosed here rather than left implicit. No
 per-target rate has been computed, and none of the three games' rates is known.
 
@@ -239,8 +239,8 @@ What this does and does not affect:
 * **What is now unavailable** is the claim "nobody involved had any idea of the base rate".
   Anyone reading the result should treat the shape as pre-registered but not rate-blind.
 * **The remedy** for any later choice: no further parameter of these games may be set by the
-  assistant without being written here first. Section 6 lists what is still open, and those
-  belong to the author.
+  AI coding assistant without being written here first. Section 6 lists what is still open,
+  and those belong to the author.
 
 ## 6. The run, fixed (the author's decision, 2026-10-30, before any episode)
 
@@ -492,3 +492,16 @@ The pooled headline is the same paired bootstrap over all four games at once, pa
 worked example): every episode `finished`; one `config_hash` per model, equal to the frozen
 hash the lock recorded; the scripted rows present on every game; and no uncommitted change in
 `src`, `prompts` or `config` in the tree that played them.
+
+---
+
+*Editorial note, 2026-11-10, on publication:* before the repository went public, its history
+was rewritten to remove private details. In every version of this file the attribution
+wording was neutralised ("the owner" became "the author", a quoted argument became a
+paraphrase with its date); in this version "the assistant" also became "the AI coding
+assistant" and "the plan the handoff calls direction A" became "the project's planned final
+test". No registered content changed: the games, the bar, the margin, the conditions, the
+trial block and the registered hashes are as written before any episode. The original
+history is kept as a git bundle with sha256
+`f365dc7831569148068c9fe4c4dfacf248f92ad9339608c97d5e444db81a39ab`, so every
+pre-publication version can be produced and checked against it.
