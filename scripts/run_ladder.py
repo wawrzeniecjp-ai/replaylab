@@ -3,14 +3,14 @@
 
 Usage (from the repository root):
 
-    python scripts/run_ladder.py                     # non-held-out, non-exploratory games
+    python scripts/run_ladder.py                     # the default set (see default_games)
     python scripts/run_ladder.py --game N-dev --seeds 100
     python scripts/run_ladder.py --include-exploratory  # also run E-long
 
 Writes reports/ladder.csv (one row per game, policy and seed) and reports/ladder.md
 (one table per game plus the stop-rule false-stop table on N-dev).
 
-A held-out game is refused with a ValueError: that split is run once, at the end.
+A held-out or final-test game is refused with a ValueError: each is run once, at the end.
 """
 
 from __future__ import annotations
@@ -26,8 +26,58 @@ try:
 except ModuleNotFoundError:
     sys.path.insert(0, str(REPO_ROOT / "src"))
 
-from replaylab.config import load_feature_config, load_games  # noqa: E402
+from replaylab.config import GameConfig, load_feature_config, load_games  # noqa: E402
+from replaylab.datasets.anthropic import SLUG_PREFIX  # noqa: E402
 from replaylab.eval.ladder import load_frozen, run_ladder, write_reports  # noqa: E402
+
+
+def default_games(
+    games: dict[str, GameConfig], *, include_exploratory: bool = False
+) -> tuple[list[str], list[str]]:
+    """The games run when no ``--game`` is given, and one line per skipped group.
+
+    Skipped, in config order:
+
+    * held-out games: run once, at the end, by the final-run script;
+    * ``final_test`` games (the Anthropic pools): played once, by the runner with
+      ``--final-run``; the ladder refuses them;
+    * the other Anthropic-pool games, i.e. ``AB-rehearsal``: its target lives only in
+      ``data/processed/anthropic-rehearsal`` (shuffled column names, drawn labels), so it is
+      a plumbing check with its own ``--tables-dir``, not a reference number;
+    * exploratory games, unless ``include_exploratory``.
+    """
+    held_out = [g for g, game in games.items() if game.split == "heldout"]
+    final_test = [g for g, game in games.items() if game.final_test]
+    rehearsal = [
+        g
+        for g, game in games.items()
+        if game.target.startswith(SLUG_PREFIX) and not game.final_test
+    ]
+    exploratory = [g for g, game in games.items() if game.exploratory]
+    skipped = {*held_out, *final_test, *rehearsal}
+    if not include_exploratory:
+        skipped.update(exploratory)
+    selected = [g for g in games if g not in skipped]
+
+    notes = []
+    if held_out:
+        notes.append(f"skipping held-out game(s) {held_out} (run once, at the end)")
+    if final_test:
+        notes.append(
+            f"skipping final-test game(s) {final_test} "
+            "(played once, by the runner with --final-run; docs/prereg-anthropic.md)"
+        )
+    if rehearsal:
+        notes.append(
+            f"skipping rehearsal game(s) {rehearsal} (synthetic labels; pass --game and "
+            "--tables-dir data/processed/anthropic-rehearsal)"
+        )
+    if exploratory and not include_exploratory:
+        notes.append(
+            f"skipping exploratory game(s) {exploratory} "
+            "(pre-registered, design-notes section 8; pass --include-exploratory)"
+        )
+    return selected, notes
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -45,7 +95,7 @@ def main(argv: list[str] | None = None) -> int:
         "--game",
         action="append",
         default=None,
-        help="game id to run (repeatable; default: every game that is not held out)",
+        help="game id to run (repeatable; default: see default_games)",
     )
     parser.add_argument(
         "--include-exploratory",
@@ -70,20 +120,9 @@ def main(argv: list[str] | None = None) -> int:
             print(f"unknown game id(s): {unknown}", file=sys.stderr)
             return 2
     else:
-        selected = [
-            game_id
-            for game_id, game in games.items()
-            if game.split != "heldout" and (args.include_exploratory or not game.exploratory)
-        ]
-        held_out = [game_id for game_id, game in games.items() if game.split == "heldout"]
-        exploratory = [game_id for game_id, game in games.items() if game.exploratory]
-        if held_out:
-            print(f"skipping held-out game(s) {held_out} (run once, at the end)")
-        if exploratory and not args.include_exploratory:
-            print(
-                f"skipping exploratory game(s) {exploratory} "
-                "(pre-registered, design-notes section 8; pass --include-exploratory)"
-            )
+        selected, notes = default_games(games, include_exploratory=args.include_exploratory)
+        for note in notes:
+            print(note)
 
     started = time.time()
     try:
