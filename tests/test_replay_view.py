@@ -165,7 +165,7 @@ def test_the_pool_matches_the_episode_aliases_and_hidden_outcomes(env):
     pool = pool_view("G", 5, paths(env))
     toolbox = toolbox_for(env, "G", seed=5)
     ids = [d["id"] for d in pool["designs"]]
-    assert ids == sorted(toolbox._state().designs)  # the same seed gives the same aliases
+    assert ids == sorted(toolbox._ctx.campaign.state().designs)  # the same seed gives the same aliases
     bought = toolbox.submit_batch(ids[:5])
     truth = {d["id"]: d["hit"] for d in pool["designs"]}
     assert all(truth[r.design_id] == r.hit for r in bought.results)
