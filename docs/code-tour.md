@@ -1,14 +1,48 @@
 # Code tour
 
-A reading guide to `src/replaylab`: what the entry points are, which call path each one takes,
-and the order in which to read the modules. For a deeper look at the data flow and the leak
-rules, see `docs/user_guide/00-architecture.qmd`; for a hands-on REPL session on the real tables,
-see `docs/walkthrough.md`.
+A reading guide to `src/replaylab`. Read sections 1 and 2 first: six nouns and three call
+paths are enough to place every other file. The rest is reference: entry points, the paths step
+by step, every guard in one table, the layers, and a suggested first hour.
 
-## 1. The picture in one diagram
+For the data flow and the leak rules in more depth, see `docs/user_guide/00-architecture.qmd`;
+for a hands-on REPL session on the real tables, see `docs/walkthrough.md`.
+
+## 1. Six nouns
+
+Everything in the code is one of these, or serves one of them.
+
+| noun | where | one sentence |
+| --- | --- | --- |
+| `CampaignState` | `domain/types.py` | an immutable snapshot of a campaign: designs, batches, and *delivered* outcomes only |
+| `Campaign` | `engine/campaign.py` | the rules: `submit`, `wait`, `stop`, `settle`; validates each move and advances the clock |
+| `ReplayEnvironment` | `engine/replay.py` | one game assembled for one seed: campaign, hidden outcomes, store; `score()` |
+| `Policy` | `policies/core.py` | `choose(state, k, rng) -> ids`: a scripted player |
+| `Toolbox` | `interfaces/tools/toolbox.py` | the 15 tools an agent can call, over one campaign |
+| `run_episode` | `eval/loop.py` | the agent loop: model call, then its tool calls, repeat |
+
+The one fact that explains most of the layout: **only `Campaign` can buy, and only delivered
+outcomes ever reach a `CampaignState`.** A policy, a tool and an advisor function all see the
+same snapshot, so none of them can read the outcome of a design that was not bought.
+
+## 2. Three call paths
 
 ```text
-                    replaylab-eval run / pilot / scripted            (eval/cli.py)
+SCRIPTED   build_replay_campaign ──> engine.play(env, as_choose(policy, seed)) ──> Played(score, stopped)
+             (the ladder, `replaylab run-scripted` and `replaylab-eval scripted` all call this one function)
+
+AGENT      build_runtime ──> build_server(Toolbox) ──> run_episode(llm, bridge) ──> settle ──> score ──> record
+
+ONE TOOL   server closure ──> Toolbox.<tool> (one line) ──> tools/<group>.py ──> advisor/* or Campaign ──> schema
+```
+
+There is **one** game loop, `engine/play.py:play`, and the agent path does not use it, on
+purpose: an agent drives the rounds itself, by calling `submit_batch` when it chooses to. So
+the agent path ends where the scripted one does (settle, score), but has no loop over rounds.
+
+How the pieces fit together:
+
+```text
+                    replaylab-eval run / pilot / scripted            (eval/cli.py, eval/setup.py)
                                    |
                               eval/runner.py  ---- spend guard, records, final-run permit
                                    |
@@ -33,10 +67,10 @@ see `docs/walkthrough.md`.
 
 Everything above `interfaces/` is about *running agents*; everything below it is the *game*.
 `engine/replay.py:build_replay_campaign` is the single place where a game is assembled, and
-`interfaces/runtime.py:build_runtime` wraps it with the per-seed advisor objects that the tools
-need.
+`interfaces/runtime.py:build_runtime` wraps it with the per-seed objects the tools need (the
+preprocessor and the similarity index, both built from this campaign's own designs).
 
-## 2. Entry points
+## 3. Entry points
 
 Two console scripts are declared in `pyproject.toml`, plus a few scripts.
 
@@ -50,23 +84,37 @@ Two console scripts are declared in `pyproject.toml`, plus a few scripts.
 | `replaylab-eval pilot` / `run` | `eval/cli.py:pilot`, `run` | play the games x trials x conditions matrix with an LLM (pilot first: it projects the cost) |
 | `replaylab-eval compare` | `eval/cli.py:compare` | paired bootstrap of two conditions over episode seeds |
 | `replaylab-eval view` | `eval/cli.py:view` → `eval/replay_view.py` | one HTML page that replays a run (shows hidden outcomes: for people only) |
-| `replaylab-eval smoke` | `eval/smoke.py` | check that a provider endpoint works before spending on it |
-| `python scripts/run_ladder.py` | → `eval/ladder.py` | every scripted policy, every game, 100 seeds → `reports/ladder.*` |
+| `replaylab-eval smoke` | `eval/cli.py:smoke` | three real turns against a provider, no record, before spending on it |
+| `python scripts/run_ladder.py` | → `eval/ladder.py` | every scripted policy, every playable game, 100 seeds → `reports/ladder.*` |
 | `python scripts/export_study.py`, `make_figures.py` | scripts | records → `reports/agent_study.csv` → `reports/figures/*.svg` |
 | `python data/build_tables.py`, `build_clusters.py`, `build_folds.py` | `data/` → `datasets/` | build the processed tables and the frozen split from the raw CSV |
 
 `python -m replaylab` and `python -m replaylab.eval` are the same two CLIs (`__main__.py`).
 The root `main.py` is an unused stub.
 
-## 3. Three call paths worth tracing
+## 4. The three paths, step by step
 
-Read these with the files open; each step names the function to jump to.
+Read these with the files open; each step names the function to jump to. Start with the
+scripted path: it is the game with nothing around it.
 
-### 3.1 One LLM episode (`replaylab-eval run`)
+### 4.1 One scripted episode
 
-1. `eval/cli.py:run` → `eval/setup.py:prepare` loads the models, prices, conditions, prompt and games;
-   computes the `config_hash`; checks the pilot projection against `--max-usd`
-   (`eval/spend.py:refuse_if_over`).
+`engine/play.py:play` is the whole game in about fifteen lines: per round, ask the player for
+a batch (`choose(state, state.next_round)`), then `campaign.submit(ids)`; an empty batch stops
+the campaign; at the end `settle()` and `score()`. No tools, no MCP.
+
+Every scripted run goes through it: `eval/ladder.py:run_game` (the ladder),
+`eval/scripted.py:play_scripted` (`replaylab-eval scripted`) and `interfaces/cli.py:run_scripted`
+(`replaylab run-scripted`). `policies/core.py:as_choose(policy, seed)` turns a policy into the
+player, drawing with the generator of `(seed, round)`. A policy is built by name in one place,
+`policies/factory.py:make_policy`.
+
+### 4.2 One LLM episode (`replaylab-eval run`)
+
+1. `eval/cli.py:run` → `eval/setup.py:prepare` loads the model, its price, the conditions,
+   the prompt and the games; computes the `config_hash` (`setup.py:llm_config_hash`); and
+   makes every refusal (section 5) before anything is spent. Back in `run`, the pilot's
+   projection is checked against `--max-usd` (`eval/spend.py:refuse_if_over`).
 2. `eval/runner.py:run_matrix` expands the matrix (`expand_matrix`), skips episodes already
    in `episodes.jsonl` (`eval/records.py:completed_keys`), and runs the rest with at most
    four in flight.
@@ -87,7 +135,7 @@ Read these with the files open; each step names the function to jump to.
 5. `eval/records.py:append_record` writes one JSON line. Failed episodes leave nothing, and
    rerunning the same command plays exactly those.
 
-### 3.2 One tool call (`submit_batch`)
+### 4.3 One tool call (`submit_batch`)
 
 1. `interfaces/server.py`: the `submit_batch` closure validates the arguments against its
    schema and calls `Toolbox.submit_batch`; a `ToolFailure` becomes an MCP error that tells the
@@ -110,19 +158,48 @@ group (`pool`, `campaign`, `models`, `estimates` under `interfaces/tools/`) → 
 for a next batch `advisor/calibration.py` (D12); `stop_advice` → `advisor/stop.py`;
 `fit_custom_model` (condition C) → `advisor/analysis.py`.
 
-### 3.3 One scripted episode
+## 5. Guards
 
-`engine/play.py:play` is the whole game in about fifteen lines: per round, ask the player for
-a batch (`choose(state, state.next_round)`), then `campaign.submit(ids)`; an empty batch stops
-the campaign; at the end `settle()` and `score()`. No tools, no MCP. It is the best place to
-start reading, because it shows the game without the agent machinery around it.
+Some refusals are written more than once, **on purpose**: each copy guards a different way in
+(defence in depth). Not every copy has a test that fails without it: a duplicated held-out
+check is one of the mutants deliberately left alive. So if you find the same check in two
+places, look it up here before merging them; the tests may not stop you.
 
-Every scripted run goes through it: `eval/ladder.py:run_game` (the ladder),
-`eval/scripted.py:play_scripted` (`replaylab-eval scripted`) and `interfaces/cli.py:run_scripted`
-(`replaylab run-scripted`). `policies/core.py:as_choose(policy, seed)` turns a policy into the
-player, drawing with the generator of `(seed, round)`.
+### 5.1 Held-out and final-test games
 
-## 4. The layers, bottom up
+A held-out game (`split: heldout`) is played once, at the end, by the final-run script. A
+final-test game (`final_test: true`, the `AB-*` games) is played once, by the runner with
+`--final-run`, under a lock.
+
+| where | refuses | who reaches it | why this copy exists |
+| --- | --- | --- | --- |
+| `config.py:GameConfig` | a game that is both `final_test` and held-out or exploratory | every loader of `games.yaml` | the two rules above must not overlap |
+| `datasets/pool.py:load_outcomes` | held-out and final-test outcomes, unless `final_run` | everything that reads hidden outcomes | the last line: the only reader of outcomes, so no path can skip it; it refuses before opening a file |
+| `interfaces/runtime.py:build_runtime` | held-out always; final-test unless `final_run` | `replaylab serve`, the campaign CLI, the runner | refuses before a store is created, with a message for a person; `serve` and the CLI never pass `final_run` |
+| `eval/runner.py:_check_games` (via `validate_specs`) | held-out; final-test without a permit; a final test mixed with other games; a permit for another game | `replaylab-eval run`, `pilot`, `scripted` | refuses the whole matrix before the first episode, so nothing is spent |
+| `eval/runner.py:_check_permit` | an episode outside the permitted trials or conditions, or written to another records file | a final run | a permit covers one leg exactly, not "this game" |
+| `eval/setup.py:final_permit` | more than one game; an uncommitted tree (no escape hatch) | `--final-run` | the final run must be reproducible from its commit |
+| `eval/final_run.py:acquire` | a leg already run with other settings; a frozen hash or a commit that differs from the lock's | `--final-run` | the run-once rule itself, persisted in a lock file (`--lock-dir`, default `reports/final-test/`) |
+| `eval/ladder.py:run_ladder` | held-out and final-test, for every selected game | `scripts/run_ladder.py` | refuses the whole list before the first game is played |
+| `eval/ladder.py:run_game` | held-out and final-test | direct callers of one game | `run_game` is public; it must not rely on `run_ladder` having checked |
+| `eval/replay_view.py:pool_view` | held-out and final-test | `replaylab-eval view` | the page shows hidden outcomes, so it must never show these |
+| `scripts/run_ladder.py:default_games` | (skips, does not refuse) held-out, final-test, rehearsal and exploratory games | the default ladder run | convenience: the default list contains only what the ladder may play |
+
+### 5.2 Money, records and reproducibility
+
+| where | guards | why |
+| --- | --- | --- |
+| `eval/loop.py:run_episode` → `eval/spend.py:SpendGuard.check` | no model call once the cap is reached | the check comes *before* each call; the total persists in `spend.json`, so a resumed run keeps counting |
+| `eval/cli.py:run` → `eval/spend.py:refuse_if_over` | no run without a pilot projection (unless `--skip-pilot`), and none whose projection exceeds `--max-usd` | the cost is known before anything is spent |
+| `eval/setup.py:prepare` | bad concurrency, unknown model or price, missing API key, unknown condition | every setup refusal comes before the first model call |
+| `eval/setup.py:check_uncommitted` | recording from an uncommitted tree (escape: `--allow-uncommitted`, which marks every record `git_dirty`) | `config_hash` does not cover the code; the recorded commit is the only record of it |
+| `eval/loop.py` → `ResponseTruncated` | recording an episode whose reply hit the output limit | a cut reply is a failure, not the agent ending the game |
+| `eval/runner.py` (via `loop.py:unwrap`) | a `SpendCapReached` hidden inside an `ExceptionGroup` | the cap must stop the run, not be logged as one failed episode |
+| `eval/records.py:append_record` (`_drop_partial_tail`, `fsync`) | a half-written last line gluing onto the next record | an episode is recorded only if it ended normally; rerunning plays exactly the missing ones |
+| `tests/test_registered_hashes.py` | any change to the registered config and frozen hashes | the pre-registrations name those hashes |
+| `tests/test_import_boundaries.py` | an import across the layer rules (section 6) | keeps `domain` pure and nothing importing `interfaces` or `eval` |
+
+## 6. The layers, bottom up
 
 The import rules are enforced by `tests/test_import_boundaries.py` (`ALLOWED`). Reading in
 this order means you never meet a name you have not seen yet.
@@ -134,13 +211,13 @@ this order means you never meet a name you have not seen yet.
 | `datasets/` | `pool.py` | `load_pool` (visible features) and `load_outcomes` (the only reader of outcomes, refuses held-out and final-test games); `aliases.py` (`d0001` ids from sha256); `proteinbase.py`, `split_tables.py`, `splits.py`, `similarity.py`: offline table, cluster and fold builders; `anthropic.py`: the final-test pools | domain, config |
 | `store/` | `store.py:CampaignStore` | SQLite: designs, batches, outcomes, append-only event log; `snapshot()` returns a `CampaignState` | domain |
 | `backends/` | `replay.py:ReplayBackend` | holds the hidden outcomes; `submit` / `poll` / `advance`; `base.py` is the protocol a live backend will implement | domain |
-| `engine/` | `campaign.py:Campaign` | the rules of the game (clock, validation, delay); `replay.py` wires a game and resumes a killed one; `scoring.py` scores a settled campaign | domain, store, backends, datasets, config |
+| `engine/` | `play.py`, `campaign.py:Campaign` | the game loop and the rules of the game (clock, validation, delay); `replay.py` wires a game and resumes a killed one; `scoring.py` scores a settled campaign | domain, store, backends, datasets, config |
 | `advisor/` | `preprocess.py`, `model.py` | pure functions over a `CampaignState`: preprocessing (orientation applied here), logistic model with its gate (2 hits, 8 purchases), similarity, Beta hit rates, calibration of predictions (D12), stop rules, custom analysis | domain, datasets |
 | `policies/` | `core.py` | `choose(state, k, rng) -> ids`: `RandomPolicy`, `FixedMetric`, `Learner`, `LearnerSim`, `WithStop`; `purchased.py` has the purchased-scaling variants; `factory.py:make_policy` builds any of them by name (the tools, the CLIs and the ladder all use it) | domain, advisor |
 | `interfaces/` | `tools/toolbox.py:Toolbox` | the 15 tools, one line each, grouped into `tools/pool.py`, `campaign.py`, `models.py`, `estimates.py`; `tools/catalog.py` the names, groups and the descriptions the agent reads; `schemas.py` the responses; `server.py` MCP; `runtime.py` one game + one seed; `cli.py` | everything above; **nothing imports it** |
 | `eval/` | `runner.py`, `loop.py` | the experiment harness (next section) | anything; nothing imports it |
 
-## 5. `eval/`, file by file
+## 7. `eval/`, file by file
 
 | file | role |
 | --- | --- |
@@ -160,7 +237,7 @@ this order means you never meet a name you have not seen yet.
 | `final_run.py` | the run-once guard and lock file of the final test |
 | `replay_view.py`, `smoke.py` | the HTML replay page; the endpoint probe |
 
-## 6. Configuration and data on disk
+## 8. Configuration and data on disk
 
 | path | holds |
 | --- | --- |
@@ -172,9 +249,10 @@ this order means you never meet a name you have not seen yet.
 | `prompts/system.md` | the one system prompt, shared by all conditions |
 | `data/processed/`, `data/splits/` | built tables, clusters and folds (git-ignored except the frozen split) |
 | `runs/<dir>/` | `episodes.jsonl`, `spend.json`, `pilot.json`, `errors.jsonl` per run (git-ignored) |
+| `reports/final-test/` | the final-test lock files, one per game, written by the first `--final-run` (commit them) |
 | `tests/snapshots/tools.json` | the tool schemas and descriptions as the agent sees them |
 
-## 7. Suggested first hour
+## 9. Suggested first hour
 
 1. `domain/types.py`: the vocabulary (15 minutes).
 2. `engine/play.py:play`, then `engine/campaign.py`: the game itself.
@@ -195,6 +273,6 @@ uv run replaylab run-scripted --policy learner_sim --game N-dev --seed 3
 uv run replaylab-eval conditions
 ```
 
-Good tests to read alongside: `tests/test_engine_campaign.py` (the rules), `tests/test_tools_leaks.py`
-(what may never appear in a response), `tests/test_eval_loop.py` with `tests/fakes_llm.py` (the
-loop against a scripted fake model).
+Good tests to read alongside: `tests/test_engine_play.py` (the loop), `tests/test_engine_campaign.py`
+(the rules), `tests/test_tools_leaks.py` (what may never appear in a response),
+`tests/test_eval_loop.py` with `tests/fakes_llm.py` (the loop against a scripted fake model).

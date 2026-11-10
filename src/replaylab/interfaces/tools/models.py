@@ -3,7 +3,9 @@
 The statistics live in ``advisor/`` (``model.fit_model``, ``analysis.analyse``) and the
 policies in ``policies/``; this module checks the agent's arguments, calls them, and reports
 the result. Models fit on **oriented** features (lower-is-better columns flipped), but every
-weight reported here is turned back into the **raw-value** direction the agent sees.
+weight reported here is turned back into the **raw-value** direction the agent sees. Every
+fit reads ``campaign.state()``, which holds delivered outcomes only, so no model here can
+learn from a design that was not bought and delivered.
 """
 
 from __future__ import annotations
