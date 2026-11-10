@@ -308,7 +308,7 @@ single generator mix, a single scoring pipeline and a single pair of vendors.
 
 ### Amendment, 2026-11-01: the primary outcome is the tool contrast
 
-Added **before any episode of any `AB-` game was played**, at commit `1a6cb9f` with a clean
+Added **before any episode of any `AB-` game was played**, at commit `2d568d9` with a clean
 tree. Checked at the time of writing: no `runs/ab-*` directory exists, no lock file exists for
 any of the four games, and no record in any run directory names an `AB-` game. Nothing about
 the run itself changes -- same four games, same conditions A/B1/B2, same two models, same
