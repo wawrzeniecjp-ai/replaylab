@@ -157,6 +157,19 @@ def test_proposed_batches_do_not_use_a_batch_slot():
     assert state.rounds_left == 2
 
 
+def test_next_round_counts_batches_that_left_not_the_clock():
+    designs = make_designs(5)
+    fresh = CampaignState(make_config(rounds=3), designs, (), clock=0)
+    assert fresh.next_round == 1
+    one_bought = (Batch("b1", 1, ("d1", "d2"), BatchStatus.SUBMITTED),)
+    # a wait moved the clock to 5; only one batch has left, so the next is round 2
+    assert CampaignState(make_config(rounds=3), designs, one_bought, clock=5).next_round == 2
+    proposed_only = (Batch("b1", 1, ("d1",)),)  # a proposal spends no round
+    assert CampaignState(make_config(rounds=3), designs, proposed_only).next_round == 1
+    all_used = CampaignState(make_config(rounds=1), designs, one_bought)
+    assert all_used.next_round == 2  # rounds + 1: no batch can be bought any more
+
+
 def test_negative_clock_is_rejected():
     with pytest.raises(ValueError, match="clock"):
         CampaignState(make_config(), make_designs(2), clock=-1)

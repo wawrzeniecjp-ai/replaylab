@@ -18,11 +18,12 @@ from typing import Annotated, Any
 
 import typer
 
+from replaylab.engine.play import play
 from replaylab.interfaces.policy_factory import UnknownPolicy, make_policy
 from replaylab.interfaces.runtime import Runtime, SetupError, build_runtime
 from replaylab.interfaces.server import serve as serve_stdio
 from replaylab.interfaces.tools import Toolbox, ToolFailure, resolve_tool_selection
-from replaylab.policies import make_rng
+from replaylab.policies import as_choose
 from replaylab.store import CampaignStore
 
 app = typer.Typer(
@@ -203,17 +204,7 @@ def run_scripted(
         )
     except UnknownPolicy as error:
         raise _fail(f"error: {error}", 2) from None
-    campaign = runtime.env.campaign
-    while not campaign.is_finished():
-        state = campaign.state()
-        slot = state.config.rounds - state.rounds_left + 1
-        ids = scripted.choose(state, state.config.batch_size, make_rng(seed, slot))
-        if not ids:
-            campaign.stop("policy returned an empty batch")
-            break
-        campaign.submit(ids)
-    campaign.settle()
-    card = runtime.env.score()
+    card = play(runtime.env, as_choose(scripted, seed)).score
     _emit(
         {
             "game": game,

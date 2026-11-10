@@ -19,8 +19,8 @@ see `docs/walkthrough.md`.
          |                                                    |
    eval/mcp_bridge.py  -- in-memory MCP client                |
          |                                                    |
-   interfaces/server.py  (MCP tool schemas)                   |
-         |                                                    |
+   interfaces/server.py  (MCP tool schemas)                   v
+         |                                             engine/play.py  (the game loop)
    interfaces/tools.py   Toolbox: the 15 tools  ------> policies/ (propose_batch)
          |                                         \--> advisor/  (fit, similarity, rates, stop)
          v                                                    |
@@ -108,10 +108,15 @@ The advisor tools follow the same shape: `Toolbox.fit_and_rank` → `advisor/pre
 
 ### 3.3 One scripted episode
 
-`eval/ladder.py:run_game` (and its twin `eval/scripted.py:play_scripted`) is the whole game
-in about fifteen lines: per round, `policy.choose(state, k, make_rng(seed, round))`, then
-`campaign.submit(ids)`; at the end `settle()` and `score()`. No tools, no MCP. It is the best
-place to start reading, because it shows the game without the agent machinery around it.
+`engine/play.py:play` is the whole game in about fifteen lines: per round, ask the player for
+a batch (`choose(state, state.next_round)`), then `campaign.submit(ids)`; an empty batch stops
+the campaign; at the end `settle()` and `score()`. No tools, no MCP. It is the best place to
+start reading, because it shows the game without the agent machinery around it.
+
+Every scripted run goes through it: `eval/ladder.py:run_game` (the ladder),
+`eval/scripted.py:play_scripted` (`replaylab-eval scripted`) and `interfaces/cli.py:run_scripted`
+(`replaylab run-scripted`). `policies/core.py:as_choose(policy, seed)` turns a policy into the
+player, drawing with the generator of `(seed, round)`.
 
 ## 4. The layers, bottom up
 
@@ -167,7 +172,7 @@ this order means you never meet a name you have not seen yet.
 ## 7. Suggested first hour
 
 1. `domain/types.py`: the vocabulary (15 minutes).
-2. `eval/ladder.py:run_game`, then `engine/campaign.py`: the game itself.
+2. `engine/play.py:play`, then `engine/campaign.py`: the game itself.
 3. `policies/core.py:Learner.choose` with `advisor/preprocess.py` and `advisor/model.py`: what
    "a scripted learner" means, including the model gate that explains the E result.
 4. `interfaces/tools.py`: skim `query_pool`, `submit_batch`, `fit_and_rank`, `similar_designs`,

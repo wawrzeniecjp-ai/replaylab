@@ -46,9 +46,10 @@ from replaylab.datasets.aliases import Aliaser
 from replaylab.datasets.pool import DesignPool, load_pool
 from replaylab.datasets.split_tables import target_has_clusters
 from replaylab.domain.features import FeatureConfig
-from replaylab.domain.types import Design
+from replaylab.domain.types import CampaignState, Design
+from replaylab.engine.play import play
 from replaylab.engine.replay import build_replay_campaign
-from replaylab.engine.scoring import ScoreCard, score
+from replaylab.engine.scoring import ScoreCard
 from replaylab.policies.core import (
     FixedMetric,
     Learner,
@@ -56,7 +57,7 @@ from replaylab.policies.core import (
     Policy,
     RandomPolicy,
     WithStop,
-    make_rng,
+    as_choose,
 )
 from replaylab.policies.purchased import PurchasedLearner, PurchasedLearnerSim
 
@@ -111,20 +112,18 @@ def run_game(
         folds_path=folds_path,
         clusters_path=clusters_path,
     )
-    for round_index in range(1, game.rounds + 1):
-        state = env.campaign.state()
-        if stop_trace is not None:
-            stop_trace.append(stop_advice(state))
-        ids = policy.choose(state, game.batch_size, make_rng(seed, round_index))
-        if ids == []:
-            env.campaign.stop("policy returned an empty batch")
-            break
-        env.campaign.submit(ids)
-    env.campaign.settle()
-    # A pool without cluster rows (the small stop-game targets) is scored without
-    # distinct_families rather than raising ScoringError for every hit.
-    context = env.context if env.context.clusters else None
-    return score(env.campaign.state(), context=context)
+
+    def record_advice(state: CampaignState) -> None:
+        stop_trace.append(stop_advice(state))
+
+    # env.score() scores a pool without cluster rows (the small stop-game targets) without
+    # distinct_families, rather than raising ScoringError for every hit.
+    played = play(
+        env,
+        as_choose(policy, seed),
+        before_round=None if stop_trace is None else record_advice,
+    )
+    return played.score
 
 
 @dataclass(frozen=True)

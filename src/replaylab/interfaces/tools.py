@@ -324,9 +324,6 @@ class Toolbox:
             kd_molar=outcome.kd_molar,
         )
 
-    def _slot(self, state: CampaignState) -> int:
-        return state.config.rounds - state.rounds_left + 1
-
     def _pending_batches(self, state: CampaignState) -> list:
         return [b for b in state.batches if b.status.value in ("submitted", "partial")]
 
@@ -732,7 +729,7 @@ class Toolbox:
             raise ToolFailure(str(error)) from None
         # The same generator a scripted run uses for this round, so asking a policy here
         # gives the batch that policy would have bought on this seed.
-        ids = scripted.choose(state, k, make_rng(self._ctx.seed, self._slot(state)))
+        ids = scripted.choose(state, k, make_rng(self._ctx.seed, state.next_round))
         if not ids:
             raise ToolFailure("No unpurchased designs are left to propose.")
 
@@ -821,7 +818,7 @@ class Toolbox:
         taken = {r.design_id for r in ranked[:n_top]}
         remaining = [d for d in available if d not in taken]
         n_explore = min(top_k - n_top, len(remaining))
-        rng = make_rng(self._ctx.seed, self._slot(state))
+        rng = make_rng(self._ctx.seed, state.next_round)
         picks = (
             sorted(rng.choice(len(remaining), size=n_explore, replace=False).tolist())
             if n_explore

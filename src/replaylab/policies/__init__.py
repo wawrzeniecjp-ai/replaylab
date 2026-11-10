@@ -7,6 +7,7 @@ from replaylab.policies.core import (
     Policy,
     RandomPolicy,
     WithStop,
+    as_choose,
     make_rng,
 )
 from replaylab.policies.purchased import (
@@ -24,6 +25,7 @@ __all__ = [
     "Policy",
     "RandomPolicy",
     "WithStop",
+    "as_choose",
     "make_rng",
     "purchased_scale",
 ]
