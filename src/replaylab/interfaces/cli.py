@@ -19,11 +19,11 @@ from typing import Annotated, Any
 import typer
 
 from replaylab.engine.play import play
-from replaylab.interfaces.policy_factory import UnknownPolicy, make_policy
 from replaylab.interfaces.runtime import Runtime, SetupError, build_runtime
 from replaylab.interfaces.server import serve as serve_stdio
 from replaylab.interfaces.tools import Toolbox, ToolFailure, resolve_tool_selection
 from replaylab.policies import as_choose
+from replaylab.policies.factory import UnknownPolicy, make_policy
 from replaylab.store import CampaignStore
 
 app = typer.Typer(

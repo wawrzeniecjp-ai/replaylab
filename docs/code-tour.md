@@ -102,7 +102,7 @@ Read these with the files open; each step names the function to jump to.
 
 The advisor tools follow the same shape: `Toolbox.fit_and_rank` → `advisor/preprocess.py` +
 `advisor/model.py:fit_model`; `similar_designs` → 3-mer vectors from `datasets/similarity.py`;
-`propose_batch` → `interfaces/policy_factory.py:make_policy` → `policies/`; `estimate_hit_rate`
+`propose_batch` → `policies/factory.py:make_policy` → `policies/`; `estimate_hit_rate`
 → `advisor/rates.py`; `stop_advice` → `advisor/stop.py`; `fit_custom_model` (condition C) →
 `advisor/analysis.py`.
 
@@ -132,7 +132,7 @@ this order means you never meet a name you have not seen yet.
 | `backends/` | `replay.py:ReplayBackend` | holds the hidden outcomes; `submit` / `poll` / `advance`; `base.py` is the protocol a live backend will implement | domain |
 | `engine/` | `campaign.py:Campaign` | the rules of the game (clock, validation, delay); `replay.py` wires a game and resumes a killed one; `scoring.py` scores a settled campaign | domain, store, backends, datasets, config |
 | `advisor/` | `preprocess.py`, `model.py` | pure functions over a `CampaignState`: preprocessing (orientation applied here), logistic model with its gate (2 hits, 8 purchases), similarity, Beta hit rates, stop rules, custom analysis | domain, datasets |
-| `policies/` | `core.py` | `choose(state, k, rng) -> ids`: `RandomPolicy`, `FixedMetric`, `Learner`, `LearnerSim`, `WithStop`; `purchased.py` has the purchased-scaling variants | domain, advisor |
+| `policies/` | `core.py` | `choose(state, k, rng) -> ids`: `RandomPolicy`, `FixedMetric`, `Learner`, `LearnerSim`, `WithStop`; `purchased.py` has the purchased-scaling variants; `factory.py:make_policy` builds any of them by name (the tools, the CLIs and the ladder all use it) | domain, advisor |
 | `interfaces/` | `tools.py:Toolbox` | the 15 tools (`CAMPAIGN_TOOLS`, `ADVISOR_TOOLS`, `ANALYSIS_TOOLS`); `schemas.py` the responses; `server.py` MCP; `runtime.py` one game + one seed; `cli.py` | everything above; **nothing imports it** |
 | `eval/` | `runner.py`, `loop.py` | the experiment harness (next section) | anything; nothing imports it |
 

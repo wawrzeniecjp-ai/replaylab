@@ -41,8 +41,8 @@ from replaylab.engine import (
     UnknownDesignError,
 )
 from replaylab.interfaces import schemas as s
-from replaylab.interfaces.policy_factory import UnknownPolicy, make_policy
 from replaylab.policies import make_rng
+from replaylab.policies.factory import UnknownPolicy, make_policy
 from replaylab.policies.purchased import purchased_scale
 from replaylab.store import CampaignStore
 

@@ -6,9 +6,9 @@ from typing import Any
 
 from replaylab.engine import ScoreCard
 from replaylab.engine.play import play
-from replaylab.interfaces.policy_factory import make_policy
 from replaylab.interfaces.runtime import Runtime
 from replaylab.policies import as_choose
+from replaylab.policies.factory import make_policy
 
 
 def scores_dict(card: ScoreCard) -> dict[str, Any]:
