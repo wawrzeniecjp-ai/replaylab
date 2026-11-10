@@ -176,12 +176,6 @@ class Campaign:
         numbers = [int(m.group(1)) for b in state.batches if (m := _BATCH_NUMBER.match(b.batch_id))]
         return f"b{max(numbers, default=0) + 1:03d}"
 
-    @staticmethod
-    def _slot(state: CampaignState) -> int:
-        # The round a new batch would occupy: purchased batches so far, plus one.
-        # Proposals do not use a slot until they are submitted.
-        return sum(1 for b in state.batches if b.status.is_purchased) + 1
-
     # --- acting ------------------------------------------------------------------------
 
     def propose(
@@ -194,7 +188,7 @@ class Campaign:
         """Record a proposed batch. Nothing is spent and nothing leaves the process."""
         state = self.state()
         self._validate(state, design_ids, submitting=False)
-        batch = Batch(self._next_batch_id(state), self._slot(state), tuple(design_ids))
+        batch = Batch(self._next_batch_id(state), state.next_round, tuple(design_ids))
         self._store.record_batch(self._cid, batch)
         if predicted_rate is not None:
             self._store.record_prediction(
@@ -222,7 +216,7 @@ class Campaign:
         )
         created_here = proposal is None
         if created_here:
-            proposal = Batch(self._next_batch_id(state), self._slot(state), ids)
+            proposal = Batch(self._next_batch_id(state), state.next_round, ids)
             self._store.record_batch(self._cid, proposal)
         try:
             handle = self._backend.submit(proposal)

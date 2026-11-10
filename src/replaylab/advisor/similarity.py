@@ -1,8 +1,15 @@
-"""Similarity of unpurchased designs to the hits found so far."""
+"""3-mer sequence similarity between the designs of one campaign.
+
+One index per campaign (per seed: it is keyed by the seed's aliases). It serves the scripted
+``learner_sim`` policies (``max_to_hits``) and the tools (``matrix`` for ``fit_custom_model``'s
+similarity feature, ``nearest`` for ``similar_designs``).
+"""
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
+
+import numpy as np
 
 from replaylab.datasets.similarity import DEFAULT_K, kmer_matrix
 from replaylab.domain.types import CampaignState, Design
@@ -32,3 +39,33 @@ class SimilarityIndex:
         return {
             d: (float(similarity[i, best[i]]), hits[best[i]]) for i, d in enumerate(unpurchased)
         }
+
+    def matrix(self, rows: Sequence[str], columns: Sequence[str]) -> np.ndarray:
+        """Cosine similarity of every row design to every column design (dense)."""
+        if not rows or not columns:
+            return np.zeros((len(rows), len(columns)))
+        return (
+            self._matrix[[self._row[r] for r in rows]]
+            @ self._matrix[[self._row[c] for c in columns]].T
+        ).toarray()
+
+    def nearest(
+        self, given: Sequence[str], candidates: Sequence[str], k: int
+    ) -> list[tuple[str, float, str]]:
+        """The ``k`` candidates closest to any of ``given``, with the nearest given id.
+
+        Sorted by similarity, then by id; a tie between given designs goes to the smallest id.
+        """
+        given_sorted = sorted(given)
+        if not candidates:
+            return []
+        sims = (
+            self._matrix[[self._row[c] for c in candidates]]
+            @ self._matrix[[self._row[g] for g in given_sorted]].T
+        ).toarray()
+        best = sims.argmax(axis=1)  # first maximum: the smallest given id
+        rows = [
+            (c, float(sims[i, best[i]]), given_sorted[best[i]]) for i, c in enumerate(candidates)
+        ]
+        rows.sort(key=lambda r: (-r[1], r[0]))
+        return rows[:k]

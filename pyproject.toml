@@ -71,6 +71,6 @@ select = ["E", "F", "I", "UP", "B"]
 
 [tool.ruff.lint.per-file-ignores]
 # Tool descriptions and agent-facing error messages are long sentences on purpose.
-"src/replaylab/interfaces/tools.py" = ["E501"]
+"src/replaylab/interfaces/tools/*.py" = ["E501"]
 "src/replaylab/eval/cli.py" = ["E501"]  # usage examples in the module docstring
 "tests/**" = ["E501"]  # data tables

@@ -11,6 +11,7 @@ from toolbox_env import make_env
 from typer.testing import CliRunner
 
 from replaylab.eval import cli as eval_cli
+from replaylab.eval import setup as eval_setup
 from replaylab.eval.records import read_records
 
 runner = CliRunner()
@@ -79,7 +80,7 @@ def setup(tmp_path_factory, monkeypatch):
         )
     )
     (root / "system.md").write_text("You manage a campaign.")
-    monkeypatch.setattr(eval_cli, "_make_llm", lambda cfg: HeuristicLLM(batch=5))
+    monkeypatch.setattr(eval_setup, "make_llm", lambda cfg: HeuristicLLM(batch=5))
     common = [
         "--tables", str(env.tables_dir), "--games-config", str(env.games),
         "--features-config", str(env.features), "--conditions-config", str(root / "conditions.yaml"),
@@ -94,7 +95,7 @@ def setup(tmp_path_factory, monkeypatch):
     ]
     # The guard asks git about the repo that holds the imported package, which is dirty
     # whenever this feature itself is uncommitted. The guard has its own tests below.
-    monkeypatch.setattr(eval_cli, "uncommitted_frozen_paths", lambda: [])
+    monkeypatch.setattr(eval_setup, "uncommitted_frozen_paths", lambda: [])
     return {"common": common, "model": model_args, "root": root}
 
 
@@ -248,7 +249,7 @@ def test_bad_setups_exit_2_with_a_reason(setup, tmp_path, extra, needle):
 
 
 def test_a_missing_api_key_is_a_setup_error_not_a_crash(setup, tmp_path, monkeypatch):
-    monkeypatch.undo()  # use the real _make_llm
+    monkeypatch.undo()  # use the real make_llm
     monkeypatch.delenv("KEY_FOR_TEST", raising=False)
     args = [
         "--run-dir",
@@ -355,10 +356,10 @@ def test_the_config_hash_of_an_openai_model_is_what_it_was_before_the_anthropic_
     price = Price("USD", "d", "s", 1.0, 0.1, 2.0)
     old_cfg = {k: v for k, v in asdict(cfg).items() if k != "api"}
     old_price = {k: v for k, v in asdict(price).items() if k != "cache_write_per_mtok"}
-    assert eval_cli._hashed(cfg) == old_cfg and eval_cli._hashed(price) == old_price
+    assert eval_setup.hashed(cfg) == old_cfg and eval_setup.hashed(price) == old_price
     anthropic = ModelConfig("m", "http://x", "id", "KEY", "p", api="anthropic")
-    assert eval_cli._hashed(anthropic)["api"] == "anthropic"
-    assert eval_cli._hashed(Price("USD", "d", "s", 1, 0.1, 2, 5.0))["cache_write_per_mtok"] == 5.0
+    assert eval_setup.hashed(anthropic)["api"] == "anthropic"
+    assert eval_setup.hashed(Price("USD", "d", "s", 1, 0.1, 2, 5.0))["cache_write_per_mtok"] == 5.0
 
 
 def test_an_anthropic_model_needs_a_cache_write_price(setup, tmp_path):
@@ -413,7 +414,7 @@ def test_smoke_plays_three_turns_passes_thinking_back_and_records_nothing(
 
     fake = FakeAnthropic(anthropic_script())
     llm = AnthropicClient(fake, "claude-x", sleep=no_sleep)
-    monkeypatch.setattr(eval_cli, "_make_llm", lambda cfg: llm)
+    monkeypatch.setattr(eval_setup, "make_llm", lambda cfg: llm)
     result = invoke(smoke_args(setup, tmp_path))
     assert result.exit_code == 0, result.output
     report = json.loads((tmp_path / "smoke.json").read_text())
@@ -442,7 +443,7 @@ def test_smoke_fails_when_the_cache_is_never_read(setup, tmp_path, monkeypatch):
     from replaylab.eval.llm_anthropic import AnthropicClient
 
     llm = AnthropicClient(FakeAnthropic(anthropic_script(0)), "claude-x", sleep=no_sleep)
-    monkeypatch.setattr(eval_cli, "_make_llm", lambda cfg: llm)
+    monkeypatch.setattr(eval_setup, "make_llm", lambda cfg: llm)
     result = invoke(smoke_args(setup, tmp_path))
     assert result.exit_code == 1
     assert json.loads((tmp_path / "smoke.json").read_text())["checks"]["cache_reads"] is False
@@ -455,7 +456,7 @@ def test_smoke_reports_a_failed_model_call(setup, tmp_path, monkeypatch):
     from replaylab.eval.llm_anthropic import AnthropicClient
 
     llm = AnthropicClient(FakeAnthropic([StatusError(400, "bad param")]), "x", sleep=no_sleep)
-    monkeypatch.setattr(eval_cli, "_make_llm", lambda cfg: llm)
+    monkeypatch.setattr(eval_setup, "make_llm", lambda cfg: llm)
     result = invoke(smoke_args(setup, tmp_path))
     assert result.exit_code == 1 and "bad param" in result.output
 
@@ -468,7 +469,7 @@ def test_smoke_fails_when_no_thinking_came_back_to_test_the_pass_back(setup, tmp
 
     script = anthropic_script(thinking=False)
     llm = AnthropicClient(FakeAnthropic(script), "claude-x", sleep=no_sleep)
-    monkeypatch.setattr(eval_cli, "_make_llm", lambda cfg: llm)
+    monkeypatch.setattr(eval_setup, "make_llm", lambda cfg: llm)
     result = invoke(smoke_args(setup, tmp_path))
     assert result.exit_code == 1
     report = json.loads((tmp_path / "smoke.json").read_text())
@@ -482,7 +483,7 @@ def test_smoke_fails_when_no_thinking_came_back_to_test_the_pass_back(setup, tmp
 def dirty(monkeypatch):
     """Make the CLI believe src/ has uncommitted changes."""
     monkeypatch.setattr(
-        eval_cli, "uncommitted_frozen_paths", lambda: [" M src/replaylab/eval/loop.py"]
+        eval_setup, "uncommitted_frozen_paths", lambda: [" M src/replaylab/eval/loop.py"]
     )
 
 

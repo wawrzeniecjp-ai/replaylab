@@ -40,10 +40,11 @@ came up that are not failures but should be known:
   This is a reasonable choice but the README does not state it; 136,039 of the values shown
   to agents were such means.
 * **The orientation control arm names the wrong commit.** In `orient-ds` and `orient-mimo`
-  the control arm (B1ctl) was played from a worktree at `aaeb1af` but its records say
-  `be91889f`, because `git_sha` was then read from the shell's folder, not the code's (fixed
-  in `df94134`). The arms still differ in config hash, so the comparison stands; only the
-  recorded commit is wrong.
+  the control arm (B1ctl) was played from a worktree at `74acb41` but its records say
+  `be91889f` (a pre-rewrite hash, now `a162359a`; see `docs/history-rewrite.md`), because
+  `git_sha` was then read from the shell's folder, not the code's (fixed in `6f01231`). The
+  arms still differ in config hash, so the comparison stands; only the recorded commit is
+  wrong.
 * **Some arms span several commits** under one config hash (part of `ds2`, `mimo2`,
   `egfr-ds`). Allowed by design (the hash pins what the model saw), and listed by audit 4.
 

@@ -1,4 +1,8 @@
-"""The scripted ladder: random, fixed metric, learner, learner plus similarity."""
+"""The scripted ladder: random, fixed metric, learner, learner plus similarity.
+
+Every policy is ``choose(state, k, rng) -> ids`` (``core.py``); ``factory.py:make_policy``
+builds any of them by name, for the tools, the CLIs and the ladder alike.
+"""
 
 from replaylab.policies.core import (
     FixedMetric,
@@ -7,6 +11,7 @@ from replaylab.policies.core import (
     Policy,
     RandomPolicy,
     WithStop,
+    as_choose,
     make_rng,
 )
 from replaylab.policies.purchased import (
@@ -24,6 +29,7 @@ __all__ = [
     "Policy",
     "RandomPolicy",
     "WithStop",
+    "as_choose",
     "make_rng",
     "purchased_scale",
 ]

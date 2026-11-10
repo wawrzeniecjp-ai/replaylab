@@ -242,6 +242,16 @@ class CampaignState:
         return max(0, self.config.rounds - used)
 
     @property
+    def next_round(self) -> int:
+        """The 1-based round the next batch would be bought in (``rounds + 1`` once all are used).
+
+        Waiting does not advance it: only a batch that leaves the process uses a round. Scripted
+        players seed their generator with ``(seed, next_round)``, so this number is part of what
+        makes a run reproducible.
+        """
+        return self.config.rounds - self.rounds_left + 1
+
+    @property
     def finished(self) -> bool:
         """True when no further batch can be submitted: stopped, or rounds or budget used up."""
         return self.stopped or self.rounds_left == 0 or self.budget_remaining <= 0

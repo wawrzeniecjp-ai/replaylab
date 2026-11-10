@@ -71,8 +71,8 @@ def test_fixed_metric_policies_ignore_the_seed_for_their_choices(env):
 
 def test_run_scripted_matches_the_scripted_engine_loop(env):
     """The CLI result equals playing the policy by hand through the toolbox."""
-    from replaylab.interfaces.policy_factory import make_policy
     from replaylab.policies import make_rng
+    from replaylab.policies.factory import make_policy
 
     toolbox = toolbox_for(env, seed=4)
     ctx = toolbox._ctx

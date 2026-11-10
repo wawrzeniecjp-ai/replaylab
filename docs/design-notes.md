@@ -1,7 +1,7 @@
 # Design notes
 
-The numbers behind every choice that the task cards ask to be recorded, plus the
-places where the T20 card was ambiguous and what was decided instead.
+The numbers behind every choice that the task specifications ask to be recorded, plus the
+places where the T20 specification was ambiguous and what was decided instead.
 Date: 2026-10-13.
 
 ## 1. Phase 0 analyses (`notes/week0/`, gitignored)
@@ -63,14 +63,14 @@ one extra component (632). Exact integer arithmetic over all 1030x1030 pairs
 agrees with the code: **631 clusters**, largest 125, 570 singletons.
 `data/splits/*` did not change (the rebuild is byte-identical).
 
-## 3. T20 decisions where the card was ambiguous
+## 3. T20 decisions where the specification was ambiguous
 
 1. **The `SimilarityIndex` is built per seed, not once per game.** The card says
    "built once per game ... not per seed", but aliases depend on the seed
    (decision D4, `sha256(seed|id)`), so an index keyed by one seed's aliases
    points at the *wrong sequences* for every other seed and `learner_sim` would
    silently learn from scrambled similarity. The `Preprocessor` (feature values
-   only, order-invariant) is built once per game as the card asks.
+   only, order-invariant) is built once per game as the specification asks.
    *Confirmed in practice:* the first `reproduce_legacy.py` run reused one policy
    object across all 100 seeds (so one cached index), and `legacy learner_sim`
    scored 20.0 instead of ~39 while the index-free `legacy learner` matched 25.93
@@ -98,7 +98,7 @@ agrees with the code: **631 clusters**, largest 125, 570 singletons.
    (ValueError before anything loads). `load_outcomes` already refuses held-out
    reads without `final_run=True`, so the split has three guards.
 5. **The legacy script's random stream** is `make_rng(seed, round)`, the same
-   stream the library uses; the card does not say. Tie-breaking in the legacy
+   stream the library uses; the specification does not say. Tie-breaking in the legacy
    top-k is `(-score, design id)` like the library.
 
 ## 4. Frozen configuration (T20 step 3)
@@ -163,10 +163,10 @@ Scaling comparison (same legacy script, both scalers, 100 seeds):
 | legacy learner | 25.93 | **27.00** | pool better by 1.07 (< 2) |
 | legacy learner_sim | **38.49** | 32.22 | purchased better by **6.27 (> 2)** |
 
-* For the plain learner the difference is under the card's 2-hit threshold and
+* For the plain learner the difference is under the specification's 2-hit threshold and
   the library keeps its pool-wide default (already the library behaviour).
 * For `learner_sim`, purchased-row scaling wins by **6.27 hits -- more than 2**,
-  so per the card the library must **not** be changed without asking first.
+  so per the specification the library must **not** be changed without asking first.
   Asked and decided 2026-10-13 (section 7): keep the library pool-wide and
   track both variants in the ladder, so the `learner_sim` rows in section 6
   (pool-wide) and the `learner_sim_purchased` rows are compared side by side
@@ -268,9 +268,8 @@ rules evaluated at every round boundary regardless of the wrapper):
 * ~~Replace the table in section 2.4 of the spec~~ — paste-ready replacement
   written: `docs/spec-updates.md` (sections 2.4 and 3.5; the project document
   itself lives outside this repo and still needs the paste).
-* ~~Send the pack author the T20 outputs~~ — the bundle is assembled in
-  `docs/phase6-handoff.md` (make test, ladder tables, legacy table,
-  features.yaml, llm_smoke.txt); sending it triggers the phase-6 pack
+* ~~Send the T20 outputs for review~~ — done (make test, ladder tables,
+  legacy table, features.yaml, llm_smoke.txt); the review opened phase 6
   (MCP server + CLI).
 * ~~Pin `spec/openapi.prod.json`~~ — done 2026-10-13: fetched from
   `https://devs.adaptyvbio.com/api/v1/openapi.json` (openapi 3.1.0,
@@ -280,7 +279,7 @@ rules evaluated at every round boundary regardless of the wrapper):
 
 ## 8. Pre-registration: does a longer horizon change what E measures? (2026-10-14)
 
-Written **before** the run, at the pack author's request: declare the question
+Written **before** the run, at the reviewer's request: declare the question
 and the horizons first, report every horizon, never the best one.
 
 **Question.** E fits a model in exactly one of its four rounds, so every
@@ -297,7 +296,7 @@ does the learner fit regularly, and at what purchase count does it cross
 * `fixed:esmfold_plddt` -- which is byte-for-byte what the learner's fallback
   buys -- scores 5.00 in 60 purchases and **4.00 after the first 45**, so
   the cold-start deficit against `random` (7.33 at 45 purchases) is **3.3 hits**:
-  the pack author's 3-4 estimate checks out. *(Correction written after the run:
+  the reviewer's 3-4 estimate checks out. *(Correction written after the run:
   this bullet originally claimed "1 hit after 45, deficit ~6". That came from
   misreading a three-seed trace -- 1 hit is the value at 30 purchases, 4 hits at
   45. The 100-seed curve in `reports/e_long.csv` is the authority.)*
@@ -358,7 +357,7 @@ picking one.
 ## 9. Pre-registration: the agent-vs-scripted criterion (2026-10-28)
 
 Written **before trials 5-9 of either model exist** (deepseek `runs/ds2` and
-mimo `runs/mimo2` hold only the pilots' trials 0-4), at git `4649e7b`.
+mimo `runs/mimo2` hold only the pilots' trials 0-4), at git `0568c08`.
 Disclosure: the pilot trials 0-4 are known to us (deepseek: A ahead of B1,
 paired gap +3.2); the confirmatory weight sits on the full trials 0-9, and
 nothing below may change once they are played. Same discipline as section 8.
@@ -437,17 +436,17 @@ that fails one is fixed and replayed, never analysed:
    trial (D4), never on condition or model. Every comparison pairs episodes by
    trial within one records file.
 2. *One draw per cell.* Each (model, condition, game, trial) is played once.
-   A failed episode leaves no record and is replayed (rule 4 of the handoff);
+   A failed episode leaves no record and is replayed (the project's recording rule);
    a recorded episode is never deleted or replayed to get another draw.
 3. *One configuration.* Every agent episode in a confirmatory comparison
    carries the same `config_hash`. The hash covers model, price, prompts,
    conditions, tool descriptions and limits, but not tool input schemas or
    policy code, so the `git_sha` may differ only by commits that change
    neither. Check: `git diff --stat <pilot sha>..<run sha> -- src prompts
-   config`. From `d4f7e88` (trials 0-4) to this amendment it lists only the
+   config`. From `5f58f44` (trials 0-4) to this amendment it lists only the
    replay viewer and two CLI options whose defaults reproduce the old
    behaviour (`compare --ci`, `--first-trial`; tested). Runs before
-   `d4f7e88` (`runs/ds`, `runs/mimo`) are excluded.
+   `5f58f44` (`runs/ds`, `runs/mimo`) are excluded.
 4. *Seen seeds.* Trials 0-4 were inspected (pilots, viewer) before this note,
    and tool descriptions changed after seeing them. A sensitivity line reports
    the primary comparison on trials 5-9 (5-19 if extended) alone; if its
@@ -554,11 +553,11 @@ separately under one criterion.
 **Question.** Is section 9's NO-GO a limit of the models (capable, not
 frontier)? Descriptive only: no new criterion, and section 9's verdicts stand.
 
-**Plumbing.** `eval/llm_anthropic.py` (commit `87d99a0`) adds the Anthropic
+**Plumbing.** `eval/llm_anthropic.py` (commit `c935308`) adds the Anthropic
 Messages API: streamed calls, assistant turns sent back exactly as returned
 (signed thinking blocks), cache writes billed at their own price, and no
 fallback model (a model switch mid-episode would spoil the episode).
-`replaylab-eval smoke` (commit `e81c149`) plays a few real turns of trial 999
+`replaylab-eval smoke` (commit `d8b195e`) plays a few real turns of trial 999
 with no record and checks thinking pass-back, cache reads and cost.
 
 **Opus 5.5 could not be tested:** the provider declined the requests at the
@@ -567,7 +566,7 @@ it plays whole episodes or the hypothesis is reported as untested.
 
 **Sonnet 5.5** (`sonnet`, config hash `167e3086e8cd`): adaptive thinking,
 summarized, effort high (the model's default; at medium it did not think in
-the smoke run). Prices from the API reference, to be confirmed.
+the smoke run). Prices from the API reference, to be confirmed on the pricing page before a paid run.
 
 **Results** (`runs/sonnet1`, N-dev B1, trials 0-9, `--ci 0.9`, 10000
 resamples, seed 0). Not confirmatory: trials 0-3 were inspected before the
@@ -608,12 +607,12 @@ Without the control, a change of seeds looks like a tuning effect.
 ### Iteration 1 (2026-10-29): propose_batch interface and status-tool wording
 
 **Changes.**
-* `da5c42b`: `policy` became an enum (`learner`, `learner_sim`,
+* `a448d80`: `policy` became an enum (`learner`, `learner_sim`,
   `learner_purchased`, `learner_sim_purchased`, `random`, `fixed`), `fixed`
   takes a separate `feature` parameter, every parameter has a description,
   and the description lists one neutral bullet per policy plus the fallback
   before a model can be fitted.
-* `53861c2`: the default policy is named in the schema only, no longer in
+* `2eb4a50`: the default policy is named in the schema only, no longer in
   the text; `describe_campaign`, `get_history`, `pending_batches` and
   `campaign_summary` each say what they return that the others do not.
   Ideas came from asking deepseek to review the descriptions; points without
@@ -625,12 +624,12 @@ Without the control, a change of seeds looks like a tuning effect.
 
 | run | configuration | config hash | trials | mean hits |
 | --- | --- | --- | --- | --- |
-| `runs/control1` | before iteration 1 (`2391d10`, = section 9) | `da8b881a3af2` | 20-29 | 26.0 |
-| `runs/tune1` | after both commits (`53861c2`) | `b457e246517b` | 20-29 | 25.2 |
-| (not kept) | after `da5c42b` only | not recorded | 20-24 | 19.8 |
+| `runs/control1` | before iteration 1 (`47ab75d`, = section 9) | `da8b881a3af2` | 20-29 | 26.0 |
+| `runs/tune1` | after both commits (`2eb4a50`) | `b457e246517b` | 20-29 | 25.2 |
+| (not kept) | after `a448d80` only | not recorded | 20-24 | 19.8 |
 
 Gates: 10/10 episodes recorded per run, all `finished`, one config hash per
-run; tune1 cost $0.26. The `da5c42b`-only run left no records on disk; its
+run; tune1 cost $0.26. The `a448d80`-only run left no records on disk; its
 hits (36, 27, 11, 13, 12, trial order unknown) are from hand-kept notes
 and are reported for completeness only.
 
@@ -646,7 +645,7 @@ looked like a gain over section 9 (20.5 on 0-19), but the untuned
 configuration scores 26.0 on the same seeds while `learner_sim_purchased`
 stays near 26 on both blocks: trials 20-29 suit the agent's hand-picking
 better. On trials 20-24 the three configurations scored 23.2 (old), 19.8
-(`da5c42b` only) and 25.2 (both): run-to-run sampling on fixed seeds moves a
+(`a448d80` only) and 25.2 (both): run-to-run sampling on fixed seeds moves a
 5-trial mean by several hits, so "the cheap edits pulled their weight" is not
 supported.
 
@@ -667,7 +666,7 @@ least 10 seeds, on a development block not used before (30 onwards).
 
 ### Iteration 2 (2026-10-29): say what the methods compute -- reverted
 
-**Changes** (`44a6d99`, config `9d476dc1d5d2`). `fit_and_rank` described its
+**Changes** (`fca98f6`, config `9d476dc1d5d2`). `fit_and_rank` described its
 inputs, orientation, pool standardization, L2 regularization (C = 0.1), its
 outputs and that a fit is a snapshot; each `propose_batch` bullet said what
 the policy computes (the same model as `fit_and_rank`, the exploration split,
@@ -678,7 +677,7 @@ All neutral: tests kept ranking words out.
 
 **Runs** (N-dev, B1, deepseek, trials 30-39, `--ci 0.9`, 10000 resamples,
 seed 0). `runs/tune2`: iteration 2, $0.28. `runs/control2`: iteration 1
-(`53861c2`, `b457e246517b`) from the worktree, $0.26. Gates: 10/10 each, all
+(`2eb4a50`, `b457e246517b`) from the worktree, $0.26. Gates: 10/10 each, all
 `finished`, one config hash per run.
 
 | comparison, trials 30-39 | mean diff | 90% CI | W/T/L |
@@ -713,7 +712,7 @@ Trials 30-39 are used; the next iteration starts at 40.
 
 ## 12. Pre-registration: confirmatory run of the frozen configuration (2026-10-29)
 
-Written at git `940520b`, **before any trial >= 40 has been played under any
+Written at git `4eac022`, **before any trial >= 40 has been played under any
 configuration** (checked over every records file in `runs/`). Nothing below
 may change once trial 100 is played. Same discipline as sections 8 and 9.
 
@@ -725,8 +724,8 @@ well on trials 20-29, and section 9's configuration scored -6.2 on trials
 0-19. Agent results vary a lot between seed blocks; that is why this run uses
 20 fresh trials from the start and pre-commits one extension.
 
-**Frozen configuration.** Tuning iteration 1: commit `53861c2`, whose `src`,
-`prompts` and `config` are identical to `940520b`'s; model `deepseek`
+**Frozen configuration.** Tuning iteration 1: commit `2eb4a50`, whose `src`,
+`prompts` and `config` are identical to `4eac022`'s; model `deepseek`
 (`deepseek-flash`, `config/models.yaml` as committed); config hash
 **`b457e246517b`**.
 
@@ -763,7 +762,7 @@ one is fixed and replayed, never analysed:
    are replayed by rerunning the same command.
 2. Every B1 episode ends `finished` or `agent_stopped`.
 3. Every B1 record carries config hash `b457e246517b`, and
-   `git diff --stat 940520b..<record git_sha> -- src prompts config` is empty.
+   `git diff --stat 4eac022..<record git_sha> -- src prompts config` is empty.
 4. The four scripted policies are present for every trial judged.
 
 **Seeds.** Section 9's seed rules apply. Trials 100-139 are reserved for
@@ -783,8 +782,8 @@ Extension, only if inconclusive: the same two commands with `--trials 40`
 
 **Results (evaluated 2026-10-29, gates first, then the primary as written).**
 `runs/confirm1`. Gates: (1) 20/20 B1 episodes recorded, no errors file;
-(2) 20x `finished`; (3) one config hash `b457e246517b`, played at `e9534a4`,
-`git diff --stat 940520b e9534a4 -- src prompts config` empty; (4) the four
+(2) 20x `finished`; (3) one config hash `b457e246517b`, played at `1831e4f`,
+`git diff --stat 4eac022 1831e4f -- src prompts config` empty; (4) the four
 scripted policies on every trial 100-119. Flags: 4 tool errors. Cost $0.575.
 
 | B1 vs | mean diff | 90% CI | W/T/L |
@@ -893,7 +892,7 @@ verdict. No confirmatory run is played; trials 140 onwards stay unused.
 
 ## 14. Closing the agent study (2026-10-29)
 
-The question (CLAUDE.md): does an LLM agent add anything over a ladder of
+The question (the project's own): does an LLM agent add anything over a ladder of
 scripted baselines on this task? Answer, from pre-registered tests on fresh
 seeds: **no, not over the best scripted player.**
 
@@ -936,7 +935,7 @@ extension) and 140 onwards remain unplayed.
 
 ## 15. Pre-registration: the frozen agent on the transfer set E (EGFR) (2026-10-29)
 
-Written after commit `dbff08e`, **before any agent episode on E** (every agent
+Written after commit `e2ed6bc`, **before any agent episode on E** (every agent
 episode so far is N-dev, checked over every records file in `runs/`) and
 before any episode on E trials >= 100 (the only E episodes are the phase 6
 ladder and one load check of the four scripted players on trial 999, whose
@@ -953,7 +952,7 @@ judgment adds anything, a pool where the scripts are weak is where it should
 show. E is the transfer set: the agent is run **frozen**, nothing is tuned on
 it.
 
-**Frozen configuration.** The code at `dbff08e` (the N-dev configuration, plus
+**Frozen configuration.** The code at `e2ed6bc` (the N-dev configuration, plus
 the `query_pool` fix that reads a quoted number as a number); conditions **B1**
 and **C** (`config/conditions.yaml`); models **deepseek** (config hash
 `d103491a18c7`) and **mimo** (`1665298211ef`), as committed in
@@ -1020,7 +1019,7 @@ Extension, only if triggered: the same commands with `--trials 40` (and
 
 **Results (2026-10-30: gates before hit counts).** All four gates pass per
 model: 0/40 failures, 40/40 `finished`, config hashes `d103491a18c7` (ds) and
-`1665298211ef` (mimo) exactly as registered, `git diff dbff08e..4672c20 --
+`1665298211ef` (mimo) exactly as registered, `git diff e2ed6bc..dabac07 --
 src prompts config` empty, four scripted policies complete on all 20 trials.
 
 | cell | agent - `learner_sim` (bar) | 90% CI | W/L/T | §15 verdict |
@@ -1068,7 +1067,7 @@ nothing in §15 is re-judged.
   tests that directly. Expected shapes: A ~= B1 (judgement carries it) or
   B1 > A (advisor compounds from round 3).
 * **Setup:** condition `A`, game E, trials 100-119, both models, the same
-  frozen `dbff08e` tree. The A cell carries its own config hash (conditions
+  frozen `e2ed6bc` tree. The A cell carries its own config hash (conditions
   are hashed) -- expected, and confined to that cell.
 * **Comparisons, same settings** (`--ci 0.9 --resamples 10000 --seed 0
   --trial-range 100-119`): A vs `scripted:learner_sim`, then B1 - A and
@@ -1175,7 +1174,7 @@ hold A, B1 and C only). Descriptive, like §16: no threshold, no pass/fail;
   in a cell where the advisor demonstrably helps.
 * **Setup:** condition `B2` (`config/conditions.yaml`: campaign + advisor -
   `similar_designs`), game E, trials 100-119, both models, working tree
-  `ba56753` (episodes therefore include the closing-summary call;
+  `721f252` (episodes therefore include the closing-summary call;
   `config_hash` is unchanged by it -- prompts, conditions, tool descriptions
   and limits are what the hash covers). B2's own cell carries a different
   config hash (its conditions text differs) -- expected and confined to it.
@@ -1230,7 +1229,7 @@ Readings (descriptive; §17 registered no threshold):
 ## 18. Does `similar_designs` exploit authorship? N-dev B1 vs B2 (2026-11-03)
 
 Pre-registered in `docs/prereg-authorship.md` (sections 1 to 9), written and committed
-(`8f89d49`, trial count amended in `e72bc91`) before any episode of this block existed.
+(`cc599e5`, trial count amended in `405bb81`) before any episode of this block existed.
 
 **The question.** Section 17 showed that on E the advisor's whole measurable value is
 `similar_designs`. Caveats entry 7 then found the similarity measure entangled with authorship
@@ -1243,7 +1242,7 @@ an authorship effect.
 **Setup.** Conditions B1 and B2, game N-dev, trials **140-179** (a fresh block; 0-139 were
 used by sections 9 to 14), 40 trials per arm, both models, 80 agent episodes per model plus the
 four baseline policies on the same seeds. Registered hashes `0fecb4a7e74a` (deepseek) /
-`c2c8dac7e136` (mimo) at sha `e72bc91`. Primary `B1 - B2` on hits, per model, 90% paired
+`c2c8dac7e136` (mimo) at sha `405bb81`. Primary `B1 - B2` on hits, per model, 90% paired
 bootstrap, 10,000 resamples, seed 0. Decision rule: Helps / No measurable effect / Inconclusive
 as section 4 of the prereg defines them. No extension.
 
@@ -1252,7 +1251,7 @@ as section 4 of the prereg defines them. No extension.
 | gate | deepseek | mimo |
 | --- | --- | --- |
 | 1. completeness | **pass** -- 80 episodes, all `finished` | **FAIL** -- 1 of 40 B2 episodes `max_turns` |
-| 2. one configuration | pass -- all records `0fecb4a7e74a`; `git diff e72bc91 -- src prompts config` empty | pass -- all records `c2c8dac7e136`; same diff empty |
+| 2. one configuration | pass -- all records `0fecb4a7e74a`; `git diff 405bb81 -- src prompts config` empty | pass -- all records `c2c8dac7e136`; same diff empty |
 | 3. manipulation | pass -- B1 40/40 episodes, 139 calls (3.5/ep); B2 exactly 0 | pass -- B1 40/40, 232 calls (5.8/ep); B2 exactly 0 |
 | 4. spend | pass -- $3.27502 of cap | pass -- $3.27497 of cap |
 | 5. argument validity | pass -- mean 0.998 / 1.000, min 0.963 | pass -- mean 0.9955 / 0.9941, min 0.947 |
@@ -1320,7 +1319,7 @@ family. The diversity-objective worry therefore stands, conditional on pool stru
 is a worry about scoring hits and not about this tool.
 
 **Error caught here, recorded because it reached two commits.** The first write-up of this
-section and of README 3.4 (`a44bb20`, `3bf3d33`) read E's `B1 - random` against N-dev's
+section and of README 3.4 (`a87b684`, `b3aac48`) read E's `B1 - random` against N-dev's
 `B1 - B2` and called the difference a sign reversal -- comparing two different contrasts and
 reporting an inversion that does not exist. It was found by plotting the matched contrast on
 both pools for `reports/figures/similarity-tool.svg`, not by review. **The lesson: a secondary
@@ -1350,3 +1349,23 @@ better check on that than prose, because it has to be handed both arms explicitl
 ### Status of the block
 
 N-dev trials 140-179 are **used**. A new N-dev question starts at 180.
+
+## 19. Known gaps (2026-11-10)
+
+Open points that do not change any recorded result, kept here so they are not lost.
+
+* **Parameter descriptions are uneven, and not hashed** (found 2026-11-04; deliberately not
+  fixed). In `interfaces/server.py:build_server`, only `propose_batch` (4 of 4) and
+  `fit_custom_model` (8 of 8) annotate their parameters with `Field(description=...)`; the
+  other 19 parameters of the 15 tools reach the agent with name, type and default only. Every
+  recorded run saw this same schema, so comparisons are unaffected. Neither `config_hash`
+  (`eval/setup.py:llm_config_hash`) nor the final test's `frozen_hash` covers the input
+  schemas, only `TOOL_DESCRIPTIONS`; only `tests/snapshots/tools.json` would catch a change.
+  Describing every parameter and hashing the full schemas both change the config hash, and
+  with it the final test's registered hashes (`0fecb4a7e74a` / `c2c8dac7e136`), so they wait
+  until the final test is played, or come with a new pre-registration and a fresh block.
+* **mimo's maximum output** (131K tokens) comes from third-party listings only; the
+  provider's own pages did not state it.
+* **Three phase 7 mutants are left alive on purpose**: dropping `fsync` in
+  `eval/records.py:append_record`, an abort flag that only saves setup work, and a duplicated
+  held-out check (see the guards table in `docs/code-tour.md`, section 5).

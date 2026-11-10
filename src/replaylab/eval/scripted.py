@@ -1,13 +1,14 @@
-"""Play a scripted policy on an episode seed (the same loop as ``replaylab run-scripted``)."""
+"""Play a scripted policy on an episode seed, through the one game loop (``engine.play``)."""
 
 from __future__ import annotations
 
 from typing import Any
 
 from replaylab.engine import ScoreCard
-from replaylab.interfaces.policy_factory import make_policy
+from replaylab.engine.play import play
 from replaylab.interfaces.runtime import Runtime
-from replaylab.policies import make_rng
+from replaylab.policies import as_choose
+from replaylab.policies.factory import make_policy
 
 
 def scores_dict(card: ScoreCard) -> dict[str, Any]:
@@ -25,20 +26,10 @@ def scores_dict(card: ScoreCard) -> dict[str, Any]:
 
 
 def play_scripted(runtime: Runtime, policy_name: str) -> tuple[ScoreCard, str]:
-    """Run the policy to the end of the game. Returns the score card and the stop reason."""
+    """Run the policy to the end of the game. Returns the score card and the stop reason
+    recorded in ``episodes.jsonl`` (``policy_finished`` or ``policy_stopped``)."""
     policy = make_policy(
         policy_name, runtime.feature_config, runtime.preprocessor, runtime.similarity
     )
-    campaign = runtime.env.campaign
-    reason = "policy_finished"
-    while not campaign.is_finished():
-        state = campaign.state()
-        slot = state.config.rounds - state.rounds_left + 1
-        ids = policy.choose(state, state.config.batch_size, make_rng(runtime.seed, slot))
-        if not ids:
-            campaign.stop("policy returned an empty batch")
-            reason = "policy_stopped"
-            break
-        campaign.submit(ids)
-    campaign.settle()
-    return runtime.env.score(), reason
+    played = play(runtime.env, as_choose(policy, runtime.seed))
+    return played.score, "policy_stopped" if played.stopped else "policy_finished"

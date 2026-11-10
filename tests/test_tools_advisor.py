@@ -16,9 +16,9 @@ from replaylab.advisor.stop import stop_advice as advisor_stop_advice
 from replaylab.domain.features import FeatureConfig, FeatureSpec
 from replaylab.domain.types import Design, Outcome
 from replaylab.interfaces import schemas as s
-from replaylab.interfaces.policy_factory import make_policy
 from replaylab.interfaces.tools import ToolFailure
 from replaylab.policies import FixedMetric, make_rng
+from replaylab.policies.factory import make_policy
 
 FEATURES = FeatureConfig(
     "t",

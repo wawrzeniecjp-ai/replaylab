@@ -12,6 +12,7 @@ Rules shared by all of them:
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Protocol
 
@@ -32,6 +33,16 @@ def make_rng(seed: int, round_index: int) -> np.random.Generator:
     # Seeding on (seed, round) gives each round its own stream, so a round's draws do not
     # depend on how many random numbers earlier rounds happened to use.
     return np.random.default_rng([seed, round_index])
+
+
+def as_choose(policy: Policy, seed: int) -> Callable[[CampaignState, int], list[str]]:
+    """``policy`` as the engine's per-round question (``engine.play``): a full batch, drawn
+    with the generator of ``(seed, round)``."""
+
+    def choose(state: CampaignState, round_index: int) -> list[str]:
+        return policy.choose(state, state.config.batch_size, make_rng(seed, round_index))
+
+    return choose
 
 
 class Policy(Protocol):

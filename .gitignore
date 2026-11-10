@@ -33,3 +33,7 @@ runs/
 
 # temp files
 tmp/
+
+# private: never commit (publication scrub record, local notes, the assistant's CLAUDE.md)
+private/
+CLAUDE.md

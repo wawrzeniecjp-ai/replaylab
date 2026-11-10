@@ -339,7 +339,7 @@ def test_the_registered_run_matches_the_configuration_it_will_be_played_with():
 
 def test_the_pre_registered_bar_is_a_policy_that_exists():
     """The bar named in the pre-registration has to be a policy the ladder can play."""
-    from replaylab.interfaces.policy_factory import POLICY_NAMES
+    from replaylab.policies.factory import POLICY_NAMES
 
     prereg = (ROOT / "docs/prereg-anthropic.md").read_text()
     assert "### The bar: `scripted:learner_sim`" in prereg

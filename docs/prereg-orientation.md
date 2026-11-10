@@ -22,14 +22,14 @@ a null says the agent routed around the defect and the surface mattered less tha
 | arm | condition | code |
 | --- | --- | --- |
 | treatment | `B1` | the fixed working tree |
-| control | `B1ctl` | a git worktree at **`aaeb1af`**, the commit before the fix |
+| control | `B1ctl` | a git worktree at **`74acb41`**, the commit before the fix |
 
 `B1` and `B1ctl` carry **identical tool lists** (`config/conditions-orient.yaml`); they differ
 only in which code serves them. Two labels are needed because the runner keys an episode by
 `(game, condition, trial)`, so one label cannot hold both arms in one records file.
 
 **The control reproduces the published E configuration exactly.** Verified rather than
-assumed: `git diff ba56753 aaeb1af -- prompts/ config/conditions.yaml
+assumed: `git diff 721f252 74acb41 -- prompts/ config/conditions.yaml
 src/replaylab/interfaces/` is empty, so the control's agent-facing surface is the one that
 produced §15's results.
 
@@ -44,7 +44,7 @@ the same way. Values shown to the player are still raw (D7).
 * **Game E**, the pool where the defect bit hardest (62 of 160 episodes against N-dev's 12 of
   190): two features, one of them the inverted one, so it carries half the signal.
 * **Trials 140–159**, a fresh block. Trials 100–119 are used by §15/§16 and 120–139 were
-  deliberately left unplayed, so a new idea starts at 140 (CLAUDE.md).
+  deliberately left unplayed, so a new idea starts at 140.
 * **Both models**, `deepseek` and `mimo`, each in its own run directory, since the runner keys
   episodes without the model.
 * **n = 20 per arm per model**, fixed here and not extended after looking. Any extension needs
@@ -140,7 +140,7 @@ replaylab-eval run --run-dir runs/orient-ds --model deepseek --games E \
     --conditions-config config/conditions-orient.yaml --skip-pilot
 ```
 
-The control arm, from the worktree at `aaeb1af`, pointing at **this** tree's conditions file
+The control arm, from the worktree at `74acb41`, pointing at **this** tree's conditions file
 so both arms read one definition:
 
 ```bash

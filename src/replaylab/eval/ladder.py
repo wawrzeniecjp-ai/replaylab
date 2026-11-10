@@ -46,19 +46,12 @@ from replaylab.datasets.aliases import Aliaser
 from replaylab.datasets.pool import DesignPool, load_pool
 from replaylab.datasets.split_tables import target_has_clusters
 from replaylab.domain.features import FeatureConfig
-from replaylab.domain.types import Design
+from replaylab.domain.types import CampaignState, Design
+from replaylab.engine.play import play
 from replaylab.engine.replay import build_replay_campaign
-from replaylab.engine.scoring import ScoreCard, score
-from replaylab.policies.core import (
-    FixedMetric,
-    Learner,
-    LearnerSim,
-    Policy,
-    RandomPolicy,
-    WithStop,
-    make_rng,
-)
-from replaylab.policies.purchased import PurchasedLearner, PurchasedLearnerSim
+from replaylab.engine.scoring import ScoreCard
+from replaylab.policies.core import Policy, WithStop, as_choose
+from replaylab.policies.factory import make_policy
 
 FINAL_TEST_REFUSAL = (
     "the final test is played once, by the runner with --final-run; the ladder refuses it"
@@ -111,20 +104,18 @@ def run_game(
         folds_path=folds_path,
         clusters_path=clusters_path,
     )
-    for round_index in range(1, game.rounds + 1):
-        state = env.campaign.state()
-        if stop_trace is not None:
-            stop_trace.append(stop_advice(state))
-        ids = policy.choose(state, game.batch_size, make_rng(seed, round_index))
-        if ids == []:
-            env.campaign.stop("policy returned an empty batch")
-            break
-        env.campaign.submit(ids)
-    env.campaign.settle()
-    # A pool without cluster rows (the small stop-game targets) is scored without
-    # distinct_families rather than raising ScoringError for every hit.
-    context = env.context if env.context.clusters else None
-    return score(env.campaign.state(), context=context)
+
+    def record_advice(state: CampaignState) -> None:
+        stop_trace.append(stop_advice(state))
+
+    # env.score() scores a pool without cluster rows (the small stop-game targets) without
+    # distinct_families, rather than raising ScoringError for every hit.
+    played = play(
+        env,
+        as_choose(policy, seed),
+        before_round=None if stop_trace is None else record_advice,
+    )
+    return played.score
 
 
 @dataclass(frozen=True)
@@ -240,55 +231,43 @@ class LadderGame:
         }
 
     def policies(self, seed: int, *, frozen: FrozenConfig | None = None) -> list[Policy]:
-        """The ladder's policy list for one seed, in a stable order."""
-        specs = self.feature_config.specs
+        """The ladder's policy list for one seed, in a stable order (the CSV row order).
+
+        Every policy comes from ``make_policy``, the same factory ``propose_batch`` uses, with
+        the frozen settings when given (``config/frozen_v1.yaml``, equal to the defaults).
+        Two are also played wrapped in ``WithStop`` (``learner+stop``, ``learner_sim+stop``).
+        """
+        names = self.feature_config.names
         first = self.feature_config.first_column
-        first_higher = next(s.higher_is_better for s in specs if s.name == first)
-        model = frozen.model if frozen else ModelConfig()
-        eps = frozen.eps if frozen else 0.2
-        w = frozen.w if frozen else 0.5
+        fixed = [f"fixed:{first}", *(f"fixed:{n}" for n in names if n != first)]
         # Per seed: aliases depend on the seed, so the similarity index must
         # be keyed by this seed's ids to see the right sequences.
         similarity = SimilarityIndex(self.aliased_designs(seed))
-        learner = Learner(first, self.preprocessor, first_higher, model=model, eps=eps)
-        learner_sim = LearnerSim(
-            first,
-            self.preprocessor,
-            first_higher,
-            model=model,
-            eps=eps,
-            similarity=similarity,
-            w=w,
-        )
-        policies: list[Policy] = [RandomPolicy(), FixedMetric(first, first_higher)]
-        policies.extend(
-            FixedMetric(spec.name, spec.higher_is_better) for spec in specs if spec.name != first
-        )
-        learner_purchased = PurchasedLearner(
-            first, self.preprocessor, first_higher, model=model, eps=eps
-        )
-        learner_sim_purchased = PurchasedLearnerSim(
-            first,
-            self.preprocessor,
-            first_higher,
-            model=model,
-            eps=eps,
-            similarity=similarity,
-            w=w,
-        )
-        policies.extend(
-            [
-                learner,
-                WithStop(learner),
-                learner_sim,
-                WithStop(learner_sim),
-                # both scaling variants tracked side by side until the
-                # purchased-row boost is explained (design-notes section 5)
-                learner_purchased,
-                learner_sim_purchased,
-            ]
-        )
-        return policies
+
+        def make(name: str) -> Policy:
+            return make_policy(
+                name,
+                self.feature_config,
+                self.preprocessor,
+                similarity,
+                eps=frozen.eps if frozen else 0.2,
+                model=frozen.model if frozen else None,
+                w=frozen.w if frozen else 0.5,
+            )
+
+        learner, learner_sim = make("learner"), make("learner_sim")
+        return [
+            make("random"),
+            *(make(name) for name in fixed),
+            learner,
+            WithStop(learner),
+            learner_sim,
+            WithStop(learner_sim),
+            # both scaling variants tracked side by side until the
+            # purchased-row boost is explained (design-notes section 5)
+            make("learner_purchased"),
+            make("learner_sim_purchased"),
+        ]
 
     def run(
         self,

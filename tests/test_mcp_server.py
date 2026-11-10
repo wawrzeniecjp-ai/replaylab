@@ -11,7 +11,6 @@ import pytest
 from mcp.client import Client
 from toolbox_env import make_env, toolbox_for
 
-from replaylab.interfaces.policy_factory import POLICY_NAMES
 from replaylab.interfaces.server import REGISTERED_TOOLS, build_server
 from replaylab.interfaces.tools import (
     ADVISOR_TOOLS,
@@ -20,6 +19,7 @@ from replaylab.interfaces.tools import (
     TOOL_DESCRIPTIONS,
 )
 from replaylab.interfaces.tools import resolve_tool_selection as resolve
+from replaylab.policies.factory import POLICY_NAMES
 
 SNAPSHOT = Path(__file__).parent / "snapshots" / "tools.json"
 NAME_PATTERN = re.compile(r"^[a-z][a-z0-9_]{1,63}$")
