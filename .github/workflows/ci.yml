@@ -1,0 +1,44 @@
+# Lint and the test suite on every push to main and every pull request.
+#
+# Runs what needs no private data, network or API key: `make lint`, `make test` (the CI set
+# defined in the Makefile) and the integration tests that spawn an MCP server but read no
+# data. The real-data tests (`-m data`, need data/processed) and the paid LLM tests (`-m llm`)
+# stay local.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      # Python comes from .python-version; --locked fails if uv.lock is out of date.
+      - name: Install
+        run: uv sync --locked
+
+      - name: Lint
+        run: make lint
+
+      - name: Tests
+        run: make test
+
+      - name: Integration tests (no data)
+        run: uv run pytest -q -m 'integration and not data'
