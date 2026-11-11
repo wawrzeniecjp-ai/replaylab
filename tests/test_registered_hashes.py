@@ -1,9 +1,10 @@
 """The hashes that recorded results and the final test's pre-registration depend on.
 
 ``config_hash`` is stamped into every LLM record; two records compare only if it matches.
-``frozen_hash`` is what the final test's lock pins for each ``AB-`` game. The deepseek and mimo
-values below are the ones registered in ``docs/prereg-anthropic.md`` section 6; the others were
-recorded on 2026-11-10 (commit ``2b63543``) as the baseline for the legibility refactor.
+``frozen_hash`` is what a final test's lock pins for each final-test game (the ``AB-`` games and
+``N-held``). The deepseek and mimo values below are the ones registered in
+``docs/prereg-anthropic.md`` section 6 (and reused by ``docs/prereg-heldout.md``); the others
+were recorded on 2026-11-10 (commit ``2b63543``) as the baseline for the legibility refactor.
 
 A failure means something the model sees (prompt, tool descriptions, conditions, limits, a
 model's request parameters or price) or a final-test game's frozen configuration has changed.
@@ -48,6 +49,7 @@ FROZEN_HASHES = {
     "AB-bhrf1": "4fda9854f46d",
     "AB-egfr": "25e93623ed1a",
     "AB-nipah": "de44e444dfcd",
+    "N-held": "c1149b131e11",  # registered, prereg-heldout section 4
 }
 
 

@@ -23,7 +23,7 @@ version: 1
 games:
   G: {{target: {target}, split: all, rounds: 4, batch_size: 5, budget: 20}}
   GD: {{target: {target}, split: all, rounds: 4, batch_size: 5, budget: 20, delay_rounds: 2}}
-  GH: {{target: {target}, split: heldout, rounds: 2, batch_size: 5, budget: 10}}
+  GH: {{target: {target}, split: heldout, rounds: 2, batch_size: 5, budget: 10, final_test: true}}
 """
 
 FEATURES_YAML = """\

@@ -140,8 +140,9 @@ def test_committed_games_yaml_defines_the_expected_games():
         game = games[game_id]
         got = (game.target, game.split, game.rounds, game.batch_size, game.budget)
         assert got + (game.delay_rounds, game.kind) == values, game_id
-    # the final tests are guarded, their rehearsal copy is not (prereg-anthropic.md s7)
-    final = {"AB-nipah", "AB-egfr", "AB-bbf14", "AB-bhrf1"}
+    # the final tests are guarded, their rehearsal copy is not (prereg-anthropic.md s7), and
+    # the held-out game is a final test too (prereg-heldout.md)
+    final = {"AB-nipah", "AB-egfr", "AB-bbf14", "AB-bhrf1", "N-held"}
     assert {i for i, g in games.items() if g.final_test} == final
     assert not games["AB-rehearsal"].final_test
     for game_id, target in stop_targets.items():

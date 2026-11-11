@@ -9,6 +9,7 @@ from replaylab.eval.scorers import (
     fabricated_tool_calls,
     first_batch_sort_column,
     hits,
+    metric_by_game_and_seed,
     metric_by_seed,
     stop_tradeoff,
 )
@@ -68,6 +69,13 @@ def test_metric_by_seed_pairs_and_rejects_duplicates():
     assert hits(records[0]) == 4
     with pytest.raises(ValueError, match="duplicate"):
         metric_by_seed(records + [rec([], 5, seed=1)], "G", "A")
+
+
+def test_metric_by_game_and_seed_keeps_games_apart_even_on_equal_seeds():
+    records = [rec([], 4, seed=1), rec([], 7, game="H", seed=1), rec([], 9, game="X", seed=1)]
+    assert metric_by_game_and_seed(records, ["G", "H"], "A") == {("G", 1): 4.0, ("H", 1): 7.0}
+    with pytest.raises(ValueError, match="duplicate"):
+        metric_by_game_and_seed(records + [rec([], 5, game="H", seed=1)], ["G", "H"], "A")
 
 
 # --- the bootstrap ------------------------------------------------------------------------

@@ -10,7 +10,8 @@ Usage (from the repository root):
 Writes reports/ladder.csv (one row per game, policy and seed) and reports/ladder.md
 (one table per game plus the stop-rule false-stop table on N-dev).
 
-A held-out or final-test game is refused with a ValueError: each is run once, at the end.
+A held-out or final-test game is refused with a ValueError: each is played once, by the
+runner with ``--final-run``.
 """
 
 from __future__ import annotations
@@ -38,8 +39,9 @@ def default_games(
 
     Skipped, in config order:
 
-    * held-out games: run once, at the end, by the final-run script;
-    * ``final_test`` games (the Anthropic pools): played once, by the runner with
+    * held-out games: played once, by the runner with ``--final-run`` (every held-out game
+      is also a final-test game, but is listed here, under its own heading);
+    * the other ``final_test`` games (the Anthropic pools): played once, by the runner with
       ``--final-run``; the ladder refuses them;
     * the other Anthropic-pool games, i.e. ``AB-rehearsal``: its target lives only in
       ``data/processed/anthropic-rehearsal`` (shuffled column names, drawn labels), so it is
@@ -47,7 +49,7 @@ def default_games(
     * exploratory games, unless ``include_exploratory``.
     """
     held_out = [g for g, game in games.items() if game.split == "heldout"]
-    final_test = [g for g, game in games.items() if game.final_test]
+    final_test = [g for g, game in games.items() if game.final_test and g not in held_out]
     rehearsal = [
         g
         for g, game in games.items()
@@ -61,7 +63,7 @@ def default_games(
 
     notes = []
     if held_out:
-        notes.append(f"skipping held-out game(s) {held_out} (run once, at the end)")
+        notes.append(f"skipping held-out game(s) {held_out} (played once, with --final-run)")
     if final_test:
         notes.append(
             f"skipping final-test game(s) {final_test} "

@@ -83,7 +83,7 @@ from replaylab.eval.runner import (
     run_pilot,
     run_scripted_matrix,
 )
-from replaylab.eval.scorers import metric_by_seed
+from replaylab.eval.scorers import metric_by_game_and_seed, metric_by_seed
 from replaylab.eval.setup import (
     DEFAULT,
     MAX_CONCURRENCY,
@@ -578,7 +578,13 @@ def run(
 @app.command("compare")
 def compare(
     records: Annotated[Path, typer.Option("--records", help="An episodes.jsonl file.")],
-    game: Annotated[str, typer.Option("--game", help="Game id.")],
+    game: Annotated[
+        list[str],
+        typer.Option(
+            "--game",
+            help="Game id. Repeat it to pool several games into one comparison.",
+        ),
+    ],
     a: Annotated[
         str, typer.Option("--a", help="Condition (or scripted:<policy>) that should be better.")
     ],
@@ -595,11 +601,16 @@ def compare(
         typer.Option("--trial-range", help="Only trials FIRST-LAST, inclusive, e.g. 0-9."),
     ] = None,
 ) -> None:
-    """Compare two conditions on one game, seed by seed.
+    """Compare two conditions on one game, or pooled over several games, seed by seed.
 
     For every seed that both ``--a`` and ``--b`` played, take the difference of
     ``--metric`` (a minus b); report its mean and a paired bootstrap interval at level
     ``--ci``. A seed that only one of them played is an error (exit 1).
+
+    With ``--game`` given more than once, the pairs of every game go into one bootstrap,
+    paired on ``(game, trial)``: the pooled headline of the final test. The output then
+    names the games under ``games`` instead of ``game``. A game with no pair at all is an
+    error (exit 1), so a misspelt or unplayed game cannot drop out of the pool unnoticed.
     """
     loaded = read_records(records)
 
@@ -612,16 +623,22 @@ def compare(
         bounds = [int(first), int(last)]
         loaded = [r for r in loaded if bounds[0] <= int(r["trial"]) <= bounds[1]]
 
-    # Pair a and b by episode seed; a seed played by only one of them is an error.
+    # Pair a and b by episode seed (by game and seed when pooling); a seed played by only
+    # one of them is an error.
+    games = list(dict.fromkeys(game))
     with exit_on(1, UnpairedError, ValueError):
-        result = paired_bootstrap(
-            metric_by_seed(loaded, game, a, metric),
-            metric_by_seed(loaded, game, b, metric),
-            n_resamples=resamples,
-            seed=seed,
-            ci=ci,
-        )
-    _emit({"game": game, "a": a, "b": b, "metric": metric, "trial_range": bounds, **asdict(result)})
+        if len(games) == 1:
+            side_a = metric_by_seed(loaded, games[0], a, metric)
+            side_b = metric_by_seed(loaded, games[0], b, metric)
+        else:
+            side_a = metric_by_game_and_seed(loaded, games, a, metric)
+            side_b = metric_by_game_and_seed(loaded, games, b, metric)
+            empty = [g for g in games if not any(key[0] == g for key in side_a | side_b)]
+            if empty:
+                raise ValueError(f"no episode of {a!r} or {b!r} on game(s) {empty}")
+        result = paired_bootstrap(side_a, side_b, n_resamples=resamples, seed=seed, ci=ci)
+    named = {"game": games[0]} if len(games) == 1 else {"games": games}
+    _emit({**named, "a": a, "b": b, "metric": metric, "trial_range": bounds, **asdict(result)})
 
 
 @app.command("view")

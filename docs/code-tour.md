@@ -173,16 +173,16 @@ places, look it up here before merging them; the tests may not stop you.
 
 ### 5.1 Held-out and final-test games
 
-A held-out game (`split: heldout`) is played once, at the end, by the final-run script. A
-final-test game (`final_test: true`, the `AB-*` games) is played once, by the runner with
-`--final-run`, under a lock.
+A final-test game (`final_test: true`: the `AB-*` games and `N-held`) is played once, by the
+runner with `--final-run`, under a lock. Every held-out game (`split: heldout`) must be a
+final-test game, so the held-out split is read only that way too.
 
 | where | refuses | who reaches it | why this copy exists |
 | --- | --- | --- | --- |
-| `config.py:GameConfig` | a game that is both `final_test` and held-out or exploratory | every loader of `games.yaml` | the two rules above must not overlap |
+| `config.py:GameConfig` | a held-out game that is not `final_test`; a `final_test` game that is exploratory | every loader of `games.yaml` | a held-out game can then only be played under a lock |
 | `datasets/pool.py:load_outcomes` | held-out and final-test outcomes, unless `final_run` | everything that reads hidden outcomes | the last line: the only reader of outcomes, so no path can skip it; it refuses before opening a file |
-| `interfaces/runtime.py:build_runtime` | held-out always; final-test unless `final_run` | `replaylab serve`, the campaign CLI, the runner | refuses before a store is created, with a message for a person; `serve` and the CLI never pass `final_run` |
-| `eval/runner.py:_check_games` (via `validate_specs`) | held-out; final-test without a permit; a final test mixed with other games; a permit for another game | `replaylab-eval run`, `pilot`, `scripted` | refuses the whole matrix before the first episode, so nothing is spent |
+| `interfaces/runtime.py:build_runtime` | held-out and final-test, unless `final_run` | `replaylab serve`, the campaign CLI, the runner | refuses before a store is created, with a message for a person; `serve` and the CLI never pass `final_run` |
+| `eval/runner.py:_check_games` (via `validate_specs`) | held-out or final-test without a permit; a final test mixed with other games; a permit for another game | `replaylab-eval run`, `pilot`, `scripted` | refuses the whole matrix before the first episode, so nothing is spent |
 | `eval/runner.py:_check_permit` | an episode outside the permitted trials or conditions, or written to another records file | a final run | a permit covers one leg exactly, not "this game" |
 | `eval/setup.py:final_permit` | more than one game; an uncommitted tree (no escape hatch) | `--final-run` | the final run must be reproducible from its commit |
 | `eval/final_run.py:acquire` | a leg already run with other settings; a frozen hash or a commit that differs from the lock's | `--final-run` | the run-once rule itself, persisted in a lock file (`--lock-dir`, default `reports/final-test/`) |

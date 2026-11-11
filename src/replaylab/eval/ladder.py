@@ -15,8 +15,8 @@ Two decisions the task card leaves ambiguous, fixed here:
   The small stop-game targets have no rows in ``data/splits/clusters.csv``, and
   ``score`` would raise for any hit it cannot place in a family.
 
-Held-out games are refused with ``ValueError``: that split is run once, at the end. So are
-final-test games: their scripted numbers come only from the final run itself
+Held-out and final-test games are refused with ``ValueError``: each is played once, by the
+runner with ``--final-run``, and its scripted numbers come only from that run
 (``replaylab-eval scripted --final-run``), never from a ladder one could tune against.
 """
 
@@ -93,7 +93,7 @@ def run_game(
     """
     if game.split == "heldout":
         raise ValueError(
-            f"game {game.id}: the held-out split is run once, at the end; the ladder refuses it"
+            f"game {game.id}: the held-out split is a final test; the ladder refuses it"
         )
     if game.final_test:
         raise ValueError(f"game {game.id}: {FINAL_TEST_REFUSAL}")
@@ -316,7 +316,7 @@ def run_ladder(
         game = games[game_id]
         if game.split == "heldout":
             raise ValueError(
-                f"game {game_id}: the held-out split is run once, at the end; the ladder refuses it"
+                f"game {game_id}: the held-out split is a final test; the ladder refuses it"
             )
         if game.final_test:
             raise ValueError(f"game {game_id}: {FINAL_TEST_REFUSAL}")

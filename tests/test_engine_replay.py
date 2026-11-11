@@ -39,6 +39,7 @@ def game(delay=0, split="all", rounds=4, batch=5) -> GameConfig:
         batch_size=batch,
         budget=rounds * batch,
         delay_rounds=delay,
+        final_test=split == "heldout",  # a held-out game is always a final test
     )
 
 

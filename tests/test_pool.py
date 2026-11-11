@@ -25,7 +25,15 @@ ALL_FEATURES = FeatureConfig(
 
 
 def game(game_id: str, target: str, split: str) -> GameConfig:
-    return GameConfig(id=game_id, target=target, split=split, rounds=2, batch_size=5, budget=10)
+    return GameConfig(
+        id=game_id,
+        target=target,
+        split=split,
+        rounds=2,
+        batch_size=5,
+        budget=10,
+        final_test=split == "heldout",  # a held-out game is always a final test
+    )
 
 
 @pytest.fixture(scope="module")

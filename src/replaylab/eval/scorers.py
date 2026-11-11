@@ -69,3 +69,33 @@ def metric_by_seed(
                 raise ValueError(f"duplicate episode for {game}/{condition} seed {record['seed']}")
             values[int(record["seed"])] = float(record["scores"][metric])
     return values
+
+
+def metric_by_game_and_seed(
+    records: Sequence[Mapping[str, Any]],
+    games: Sequence[str],
+    condition: str,
+    metric: str = "hits",
+) -> dict[tuple[str, int], float]:
+    """Collect one condition's metric over several games, for a pooled paired comparison.
+
+    Episode seeds are drawn per game, so the pairing key is ``(game, seed)``: two games
+    never share a pair, even if their seeds happened to be equal.
+
+    Args:
+        records (Sequence[Mapping[str, Any]]): episode records.
+        games (Sequence[str]): the games to pool.
+        condition (str): the condition (or ``scripted:<policy>``).
+        metric (str): the score to read.
+
+    Returns:
+        dict[tuple[str, int], float]: ``{(game, seed): metric}``.
+
+    Raises:
+        ValueError: one game has two episodes of this condition on the same seed.
+    """
+    return {
+        (game, seed): value
+        for game in games
+        for seed, value in metric_by_seed(records, game, condition, metric).items()
+    }

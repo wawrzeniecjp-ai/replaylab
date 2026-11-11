@@ -114,8 +114,9 @@ The vocabulary used in the code and the documentation.
 **dev / held-out split**
 : `dev` is folds 0 and 1 (`N-dev` and the other development games), `heldout` is
   fold 2 (`N-held`), and `all` ignores folds. Held-out outcomes can be read only
-  with `final_run=True`; the evaluation runner refuses held-out games outright,
-  and `replaylab serve` exits with code 2 for them.
+  with `final_run=True`. A held-out game is a final-test game: the evaluation
+  runner plays it once, with `--final-run`, under a lock, and `replaylab serve`
+  exits with code 2 for it.
 
 **replay vs live**
 : `mode="replay"` plays recorded outcomes through the

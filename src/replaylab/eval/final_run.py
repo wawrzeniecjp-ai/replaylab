@@ -1,4 +1,5 @@
-"""The run-once guard of the final test (``docs/prereg-anthropic.md``).
+"""The run-once guard of the final tests (``docs/prereg-anthropic.md``,
+``docs/prereg-heldout.md``).
 
 A game marked ``final_test`` in ``config/games.yaml`` is played only by the runner, and only
 under a :class:`FinalRunPermit`; :func:`acquire` is the one way to get one. Everything else

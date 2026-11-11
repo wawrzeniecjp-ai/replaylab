@@ -34,6 +34,7 @@ def game(split: str = "all", rounds: int = 3, batch: int = 5, game_id: str = "g"
         rounds=rounds,
         batch_size=batch,
         budget=rounds * batch,
+        final_test=split == "heldout",  # a held-out game is always a final test
     )
 
 

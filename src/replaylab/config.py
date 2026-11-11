@@ -117,9 +117,10 @@ class GameConfig:
     section 8): they are excluded from the default ladder, from ``frozen_v1`` and
     from every decision rule, and are only run when asked for explicitly.
 
-    A ``final_test`` game is the pre-registered final test (``docs/prereg-anthropic.md``): it is
-    never served, laddered or replayed, and only the runner plays it, once, under a permit
-    from :mod:`replaylab.eval.final_run`.
+    A ``final_test`` game is a pre-registered final test (``docs/prereg-anthropic.md``,
+    ``docs/prereg-heldout.md``): it is never served, laddered or replayed, and only the runner
+    plays it, once, under a permit from :mod:`replaylab.eval.final_run`. Every held-out game
+    is a final-test game.
     """
 
     id: str
@@ -145,8 +146,11 @@ class GameConfig:
             raise ConfigError(f"{where}: exploratory must be a boolean, got {self.exploratory!r}")
         if not isinstance(self.final_test, bool):
             raise ConfigError(f"{where}: final_test must be a boolean, got {self.final_test!r}")
-        if self.final_test and (self.exploratory or self.split == "heldout"):
-            raise ConfigError(f"{where}: a final_test game cannot be exploratory or held-out")
+        if self.final_test and self.exploratory:
+            raise ConfigError(f"{where}: a final_test game cannot be exploratory")
+        if self.split == "heldout" and not self.final_test:
+            # The held-out split is read once, the way the final test is: under a lock.
+            raise ConfigError(f"{where}: a held-out game must be a final_test game")
         if self.rounds < 1:
             raise ConfigError(f"{where}: rounds must be at least 1")
         if self.batch_size < 1:

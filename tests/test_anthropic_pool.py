@@ -280,7 +280,8 @@ def test_every_anthropic_game_is_guarded_except_the_rehearsal():
     games = load_games(ROOT / "config/games.yaml")
     assert all(games[name].final_test for name in FINAL_GAMES)
     assert not games["AB-rehearsal"].final_test
-    assert {name for name, game in games.items() if game.final_test} == set(FINAL_GAMES)
+    anthropic = {name for name, game in games.items() if game.target.startswith("ab-")}
+    assert {name for name in anthropic if games[name].final_test} == set(FINAL_GAMES)
 
 
 def test_every_game_and_the_rehearsal_share_one_shape():

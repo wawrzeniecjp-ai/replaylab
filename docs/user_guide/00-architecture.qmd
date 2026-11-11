@@ -223,9 +223,10 @@ independent layers enforce this:
    `ReplayBackend.poll`, once its delay has passed. There is no bulk accessor to
    leak through.
 3. **Guards.** `load_outcomes` refuses to read the held-out split outside the
-   final run (`HeldOutAccessError`), and the evaluation runner refuses held-out
-   games with a `ValueError`. Real design ids never appear in the state or in
-   any file the store writes: players see `d0001`-style aliases.
+   final run (`HeldOutAccessError`). A held-out game must be a final-test game,
+   so the evaluation runner plays it only with `--final-run`, once, under a lock,
+   and every other entry point refuses it. Real design ids never appear in the
+   state or in any file the store writes: players see `d0001`-style aliases.
 
 These layers hold against code that uses the public API. Inside one Python
 process nothing is truly private: the campaign holds the backend, and the

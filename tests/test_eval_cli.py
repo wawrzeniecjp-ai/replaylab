@@ -337,6 +337,58 @@ def test_compare_can_restrict_to_a_trial_range(setup, tmp_path):
     assert half["n"] == 2 and half["mean_diff"] == pytest.approx(3 / 2)
 
 
+def test_compare_pools_several_games_pairing_on_game_and_trial(setup, tmp_path):
+    # The final test's headline: one paired bootstrap over every (game, trial) pair. Seeds
+    # are equal across the two games here, so pairing on the seed alone would merge them.
+    from replaylab.eval.records import append_record
+    from replaylab.eval.stats import paired_bootstrap
+
+    path = tmp_path / "e.jsonl"
+    scores = {"G": [(5, 1), (2, 2), (9, 3)], "H": [(1, 4), (6, 2), (3, 3)]}
+    for game, pairs in scores.items():
+        for seed, (a, b) in enumerate(pairs):
+            append_record(path, {**episode(seed, "A"), "game": game, "scores": {"hits": a}})
+            append_record(path, {**episode(seed, "B1"), "game": game, "scores": {"hits": b}})
+    args = ["compare", "--records", str(path), "--game", "G", "--game", "H", "--a", "A"]
+    pooled = json.loads(invoke([*args, "--b", "B1", "--ci", "0.9"]).stdout)
+    expected = paired_bootstrap(
+        {(g, s): a for g, pairs in scores.items() for s, (a, _) in enumerate(pairs)},
+        {(g, s): b for g, pairs in scores.items() for s, (_, b) in enumerate(pairs)},
+        ci=0.9,
+    )
+    assert pooled["games"] == ["G", "H"] and "game" not in pooled
+    assert pooled["n"] == 6 and pooled["mean_diff"] == pytest.approx(11 / 6)
+    assert (pooled["ci_low"], pooled["ci_high"]) == (expected.ci_low, expected.ci_high)
+    assert (pooled["wins"], pooled["ties"], pooled["losses"]) == (3, 2, 1)
+
+
+def test_a_pooled_compare_refuses_a_game_with_no_pairs(setup, tmp_path):
+    # A misspelt or unplayed game must not silently drop out of the pool.
+    from replaylab.eval.records import append_record
+
+    path = tmp_path / "e.jsonl"
+    for seed in (0, 1):
+        append_record(path, episode(seed, "A"))
+        append_record(path, episode(seed, "B1"))
+    args = ["compare", "--records", str(path), "--game", "G", "--game", "H"]
+    result = invoke([*args, "--a", "A", "--b", "B1"])
+    assert result.exit_code == 1 and "'H'" in result.output
+
+
+def test_a_pooled_compare_refuses_a_game_paired_on_one_side_only(setup, tmp_path):
+    from replaylab.eval.records import append_record
+
+    path = tmp_path / "e.jsonl"
+    for game in ("G", "H"):
+        for seed in (0, 1):
+            append_record(path, {**episode(seed, "A"), "game": game})
+            if game == "G":
+                append_record(path, {**episode(seed, "B1"), "game": game})
+    args = ["compare", "--records", str(path), "--game", "G", "--game", "H"]
+    result = invoke([*args, "--a", "A", "--b", "B1"])
+    assert result.exit_code == 1 and "seeds differ" in result.output
+
+
 @pytest.mark.parametrize("bad", ["3", "5-2", "a-b", "-1-4"])
 def test_compare_refuses_a_malformed_trial_range(setup, tmp_path, bad):
     path = tmp_path / "e.jsonl"

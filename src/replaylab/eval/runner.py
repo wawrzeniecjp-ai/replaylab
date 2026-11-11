@@ -7,8 +7,8 @@
   unrecorded; running the same command again plays exactly the missing episodes.
 * The campaign state of an episode lives in memory (or in ``store_dir`` for inspection); a
   half-played store is deleted, never resumed, because the model conversation is gone.
-* A final-test game is played only under ``deps.final_permit`` (see
-  :mod:`replaylab.eval.final_run`), on its own, and only inside the permitted leg.
+* A final-test game (every held-out game is one) is played only under ``deps.final_permit``
+  (see :mod:`replaylab.eval.final_run`), on its own, and only inside the permitted leg.
 """
 
 from __future__ import annotations
@@ -135,9 +135,9 @@ def _check_games(
     for game in sorted(set(games)):
         if game not in configured:
             raise SetupError(f"unknown game {game!r}; valid games: {sorted(configured)}")
-        if configured[game].split == "heldout":
+        if configured[game].split == "heldout" and permit is None:
             raise SetupError(
-                f"game {game!r} uses the held-out split, which this runner never plays"
+                f"game {game!r} uses the held-out split, which is played once, with --final-run"
             )
         if configured[game].final_test and permit is None:
             raise SetupError(

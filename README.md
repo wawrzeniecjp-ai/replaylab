@@ -378,6 +378,10 @@ decision rule and validity gates before playing its episodes:
    with the development pools), conditions A, B1 and B2, both models, 20 trials, a pooled
    headline, every input file pinned by hash and each game behind a run-once lock
    ([`docs/prereg-anthropic.md`](docs/prereg-anthropic.md)).
+7. *Held-out test* on Nipah-G fold 2 (`N-held`, 343 designs no development game ever played):
+   pre-registered, not yet played. Conditions A, B1 and B2, both models, 40 trials, under the
+   same run-once lock and the same frozen configuration as the final test
+   ([`docs/prereg-heldout.md`](docs/prereg-heldout.md)).
 
 Every trial block was played once; a new idea uses a fresh block of seeds.
 
@@ -578,6 +582,7 @@ episode and mark the game `final_test: true`, which puts it behind the run-once 
 | [`docs/design-notes.md`](docs/design-notes.md) | every number behind every decision, plus each experiment's registration and results |
 | [`docs/caveats.md`](docs/caveats.md) | the conditions these results hold under; read before quoting them |
 | [`docs/prereg-anthropic.md`](docs/prereg-anthropic.md) | the final test, fixed before it is played |
+| [`docs/prereg-heldout.md`](docs/prereg-heldout.md) | the held-out Nipah-G test, fixed before it is played |
 | [`docs/prereg-orientation.md`](docs/prereg-orientation.md) | the toolkit-defect experiment and its null result |
 | [`docs/prereg-authorship.md`](docs/prereg-authorship.md) | whether the similarity tool rides authorship, fixed before it was played |
 | [`reports/ladder.md`](reports/ladder.md) | every baseline policy, 100 seeds per game |

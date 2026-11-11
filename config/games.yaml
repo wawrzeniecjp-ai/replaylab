@@ -6,7 +6,7 @@ games:
   N-dev:
     {target: nipah-glycoprotein-g, split: dev, rounds: 4, batch_size: 15, budget: 60}
   N-held:
-    {target: nipah-glycoprotein-g, split: heldout, rounds: 4, batch_size: 8, budget: 32}
+    {target: nipah-glycoprotein-g, split: heldout, rounds: 4, batch_size: 8, budget: 32, final_test: true}
   E:
     {target: egfr, split: all, rounds: 4, batch_size: 15, budget: 60}
   # Exploratory: the pre-registered longer-horizon E (design-notes section 8).

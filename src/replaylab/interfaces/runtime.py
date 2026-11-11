@@ -64,17 +64,17 @@ def build_runtime(
     campaign CLI never pass it, so they never serve a final-test game.
 
     Raises:
-        SetupError: unknown game, held-out split, a final-test game without ``final_run``,
+        SetupError: unknown game, a held-out or final-test game without ``final_run``,
             or no feature config for the target.
     """
     games = load_games(games_path)
     if game_id not in games:
         raise SetupError(f"unknown game {game_id!r}; valid games: {sorted(games)}")
     game = games[game_id]
-    if game.split == "heldout":
+    if game.split == "heldout" and not final_run:
         raise SetupError(
             f"game {game_id!r} uses the held-out split, which is never served interactively; "
-            "it is run once, by the final-run script"
+            "only the runner plays it, once, with --final-run"
         )
     if game.final_test and not final_run:
         raise SetupError(

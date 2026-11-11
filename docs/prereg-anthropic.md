@@ -493,6 +493,51 @@ worked example): every episode `finished`; one `config_hash` per model, equal to
 hash the lock recorded; the scripted rows present on every game; and no uncommitted change in
 `src`, `prompts` or `config` in the tree that played them.
 
+### Amendment, 2026-11-11: the pilot step, and the pooled command
+
+Added **before any episode of any `AB-` game was played**: no `runs/ab-*` directory, no lock
+file and no record naming an `AB-` game exists. Nothing about the run changes -- same games,
+conditions, models, block, caps and registered hashes (a dry run of the registered command
+still reports `0fecb4a7e74a` and `c2c8dac7e136`). Two gaps in section 10 are closed.
+
+**The pilot.** As written, section 10 goes straight to `run`, which refuses to start without a
+pilot (the money gate: a run starts only if the pilot's cost, projected over the matrix, fits
+the cap). The registered order for each game and model is therefore:
+
+```bash
+replaylab-eval pilot --run-dir runs/ab-ds --model deepseek --games $g \
+    --conditions A,B1,B2 --trials 20 --max-usd 6 --n 12 --final-run
+replaylab-eval run   --run-dir runs/ab-ds --model deepseek --games $g \
+    --conditions A,B1,B2 --trials 20 --max-usd 6 --final-run
+```
+
+The pilot plays the first 12 episodes of the matrix (trials 0-3, every condition) and is
+**the start of the final run, not a separate draw**: it takes the game's lock, and its
+episodes are kept; `run` then plays the rest. The cap is the registered one in both commands
+(`--max-usd 4` for mimo), because both write to the same spend ledger. The pilot is not
+skipped with `--skip-pilot` (which exists for development), because the money guard is not to be
+bypassed.
+
+**The pooled headline command.** Section 10 described the pooled comparison but no command
+computed it: `compare` took one game. It now takes `--game` more than once and pools every
+pair into one bootstrap, paired on `(game, trial)` (a game with no pair is an error, so one
+cannot drop out unnoticed). The primary of the 2026-11-01 amendment, per model:
+
+```bash
+replaylab-eval compare --records runs/ab-ds/episodes.jsonl \
+    --game AB-nipah --game AB-egfr --game AB-bbf14 --game AB-bhrf1 \
+    --a B1 --b A --ci 0.9 --resamples 10000 --seed 0 --trial-range 0-19
+```
+
+and the secondary the same way with `--b scripted:learner_sim`. Per-game rows are the same
+command with one `--game`.
+
+**Disclosure.** The pooled command was written and tested on 2026-11-11 and rehearsed on
+scripted records only: the five-policy ladder on `AB-rehearsal` (whose labels are random
+draws) and on `N-dev`, trials 0-19, pooled over the two. The rehearsal checks the plumbing --
+the pooled mean equals the average of the two per-game means, the ledgers add up -- and says
+nothing about any `AB-` pool.
+
 ---
 
 *Editorial note, 2026-11-10, on publication:* before the repository went public, its history

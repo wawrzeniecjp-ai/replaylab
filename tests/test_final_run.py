@@ -92,10 +92,16 @@ def test_final_test_is_an_optional_boolean_game_key():
         parse_games(game_entry(final_test="yes"))
 
 
-@pytest.mark.parametrize("extra", [{"split": "heldout"}, {"exploratory": True}])
-def test_a_final_test_cannot_also_be_held_out_or_exploratory(extra):
-    with pytest.raises(ConfigError, match="cannot be exploratory or held-out"):
-        parse_games(game_entry(final_test=True, **extra))
+def test_a_final_test_cannot_be_exploratory():
+    with pytest.raises(ConfigError, match="cannot be exploratory"):
+        parse_games(game_entry(final_test=True, exploratory=True))
+
+
+def test_a_held_out_game_must_be_a_final_test():
+    # The held-out split is played the way the final test is: once, under a lock.
+    with pytest.raises(ConfigError, match="held-out game must be a final_test"):
+        parse_games(game_entry(split="heldout"))
+    assert parse_games(game_entry(split="heldout", final_test=True))["X"].final_test
 
 
 # --- every other entry point refuses the game -------------------------------------------
@@ -173,6 +179,33 @@ def test_a_permit_plays_its_leg_and_nothing_else(env, tmp_path):
     with pytest.raises(FinalRunRefused, match="records into"):
         asyncio.run(run_matrix(specs, deps, tmp_path / "other.jsonl"))
     assert len(read_records(records)) == 2
+
+
+def test_a_held_out_game_is_played_only_under_its_permit(env, tmp_path):
+    rows = env.tables.outcomes[["design_id", "target"]]
+    folds = tmp_path / "folds.csv"
+    rows.assign(fold=[i % 3 for i in range(len(rows))]).to_csv(folds, index=False)
+    deps = make_deps(env, folds_path=folds)
+    with pytest.raises(SetupError, match="held-out"):
+        validate_specs([EpisodeSpec("GH", "A", 0)], deps)
+    with pytest.raises(SetupError, match="held-out"):
+        build_runtime(
+            "GH",
+            0,
+            ":memory:",
+            games_path=env.games,
+            features_path=env.features,
+            tables_dir=env.tables_dir,
+            folds_path=folds,
+        )
+    records = tmp_path / "h.jsonl"
+    permit = acquire(
+        tmp_path / "locks", leg(records, game="GH", first_trial=0), frozen="f", git_sha=SHA
+    )
+    deps = make_deps(env, folds_path=folds, final_permit=permit)
+    summary = asyncio.run(run_matrix(expand_matrix(["GH"], ["A"], 2), deps, records))
+    assert len(summary.completed) == 2 and not summary.failed
+    assert {r["game"] for r in read_records(records)} == {"GH"}
 
 
 def test_a_scripted_leg_plays_under_its_permit(env, tmp_path):
