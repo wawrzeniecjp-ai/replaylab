@@ -137,7 +137,6 @@ Two console scripts are declared in `pyproject.toml`, plus a few scripts.
 | `python data/build_tables.py`, `build_clusters.py`, `build_folds.py` | `data/` → `datasets/` | build the processed tables and the frozen split from the raw CSV |
 
 `python -m replaylab` and `python -m replaylab.eval` are the same two CLIs (`__main__.py`).
-The root `main.py` is an unused stub.
 
 ## 4. One tool call (`submit_batch`)
 

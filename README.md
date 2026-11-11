@@ -595,3 +595,8 @@ episode and mark the game `final_test: true`, which puts it behind the run-once 
 
 **Output** (`data/processed/`, git-ignored): `designs.parquet`, `outcomes.parquet`,
 `targets.parquet`, `evaluations_long.parquet`, `build_report.json`.
+
+## License
+
+MIT; see [LICENSE](LICENSE). The raw Proteinbase data the games replay is not part of this
+repository and keeps its own terms.

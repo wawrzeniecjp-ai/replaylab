@@ -1,0 +1,95 @@
+# Build the documentation site (great-docs + Quarto + d2) and publish it to GitHub Pages.
+#
+# Runs only when something the site is built from changes: the guide pages, the
+# docstrings under src/ (the API reference), the README (the home page), the
+# great-docs config or the dependencies. A pull request builds the site to check it;
+# only a push to main publishes it. The built site is uploaded as a Pages artifact,
+# so no build output is ever committed to any branch.
+#
+# One-time setup: Settings -> Pages -> Build and deployment -> Source: GitHub Actions.
+
+name: Docs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/user_guide/**"
+      - "src/**"
+      - "README.md"
+      - "great-docs.yml"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/docs.yml"
+  pull_request:
+    paths:
+      - "docs/user_guide/**"
+      - "src/**"
+      - "README.md"
+      - "great-docs.yml"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/docs.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  D2_VERSION: "0.6.9"
+  QUARTO_VERSION: "1.10.19"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - uses: quarto-dev/quarto-actions/setup@v2
+        with:
+          version: ${{ env.QUARTO_VERSION }}
+
+      # The guide pages draw their diagrams with d2.
+      - name: Install d2
+        run: |
+          curl -fsSL -o d2.tar.gz \
+            "https://github.com/terrastruct/d2/releases/download/v${D2_VERSION}/d2-v${D2_VERSION}-linux-amd64.tar.gz"
+          mkdir -p "$HOME/.local/d2" && tar -xzf d2.tar.gz -C "$HOME/.local/d2" --strip-components=1
+          echo "$HOME/.local/d2/bin" >> "$GITHUB_PATH"
+          rm d2.tar.gz
+
+      - name: Install
+        run: uv sync --locked --extra docs
+
+      - name: Build
+        run: uv run --extra docs great-docs build
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: great-docs/_site
+
+  deploy:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

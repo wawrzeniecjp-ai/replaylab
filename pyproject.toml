@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -7,6 +7,8 @@ name = "replaylab"
 version = "0.1.0"
 description = "A decision engine for protein design selection, validated by replaying real outcomes."
 requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
 dependencies = [
     "pandas>=2.1",
     "numpy>=1.26",
