@@ -598,5 +598,12 @@ episode and mark the game `final_test: true`, which puts it behind the run-once 
 
 ## License
 
-MIT; see [LICENSE](LICENSE). The raw Proteinbase data the games replay is not part of this
-repository and keeps its own terms.
+The code is MIT; see [LICENSE](LICENSE).
+
+The data the games replay comes from [Proteinbase](https://proteinbase.com), published by
+Adaptyv Bio under the Open Data Commons Attribution License (ODC-BY). The raw data is not part
+of this repository. The files built from it that are committed here -- `data/splits/`
+(clusters, folds, the held-out ids) and the results under `reports/` -- are not covered by the
+MIT license and stay under ODC-BY.
+
+This work used Proteinbase by Adaptyv Bio under ODC-BY license.
