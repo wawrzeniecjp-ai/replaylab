@@ -123,12 +123,16 @@ held-out game that is not a final test. So:
 
 From a clean checkout of one commit on `main`, the same commit for every leg.
 
-The scripted ladder first (free, no key):
+The scripted ladder first (free, no key), into each model's run directory so that each
+records file can be compared on its own. The second copy repeats the first exactly (scripted
+play is deterministic); the lock refuses a copy with another block or other policies.
 
 ```bash
-replaylab-eval scripted --run-dir runs/held-ds --games N-held \
-    --policies random,learner,learner_sim,learner_purchased,learner_sim_purchased \
-    --trials 40 --final-run
+for d in runs/held-ds runs/held-mimo; do
+  replaylab-eval scripted --run-dir $d --games N-held \
+      --policies random,learner,learner_sim,learner_purchased,learner_sim_purchased \
+      --trials 40 --final-run
+done
 ```
 
 Then the agent: the pilot plays the first 12 episodes of the matrix (trials 0-3, every
@@ -142,7 +146,8 @@ replaylab-eval run --run-dir runs/held-ds --model deepseek --games N-held \
     --conditions A,B1,B2 --trials 40 --max-usd 6 --final-run
 ```
 
-Then all three again with `--run-dir runs/held-mimo` and `--model mimo`. Finally, per model:
+Then pilot and run again with `--run-dir runs/held-mimo` and `--model mimo`. Finally, per
+model:
 
 ```bash
 replaylab-eval compare --records runs/held-ds/episodes.jsonl --game N-held \

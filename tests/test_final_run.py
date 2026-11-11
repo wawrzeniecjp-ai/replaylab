@@ -293,6 +293,37 @@ def test_a_new_leg_on_the_same_frozen_state_is_added_beside_the_first(tmp_path):
     assert set(read_lock(lock_path(tmp_path, "GF"))["legs"]) == {"m", "mimo"}
 
 
+def test_the_scripted_leg_may_be_copied_into_another_records_file_unchanged(tmp_path):
+    # Scripted play is deterministic, so a copy in each model's run directory reveals nothing
+    # new; it lets each records file be compared on its own.
+    scripted = dict(leg="scripted", conditions=["scripted:random"])
+    acquire(tmp_path, leg(tmp_path / "ds.jsonl", **scripted), frozen="f", git_sha=SHA)
+    copy = acquire(tmp_path, leg(tmp_path / "mimo.jsonl", **scripted), frozen="f", git_sha=SHA)
+    assert copy.written and copy.leg.records == str((tmp_path / "mimo.jsonl").resolve())
+    legs = read_lock(lock_path(tmp_path, "GF"))["legs"]
+    assert {legs[k]["records"] for k in legs} == {
+        str((tmp_path / name).resolve()) for name in ("ds.jsonl", "mimo.jsonl")
+    }
+    before = lock_path(tmp_path, "GF").read_text()
+    again = acquire(tmp_path, leg(tmp_path / "mimo.jsonl", **scripted), frozen="f", git_sha=SHA)
+    assert not again.written and lock_path(tmp_path, "GF").read_text() == before
+
+
+@pytest.mark.parametrize(
+    "change", [{"first_trial": 102}, {"trials": 3}, {"conditions": ["scripted:learner"]}]
+)
+def test_a_scripted_copy_with_other_trials_or_policies_is_a_second_run(tmp_path, change):
+    scripted = dict(leg="scripted", conditions=["scripted:random"])
+    acquire(tmp_path, leg(tmp_path / "ds.jsonl", **scripted), frozen="f", git_sha=SHA)
+    with pytest.raises(FinalRunRefused, match="scripted"):
+        acquire(
+            tmp_path,
+            leg(tmp_path / "mimo.jsonl", **{**scripted, **change}),
+            frozen="f",
+            git_sha=SHA,
+        )
+
+
 def test_a_check_only_permit_never_writes(tmp_path):
     permit = acquire(tmp_path, leg(tmp_path / "r.jsonl"), frozen="f", git_sha=SHA, check_only=True)
     assert not permit.written and not lock_path(tmp_path, "GF").exists()
@@ -426,8 +457,16 @@ def test_the_cli_plays_a_final_test_only_with_the_flag_and_only_once(final_setup
     assert resume.exit_code == 0 and json.loads(resume.stdout) == {"completed": 0, "skipped": 2}
     second = invoke([*scripted_args(final_setup, run_dir, locks, trials="3"), "--final-run"])
     assert second.exit_code == 2 and "already ran with other settings" in second.output
-    fresh_dir = invoke([*scripted_args(final_setup, tmp_path / "again", locks), "--final-run"])
-    assert fresh_dir.exit_code == 2 and "already ran with other settings" in fresh_dir.output
+    # a copy into the other model's run directory, same block and policies, is allowed
+    copy = invoke([*scripted_args(final_setup, tmp_path / "other", locks), "--final-run"])
+    assert copy.exit_code == 0, copy.output
+    assert read_records(tmp_path / "other" / "episodes.jsonl") == read_records(
+        run_dir / "episodes.jsonl"
+    )
+    widened = invoke(
+        [*scripted_args(final_setup, tmp_path / "third", locks, trials="3"), "--final-run"]
+    )
+    assert widened.exit_code == 2 and "copy of the scripted leg" in widened.output
     assert len(read_records(run_dir / "episodes.jsonl")) == 2
 
 

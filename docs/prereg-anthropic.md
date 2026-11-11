@@ -532,6 +532,14 @@ replaylab-eval compare --records runs/ab-ds/episodes.jsonl \
 and the secondary the same way with `--b scripted:learner_sim`. Per-game rows are the same
 command with one `--game`.
 
+**The scripted leg in both run directories.** Section 10 plays the scripted ladder into
+`runs/ab-ds` and then "both again" into `runs/ab-mimo`, but the lock as built kept one
+scripted entry per game and refused the second as a second run, so mimo's records file would
+have had no scripted rows to compare against. The lock now accepts a copy of the scripted
+leg into another records file **only with the same trial block, policies and configuration**
+(scripted play is deterministic, so a copy reveals nothing new), and still refuses anything
+else. The registered sequence of section 10 is therefore played as written.
+
 **Disclosure.** The pooled command was written and tested on 2026-11-11 and rehearsed on
 scripted records only: the five-policy ladder on `AB-rehearsal` (whose labels are random
 draws) and on `N-dev`, trials 0-19, pooled over the two. The rehearsal checks the plumbing --

@@ -16,6 +16,11 @@ records:
 * one entry per leg (a model key, or ``scripted``): its config hash, records file, trial
   block and conditions (the policies, for ``scripted``).
 
+The scripted leg may be recorded into more than one records file (one per model's run
+directory, so each file can be compared on its own), but every copy must have the same trial
+block, policies and configuration: scripted play is deterministic, so a copy reveals nothing
+new, while another block or another policy would.
+
 Starting a leg that is already in the lock is allowed only with exactly the recorded
 settings: that is the resume after an interruption, and the runner then plays only the
 missing episodes (an episode is recorded only if it ends normally). Any other setting --
@@ -255,7 +260,11 @@ def acquire(
             f"{where}: the final run started at commit {lock['git_sha']}, this is {git_sha}; "
             "every leg is played from the same commit"
         )
-    recorded = lock["legs"].get(leg.leg)
+    key = leg.leg
+    if leg.leg == SCRIPTED_LEG:
+        key, recorded = _scripted_entry(lock, leg, where)
+    else:
+        recorded = lock["legs"].get(key)
     if recorded is not None:
         wanted = leg.settings()
         changed = sorted(k for k in wanted if recorded.get(k) != wanted[k])
@@ -268,6 +277,48 @@ def acquire(
     if check_only:
         return FinalRunPermit(leg, path, written=False)
     stamp = (now or datetime.now(UTC)).isoformat(timespec="seconds")
-    lock["legs"][leg.leg] = {**leg.settings(), "started_at": stamp}
+    lock["legs"][key] = {**leg.settings(), "started_at": stamp}
     _write_atomically(path, lock)
     return FinalRunPermit(leg, path, written=True)
+
+
+def _scripted_entry(
+    lock: Mapping[str, Any], leg: FinalLeg, where: str
+) -> tuple[str, dict[str, Any] | None]:
+    """Find the lock key of a scripted leg, and its recorded entry if it has one.
+
+    The first scripted leg is keyed ``scripted``; a copy into another records file is keyed
+    ``scripted@<records>``.
+
+    Args:
+        lock (Mapping[str, Any]): the lock being checked.
+        leg (FinalLeg): the scripted leg about to be played.
+        where (str): the game and lock path, for the error message.
+
+    Returns:
+        tuple[str, dict[str, Any] | None]: the key, and the entry recorded under it (None
+        for a new copy or the first scripted leg).
+
+    Raises:
+        FinalRunRefused: a new copy differs from the scripted leg already recorded in
+            anything but its records file.
+    """
+    scripted = {
+        key: entry
+        for key, entry in lock["legs"].items()
+        if key == SCRIPTED_LEG or key.startswith(f"{SCRIPTED_LEG}@")
+    }
+    for key, entry in scripted.items():
+        if entry.get("records") == leg.records:
+            return key, entry
+    if not scripted:
+        return SCRIPTED_LEG, None
+    wanted = {k: v for k, v in leg.settings().items() if k != "records"}
+    first = scripted.get(SCRIPTED_LEG) or next(iter(scripted.values()))
+    changed = sorted(k for k in wanted if first.get(k) != wanted[k])
+    if changed:
+        raise FinalRunRefused(
+            f"{where}: a copy of the scripted leg must repeat its settings, but "
+            f"{', '.join(changed)} differ; another trial block or policy would be a second run"
+        )
+    return f"{SCRIPTED_LEG}@{leg.records}", None

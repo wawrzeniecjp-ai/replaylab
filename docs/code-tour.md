@@ -185,7 +185,7 @@ final-test game, so the held-out split is read only that way too.
 | `eval/runner.py:_check_games` (via `validate_specs`) | held-out or final-test without a permit; a final test mixed with other games; a permit for another game | `replaylab-eval run`, `pilot`, `scripted` | refuses the whole matrix before the first episode, so nothing is spent |
 | `eval/runner.py:_check_permit` | an episode outside the permitted trials or conditions, or written to another records file | a final run | a permit covers one leg exactly, not "this game" |
 | `eval/setup.py:final_permit` | more than one game; an uncommitted tree (no escape hatch) | `--final-run` | the final run must be reproducible from its commit |
-| `eval/final_run.py:acquire` | a leg already run with other settings; a frozen hash or a commit that differs from the lock's | `--final-run` | the run-once rule itself, persisted in a lock file (`--lock-dir`, default `reports/final-test/`) |
+| `eval/final_run.py:acquire` | a leg already run with other settings (a copy of the scripted leg into another records file must repeat its block and policies); a frozen hash or a commit that differs from the lock's | `--final-run` | the run-once rule itself, persisted in a lock file (`--lock-dir`, default `reports/final-test/`) |
 | `eval/ladder.py:run_ladder` | held-out and final-test, for every selected game | `scripts/run_ladder.py` | refuses the whole list before the first game is played |
 | `eval/ladder.py:run_game` | held-out and final-test | direct callers of one game | `run_game` is public; it must not rely on `run_ladder` having checked |
 | `eval/replay_view.py:pool_view` | held-out and final-test | `replaylab-eval view` | the page shows hidden outcomes, so it must never show these |
