@@ -1,0 +1,227 @@
+---
+title: "How a game is played"
+guide-section: "Understanding replaylab"
+---
+
+This page follows one game from the first round to the score: who calls whom, where
+the clock moves, and how a bought design's result travels from the lab back to the
+player. Most of it is the life of one batch. The last section says exactly what keeps
+the results of designs not bought out of a player's reach, and what does not.
+
+# The objects
+
+| object | where | what it is |
+| --- | --- | --- |
+| [`Episode`](../reference/engine.episode.Episode.qmd) | `engine/episode.py` | one game and one player; `play()` is the game loop |
+| [`Player`](../reference/engine.episode.Player.qmd) | `engine/episode.py` | anything with `play_round(campaign)` and `finish(campaign)` |
+| [`ScriptedPlayer`](../reference/engine.episode.ScriptedPlayer.qmd) | `engine/episode.py` | asks a scripted policy for each batch |
+| [`LLMPlayer`](../reference/eval.llm_player.LLMPlayer.qmd) | `eval/llm_player.py` | runs model turns; the model acts through tools |
+| [`ReplayEnvironment`](../reference/engine.replay.ReplayEnvironment.qmd) | `engine/replay.py` | the game: campaign, store, hidden scoring context |
+| [`Campaign`](../reference/engine.Campaign.qmd) | `engine/campaign.py` | the rules; the only object that talks to the lab |
+| [`CampaignStore`](../reference/store.CampaignStore.qmd) | `store/` | SQLite: batches, delivered results, the clock, events |
+| [`ReplayBackend`](../reference/backends.ReplayBackend.qmd) | `backends/replay.py` | the stand-in for the lab; holds every result |
+| [`CampaignState`](../reference/domain.CampaignState.qmd) | `domain/types.py` | a read-only snapshot of the store: what a player may know |
+
+# The game loop
+
+Every episode, scripted or LLM, is played by
+[`Episode.play`](../reference/engine.episode.Episode.qmd):
+
+```python
+campaign = self.env.campaign
+while not campaign.is_finished():
+    if not await self.player.play_round(campaign):
+        break                     # the player ended the episode early
+await self.player.finish(campaign)
+campaign.settle()                 # collect results still outstanding
+return Played(score=self.env.score(), stopped=campaign.stopped)
+```
+
+A campaign is finished when it is stopped, or when its rounds or its budget are used
+up. What a round looks like is up to the player.
+
+**A scripted player** reads `campaign.state()`, asks its policy for a batch
+(`policy.choose(state, batch_size, rng)`, with a generator seeded by the episode seed
+and the round), and calls `campaign.submit(ids)`. An empty batch means "stop": the
+player calls `campaign.stop(...)` and ends the episode. The policy itself only ever
+sees the snapshot.
+
+**An LLM player** makes model calls ("turns"). Each reply may call tools; every call
+goes to the MCP server and comes back as a tool message. A round is over after the
+turn in which the clock moved (a batch was bought, or a round was waited out) or the
+campaign finished. The conversation and the turn count carry over from one round to
+the next, so the whole episode is one conversation of at most 40 turns. The episode
+also ends early if the model replies without calling a tool, or if the turn limit is
+reached. `finish` then asks the model, without tools, for a closing summary.
+
+The model never holds a Python object. A tool call travels like this:
+
+```{d2}
+direction: right
+llm: "LLMPlayer\none turn"
+bridge: "McpBridge\nJSON specs and results"
+server: "MCP server\nonly the condition's tools"
+toolbox: "Toolbox\none method per tool"
+campaign: "Campaign"
+llm -> bridge -> server -> toolbox -> campaign
+```
+
+The tools read [`CampaignState`](../reference/domain.CampaignState.qmd) snapshots, and
+two of them act on the campaign: `submit_batch` calls `Campaign.submit` and `wait`
+calls `Campaign.wait`. (`stop` calls `Campaign.stop`, and `propose_batch` records a
+proposal without buying it.)
+
+# The life of a batch
+
+## The clock
+
+Time is counted in rounds. There are two clocks, one in the store (`state.clock`) and
+one in the backend, and the campaign always moves both together: `Campaign._tick`
+calls `backend.advance()` and then `store.set_clock(clock + 1)`. Only two actions move
+time, one round each: `Campaign.submit` and `Campaign.wait`. A real lab has no
+`advance`; time simply passes, and the live backend will not need one.
+
+A game's `delay` says how many rounds a result takes. A batch bought at clock `t`
+arrives when the clock reaches `t + delay`. Most games have `delay = 0`; N-dev-delay2
+has 2.
+
+## Buying a batch: `Campaign.submit`
+
+```{d2}
+shape: sequence_diagram
+player: "player or tool"
+campaign: Campaign
+store: CampaignStore
+backend: ReplayBackend
+
+player -> campaign: "submit(ids)"
+campaign -> campaign: "_validate(state, ids)"
+campaign -> store: "record_batch (PROPOSED)"
+campaign -> backend: "submit(batch)"
+backend -> campaign: "SubmissionHandle (replay-3)"
+campaign -> store: "SUBMITTED, backend_ref; event submission_clock"
+campaign -> backend: "poll(handle) for every pending batch"
+backend -> campaign: "outcomes now due"
+campaign -> store: "record_outcomes, COMPLETE"
+campaign -> backend: "advance()"
+campaign -> store: "set_clock(clock + 1)"
+campaign -> backend: "poll(handle) again"
+backend -> campaign: "outcomes due after the tick"
+campaign -> store: "record_outcomes, COMPLETE"
+campaign -> player: "SubmitResult: batch id, status, what arrived, rounds left"
+```
+
+Step by step:
+
+1. **Check the rules.** `_validate` reads only the snapshot and raises on the first
+   broken rule: stopped, no rounds left, empty, too large, duplicates, unknown design,
+   already bought, over budget. Nothing has been written yet.
+2. **Record the batch.** If the same designs were proposed earlier
+   (`propose_batch`), that proposal is the batch; otherwise a new batch `b00n` is
+   recorded as `PROPOSED`.
+3. **Hand it to the lab.** `backend.submit(batch)` checks the designs exist and were
+   never submitted, notes the round it was submitted in, and returns a
+   `SubmissionHandle`, a receipt with a reference such as `replay-3`. If the backend
+   refuses, the campaign deletes the batch it just recorded, so nothing was bought.
+4. **Mark it submitted.** The store sets the batch to `SUBMITTED` with the reference;
+   the campaign keeps the handle in `_handles`; an event records the clock at
+   submission (what a restart needs, below).
+5. **Collect, tick, collect.** The campaign polls every outstanding batch, moves both
+   clocks one round, and polls again. The first collection is what lets a game with no
+   delay return a batch's results in the same call. The second picks up batches that
+   come due because the clock moved: in a game with a delay, the batch bought two
+   rounds ago.
+
+`submit` returns what arrived during the call. With no delay that is the batch's own
+results; with a delay it may be nothing, or an earlier batch.
+
+## Collecting results: `poll`
+
+The receipt is what a real lab gives back too: the Foundry API returns an order id,
+and results are fetched with it. In the replay, `poll(handle)` looks the reference up
+(an unknown reference raises `BackendError`), and compares the backend's clock with the
+round of submission:
+
+* clock `>=` submitted at `+ delay`: `COMPLETE`, with every outcome of the batch;
+* otherwise: `SUBMITTED`, with no outcomes.
+
+Polling is cumulative (each call returns everything released so far), so polling
+twice does no harm. The campaign records the outcomes not seen before, moves the
+batch's status forward (`SUBMITTED → COMPLETE`, or `PARTIAL` for a lab that releases
+part of a batch), and forgets the handle once the batch is complete.
+
+## The other actions
+
+| action | moves the clock | what it does |
+| --- | --- | --- |
+| `Campaign.propose(ids)` | no | records a `PROPOSED` batch; buys nothing |
+| `Campaign.submit(ids)` | one round | buys a batch (above) |
+| `Campaign.wait()` | one round | lets a round pass without buying; allowed only while results are outstanding |
+| `Campaign.ingest()` | no | polls without moving time; in a replay it always finds nothing new, since every poll already happened at the last tick |
+| `Campaign.stop(reason)` | no | ends buying for good; outstanding results still arrive |
+| `Campaign.settle()` | until nothing is outstanding | waits round after round; `Episode.play` calls it at the end so the score covers every purchase |
+
+## Batch states
+
+```text
+PROPOSED ──submit──> SUBMITTED ──poll──> COMPLETE
+                         └──poll──> PARTIAL ──poll──> COMPLETE   (a lab that releases part of a batch)
+```
+
+The store refuses to move a batch backwards.
+
+## Scoring
+
+After `settle`, `ReplayEnvironment.score()` turns the final snapshot into a
+[`ScoreCard`](../reference/engine.ScoreCard.qmd): hits, purchases, the hit curve in
+purchase order, distinct hit families and the best Kd. The family count uses the
+sequence clusters, which only the scoring context holds; nothing gives a player the
+score card or the clusters.
+
+## Resuming after a crash
+
+The store is written as things happen, one transaction per change. If the process
+dies, `build_replay_campaign` opens the same store, rebuilds a fresh backend by
+replaying every submission at its recorded clock (`restore_backend`), and checks that
+each replayed submission gets the same reference as before. The campaign then rebuilds
+its handles from the store, and play continues where it stopped.
+
+# What keeps the results hidden
+
+The question to ask is: who holds a reference to the backend, which holds every
+result? The answer is the campaign (`Campaign._backend`), and so everything that holds
+the campaign: the `ReplayEnvironment`, the `Episode`, the `Player`, and the tools'
+`ToolContext`. Python has no private attributes, so any code running in the process
+could follow those references (`campaign._backend._outcomes`), or walk the garbage
+collector, or simply read `data/processed/outcomes.parquet` from disk. **Nothing in
+the process enforces the leak rule against code that is determined to break it.** What
+the rule rests on depends on the player.
+
+**The LLM agent: a real boundary.** The model does not run in the process. All it can
+send is tool calls, each a tool name and JSON arguments, to the tools its condition
+registered on the MCP server; any other name is refused. There is no tool that runs
+code, so the model has no `getattr` to reach for. Each tool is a fixed method that
+builds its answer from `campaign.state()` (or the store's recorded predictions), and a
+snapshot holds only delivered results. So for the agent, the guarantee is as strong as
+the tool code is correct, and that is tested: `tests/test_tools_leaks.py` plays a game
+through every tool and scans every response for sequences, real design ids, and outcome
+fields of designs that were not bought and delivered.
+
+**Scripted policies: a convention, checked.** A policy receives a frozen snapshot and a
+seeded generator, nothing else; it cannot reach the backend through its arguments.
+`tests/test_import_boundaries.py` makes sure `policies` and `advisor` never import
+`engine`, `store` or `backends`. But a policy is Python in the same process, so the
+rest is review: the policies are our own code, written against the snapshot.
+
+**The players and the engine: trusted code.** `ScriptedPlayer` and `LLMPlayer` hold
+the campaign itself. They use it only through its public methods: the scripted player
+to read the state and buy, the LLM player to watch the clock and see whether the game
+is over.
+
+Making the in-process guarantee hard would mean a process boundary: run the player
+in another process and send it serialized snapshots only, or put the lab in another
+process. The live backend gets the second for free, since the outcomes will sit at
+Adaptyv's API until they are released. For the replay it was not worth it: the only
+player not written in this repository is the model, and it already sits behind MCP.
+`replaylab serve` goes one step further and runs the tools in a separate process,
+spoken to over stdio.

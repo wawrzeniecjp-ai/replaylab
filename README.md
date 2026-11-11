@@ -563,7 +563,7 @@ episode and mark the game `final_test: true`, which puts it behind the run-once 
   snapshot with `pytest tests/test_mcp_server.py --update-tool-snapshot`. New tools must keep
   the leak rules that `tests/test_tools_leaks.py` checks.
 * **A baseline policy:** a class with `choose(state, k, rng) -> list[str]` in `policies/`,
-  registered in `interfaces/policy_factory.py` (`make_policy`, `POLICY_NAMES`), and in
+  registered in `policies/factory.py` (`make_policy`, `POLICY_NAMES`), and in
   `eval/ladder.py` if the ladder should run it.
 
 [`docs/code-tour.md`](docs/code-tour.md) shows where each of these sits in the call path.
