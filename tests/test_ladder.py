@@ -1,4 +1,4 @@
-"""T20: the ladder runner (own tests, as the card asks — staged tests do not exist)."""
+"""The ladder runner."""
 
 from __future__ import annotations
 
@@ -223,7 +223,7 @@ def test_a_seed_result_does_not_depend_on_run_order(tables):
     """A seed's score cards must be the same whether other seeds ran first or not.
 
     Guards the shared-``SimilarityIndex`` failure mode: the aliases change per
-    seed (D4), so anything cached on the game or the policies across seeds
+    seed, so anything cached on the game or the policies across seeds
     silently scores the wrong sequences (design-notes section 3).
     """
     kwargs = dict(

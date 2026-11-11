@@ -1,4 +1,4 @@
-"""T05: LLM smoke test, using a fake client (no network, no key)."""
+"""LLM smoke test, using a fake client (no network, no key)."""
 
 from __future__ import annotations
 

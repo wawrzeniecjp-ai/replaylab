@@ -1,17 +1,20 @@
-"""T29: the agent loop, played against a real in-memory MCP server and a scripted model."""
+"""The LLM player, played through the game loop against a real in-memory MCP server and a
+scripted model."""
 
 from __future__ import annotations
 
 import asyncio
 import json
+from typing import NamedTuple
 
 import pytest
 from fakes_llm import HeuristicLLM, ScriptedLLM, call, turn
 from mcp.client import Client
 from toolbox_env import make_env, runtime_for
 
+from replaylab.engine.episode import Episode
+from replaylab.eval.llm_player import Limits, LLMPlayer, unwrap
 from replaylab.eval.llm_types import LLMError, ResponseTruncated, Usage
-from replaylab.eval.loop import CampaignStatus, Limits, run_episode, unwrap
 from replaylab.eval.mcp_bridge import McpBridge
 from replaylab.eval.spend import Price, SpendCapReached, SpendGuard
 from replaylab.interfaces.server import build_server
@@ -25,7 +28,29 @@ def env(tmp_path_factory):
     return make_env(tmp_path_factory.mktemp("loop"))
 
 
-def play(env, llm, *, tools=None, guard=None, limits=None, game="G", **kwargs):
+class CampaignStatus(NamedTuple):
+    finished: bool
+    stopped: bool
+
+
+class RoundCounter:
+    """Wraps a player and counts the rounds the game loop asks it to play."""
+
+    def __init__(self, player):
+        self.player = player
+        self.rounds = 0
+
+    async def play_round(self, campaign):
+        self.rounds += 1
+        return await self.player.play_round(campaign)
+
+    async def finish(self, campaign):
+        await self.player.finish(campaign)
+
+
+def play(env, llm, *, tools=None, guard=None, limits=None, game="G", max_chars=None, **kwargs):
+    """Play one episode through Episode.play; return the trace and the campaign's status.
+    The number of rounds the loop asked for is in ``trace.rounds_asked``."""
     runtime = runtime_for(env, game)
     campaign = runtime.env.campaign
 
@@ -33,16 +58,24 @@ def play(env, llm, *, tools=None, guard=None, limits=None, game="G", **kwargs):
         server = build_server(Toolbox(runtime.tool_context()), tools)
         try:
             async with Client(server) as client:
-                return await run_episode(
+                bridge = (
+                    McpBridge(client)
+                    if max_chars is None
+                    else McpBridge(client, max_chars=max_chars)
+                )
+                player = LLMPlayer(
                     llm,
-                    McpBridge(client),
+                    bridge,
                     system_prompt="SYSTEM",
                     user_prompt="USER",
-                    status=lambda: CampaignStatus(campaign.is_finished(), campaign.stopped),
                     guard=guard,
                     limits=limits or Limits(),
                     **kwargs,
                 )
+                counter = RoundCounter(player)
+                await Episode(runtime.env, counter).play()
+                player.trace.rounds_asked = counter.rounds
+                return player.trace
         except BaseExceptionGroup as group:
             raise unwrap(group) from None
 
@@ -331,25 +364,8 @@ def test_the_model_sees_exactly_the_offered_tools(env):
 
 
 def test_an_output_longer_than_the_limit_is_cut_flagged_and_counted(env):
-    runtime = runtime_for(env, "G")
-    campaign = runtime.env.campaign
     llm = ScriptedLLM([turn(calls=(call("query_pool", {"limit": 20}),)), turn(content="done")])
-
-    async def go():
-        server = build_server(Toolbox(runtime.tool_context()), None)
-        async with Client(server) as client:
-            return await run_episode(
-                llm,
-                McpBridge(client, max_chars=300),
-                system_prompt="S",
-                user_prompt="U",
-                status=lambda: CampaignStatus(campaign.is_finished(), campaign.stopped),
-            )
-
-    try:
-        trace = asyncio.run(go())
-    finally:
-        runtime.env.store.close()
+    trace, _ = play(env, llm, max_chars=300)
     assert trace.flags["truncated_outputs"] == 1
     assert trace.tool_calls[0]["truncated"] is True and trace.tool_calls[0]["chars"] > 300
     assert "[TRUNCATED" in llm.histories[1][-1]["content"]
@@ -360,3 +376,47 @@ def test_a_call_with_empty_arguments_is_a_call_with_no_arguments(env):
     trace, _ = play(env, llm)
     assert trace.flags["bad_json"] == 0
     assert trace.tool_calls[0]["ok"] is True and trace.tool_calls[0]["arguments"] == {}
+
+
+# --- rounds: where the game loop hands back control -------------------------------------
+
+
+def _submit_first(k):
+    """A turn that buys the first ``k`` unbought rows of the last query."""
+
+    def reply(messages):
+        rows = json.loads(messages[-1]["content"])["rows"][:k]
+        return turn(calls=(call("submit_batch", {"design_ids": [r["design_id"] for r in rows]}),))
+
+    return reply
+
+
+def _query_then_submit(k):
+    return [turn(calls=(call("query_pool", {"limit": k}),)), _submit_first(k)]
+
+
+def test_a_round_ends_with_the_turn_that_buys_and_the_conversation_carries_on(env):
+    llm = ScriptedLLM([step for _ in range(4) for step in _query_then_submit(5)])
+    trace, state = play(env, llm)
+    assert trace.stop_reason == "finished" and state.finished
+    assert trace.rounds_asked == 4  # one per purchase, though each took two turns
+    assert trace.turns == 8  # one conversation across the rounds, numbered on
+    assert [len(h) for h in llm.histories[:3]] == [2, 4, 6]  # nothing is reset
+
+
+def test_the_turn_limit_counts_across_rounds(env):
+    llm = ScriptedLLM(
+        [step for _ in range(2) for step in _query_then_submit(5)]
+        + [turn(calls=(call("describe_campaign"),))]
+    )
+    trace, state = play(env, llm, limits=Limits(max_turns=5))
+    assert trace.stop_reason == "max_turns" and trace.turns == 5
+    assert trace.rounds_asked == 3 and not state.finished
+
+
+def test_turns_that_buy_nothing_stay_in_the_same_round(env):
+    llm = ScriptedLLM(
+        [turn(calls=(call("describe_campaign"),)) for _ in range(3)] + [turn(content="bye")]
+    )
+    trace, _ = play(env, llm)
+    assert trace.stop_reason == "agent_ended" and trace.rounds_asked == 1

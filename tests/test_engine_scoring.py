@@ -1,4 +1,4 @@
-"""T14: scoring a settled campaign."""
+"""Scoring a settled campaign."""
 
 from __future__ import annotations
 

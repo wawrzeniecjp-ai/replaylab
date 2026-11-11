@@ -21,9 +21,21 @@ from replaylab.domain.types import Batch, BatchStatus, Outcome
 
 
 class ReplayBackend:
-    """Replay implementation of LabBackend over recorded outcomes: a
-    submission's outcome becomes visible only when the clock reaches
-    submission + delay (see the module docstring for the leak rules)."""
+    """Serve recorded outcomes as a lab would: a batch's outcomes become visible only when
+    the clock reaches its submission round plus the delay.
+
+    It satisfies the :class:`~replaylab.backends.base.LabBackend` protocol. A protocol is
+    matched by its methods, so the class needs no base class.
+
+    Args:
+        outcomes (Mapping[str, Outcome]): every design's recorded outcome, keyed by
+            design id.
+        delay_rounds (int): how many rounds a batch takes to come back.
+
+    Raises:
+        ValueError: ``delay_rounds`` is negative, or an outcome's ``design_id``
+            differs from its key.
+    """
 
     def __init__(self, outcomes: Mapping[str, Outcome], *, delay_rounds: int = 0) -> None:
         if delay_rounds < 0:
@@ -52,7 +64,14 @@ class ReplayBackend:
         return self._clock
 
     def submit(self, batch: Batch) -> SubmissionHandle:
-        """Accept a batch and remember when it was submitted.
+        """Accept a batch and remember the round it was submitted in.
+
+        Args:
+            batch (Batch): the batch to measure.
+
+        Returns:
+            SubmissionHandle: the receipt to poll with. References are numbered in
+            submission order (``replay-1``, ``replay-2``...).
 
         Raises:
             UnknownDesignError: an id has no recorded outcome.
@@ -73,21 +92,29 @@ class ReplayBackend:
         return SubmissionHandle(backend_ref=reference, batch_id=batch.batch_id)
 
     def poll(self, handle: SubmissionHandle) -> PollResult:
-        """COMPLETE with every outcome once the clock has reached submission +
-        delay, otherwise SUBMITTED with nothing yet.
+        """Report a submission's status and every outcome released so far.
 
-        Polling is cumulative: each call returns *all* of the batch's outcomes
-        released so far, not only the new ones, so calling it twice is harmless
-        and the caller never has to remember what it has already seen.
+        The whole batch is released at once, when the clock reaches submission + delay.
+        Polling is cumulative: each call returns *all* of the batch's released outcomes,
+        not only the new ones, so calling it twice is harmless.
+
+        Args:
+            handle (SubmissionHandle): the receipt :meth:`submit` returned.
+
+        Returns:
+            PollResult: ``COMPLETE`` with every outcome once due, otherwise ``SUBMITTED``
+            with none.
+
+        Raises:
+            BackendError: ``handle`` is not a submission of this backend.
         """
         if handle.backend_ref not in self._submissions:
             raise BackendError(f"unknown submission {handle.backend_ref!r}")
         submitted_at, design_ids = self._submissions[handle.backend_ref]
-        # The whole batch is released at once: a replay has no partial deliveries.
         if self._clock >= submitted_at + self._delay:
             return PollResult(BatchStatus.COMPLETE, tuple(self._outcomes[d] for d in design_ids))
         return PollResult(BatchStatus.SUBMITTED, ())
 
     def advance(self) -> None:
-        """Tick the simulated clock by one round."""
+        """Move the simulated clock forward one round."""
         self._clock += 1

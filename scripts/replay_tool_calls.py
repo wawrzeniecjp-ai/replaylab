@@ -50,7 +50,7 @@ from replaylab.interfaces.runtime import SetupError, build_runtime  # noqa: E402
 from replaylab.interfaces.server import build_server  # noqa: E402
 from replaylab.interfaces.tools import Toolbox  # noqa: E402
 
-# error kinds the agent loop answers itself, without reaching the server (eval/loop.py)
+# error kinds the agent loop answers itself, without reaching the server (eval/llm_player.py)
 NOT_SENT = {"bad_json", "unknown_tool"}
 
 FILES = {

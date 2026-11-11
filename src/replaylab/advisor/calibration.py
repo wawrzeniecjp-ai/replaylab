@@ -1,4 +1,4 @@
-"""Calibration of hit-rate predictions (decision D12; provisional).
+"""Calibrate hit-rate predictions against the hit rates that were realized.
 
 Every model-based proposal records a predicted hit rate for its batch. Once the batch is
 delivered, ``realized - predicted`` is a residual. With at least ``CALIBRATION_MIN_ROUNDS``

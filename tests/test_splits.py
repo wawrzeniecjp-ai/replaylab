@@ -1,4 +1,4 @@
-"""Tests for grouped stratified fold selection (Phase 0.3, decision D5)."""
+"""Grouped stratified fold selection."""
 
 from __future__ import annotations
 

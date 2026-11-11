@@ -1,4 +1,4 @@
-"""The policy factory that ``propose_batch``, ``run-scripted`` and the ladder share (D13).
+"""The policy factory that ``propose_batch``, ``run-scripted`` and the ladder share.
 
 Both scaling variants are offered, because the ladder tracks them side by side
 and the pre-registered scripted bar is ``learner_sim_purchased``: an agent must

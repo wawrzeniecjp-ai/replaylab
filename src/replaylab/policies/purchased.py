@@ -1,15 +1,13 @@
 """The purchased-row scaling variants of the two learners.
 
-The library's default learners standardize the features on the **pool** (medians
-and orientation are pool-wide, and so are the means and standard deviations).
-The recipe of the earlier exploratory analysis standardized on the **delivered
-purchases** instead, recomputed every round; on the legacy game that is worth
-+6.27 hits for ``learner_sim`` (design-notes section 5), which is more than the
-2-hit threshold, so the library keeps its pool-wide default and both variants are
-tracked side by side in every ladder run (decided 2026-10-13).
+The default learners standardize the features on the **pool**: the means and standard
+deviations are computed over every design. These variants standardize on the **delivered
+purchases** instead, recomputed every round. The ladder plays both; why the difference
+matters, and how it changes between targets, is in the README (Methods) and design-notes
+sections 5 to 8.
 
-Why the scaler matters at all: the model's L2 penalty acts on the standardized
-weights, so the scaling decides how strongly each feature is shrunk.
+Why the scaler matters at all: the model's L2 penalty acts on the standardized weights, so
+the scaling decides how strongly each feature is shrunk.
 
 The two variants differ from their pool-wide twins in **nothing but the
 scaler**: same model, same fallback, same tie-breaks, same random stream. Any
@@ -32,13 +30,19 @@ from replaylab.policies.core import Learner, LearnerSim, _available, _top_and_ex
 
 
 def purchased_scale(preprocessor: Preprocessor, state: CampaignState) -> Preprocessor:
-    """Same columns as ``preprocessor``, but standardized on the delivered rows.
+    """Return a copy of ``preprocessor`` that standardizes on the delivered designs.
 
-    Medians, orientation, one-hot classes and length handling stay pool-wide
-    (matching the legacy recipe: pool medians, purchased scaler); only the
-    standardizing means and standard deviations move to the delivered
-    purchases, recomputed at every round. A column with no variation among
-    delivered rows keeps its pool standard deviation.
+    Medians, orientation, one-hot classes and length handling stay pool-wide; only the
+    means and standard deviations move to the delivered purchases. A column with no
+    variation among the delivered designs keeps its pool standard deviation.
+
+    Args:
+        preprocessor (Preprocessor): the pool-wide preprocessor.
+        state (CampaignState): the campaign; its delivered designs set the scale.
+
+    Returns:
+        Preprocessor: the rescaled copy, or ``preprocessor`` itself when nothing has been
+        delivered yet.
     """
     delivered = [state.designs[d] for d in sorted(state.outcomes)]
     if not delivered:

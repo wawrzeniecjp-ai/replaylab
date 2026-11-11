@@ -1,7 +1,8 @@
 """The matrix runner: games x trials x conditions, resumable, concurrent, spend-guarded.
 
-* Episode order is trial-major, so a pilot of the first ten episodes already covers every
-  condition of the first trials.
+* Episodes are ordered trial by trial within each game: every condition of the first
+  trial, then every condition of the next. A pilot that plays the first episodes therefore
+  includes every condition, and its cost projection does not rest on one condition alone.
 * An episode is recorded only if it ends normally. A spend cap or a model failure leaves it
   unrecorded; running the same command again plays exactly the missing episodes.
 * The campaign state of an episode lives in memory (or in ``store_dir`` for inspection); a
@@ -14,25 +15,36 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import Sequence
+from collections.abc import AsyncIterator, Sequence
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from mcp.client import Client
 
 from replaylab.config import load_games
+from replaylab.engine.episode import Episode, Played, ScriptedPlayer
 from replaylab.eval.conditions import Condition
 from replaylab.eval.final_run import FinalRunPermit, FinalRunRefused
+from replaylab.eval.llm_player import Limits, LLMPlayer, unwrap
 from replaylab.eval.llm_types import LLMClient
-from replaylab.eval.loop import CampaignStatus, Limits, run_episode, unwrap
 from replaylab.eval.mcp_bridge import McpBridge
-from replaylab.eval.records import EpisodeRecord, append_record, completed_keys, read_records
-from replaylab.eval.scripted import play_scripted, scores_dict
+from replaylab.eval.records import (
+    EpisodeRecord,
+    append_record,
+    completed_keys,
+    read_records,
+    scores_dict,
+)
 from replaylab.eval.seeds import episode_seed
 from replaylab.eval.spend import Projection, SpendCapReached, SpendGuard, project
 from replaylab.interfaces.runtime import SetupError, build_runtime
 from replaylab.interfaces.server import build_server
 from replaylab.interfaces.tools import Toolbox
+from replaylab.policies import as_choose
+from replaylab.policies.factory import make_policy
+
+SCRIPTED = "scripted:"  # the condition prefix of a scripted player: scripted:<policy>
 
 
 @dataclass(frozen=True)
@@ -52,10 +64,20 @@ class EpisodeSpec:
 def expand_matrix(
     games: Sequence[str], conditions: Sequence[str], trials: int, first_trial: int = 0
 ) -> list[EpisodeSpec]:
-    """Every (game, condition, trial), trial-major within each game.
+    """List every episode of a matrix, ordered by game, then trial, then condition.
 
-    Trials are ``first_trial .. first_trial + trials - 1``: a later block gives fresh seeds
-    for a confirmatory run (the seed depends only on game and trial).
+    The seed depends only on game and trial, so a later block of trials gives fresh seeds
+    (for a confirmatory run, say).
+
+    Args:
+        games (Sequence[str]): game ids.
+        conditions (Sequence[str]): condition names (or ``scripted:<policy>``).
+        trials (int): how many trials per game and condition.
+        first_trial (int): the first trial of the block; the block is ``first_trial`` to
+            ``first_trial + trials - 1``.
+
+    Returns:
+        list[EpisodeSpec]: one spec per (game, trial, condition).
     """
     block = range(first_trial, first_trial + trials)
     return [EpisodeSpec(g, c, t) for g in games for t in block for c in conditions]
@@ -63,10 +85,11 @@ def expand_matrix(
 
 @dataclass
 class RunnerDeps:
-    """Everything episodes of one run share: files, prompts, model, hash, guard, limits.
+    """Hold what every episode of one run shares: files, prompts, model, hash, spend
+    guard and limits.
 
-    ``llm`` is ``None`` in dry runs and for scripted episodes; ``config_hash``
-    and ``git_sha`` are stamped into every record this run writes.
+    ``llm`` is ``None`` in dry runs and for scripted episodes. ``config_hash`` and
+    ``git_sha`` are stamped into every record the run writes.
     """
 
     tables_dir: Path
@@ -165,9 +188,48 @@ def _store_path(store_dir: Path | None, name: str) -> str:
     return str(path)
 
 
-def _runtime(game: str, seed: int, store: str, deps: RunnerDeps):
-    return build_runtime(
-        game,
+@asynccontextmanager
+async def open_episode(spec: EpisodeSpec, deps: RunnerDeps) -> AsyncIterator[Episode]:
+    """Create everything one episode needs, yield it as an :class:`Episode`, and release
+    it afterwards.
+
+    The resources, in the order they are created:
+
+    * the seed, from the game and the trial only, so every condition and model of a trial
+      plays the same pool under the same aliases (that is what makes comparisons paired);
+    * the game (``build_runtime``): pool, hidden outcomes, aliases, store, backend and
+      campaign, plus the preprocessor and similarity index the tools use;
+    * the player:
+
+      * for ``scripted:<policy>``, a :class:`ScriptedPlayer` running that policy;
+      * for an LLM condition, an MCP server that registers only the condition's tools, a
+        client connected to it in memory, and an :class:`LLMPlayer` talking to the model
+        through it.
+
+    The store is closed on the way out, whatever happened.
+
+    Args:
+        spec (EpisodeSpec): the episode (game, condition, trial).
+        deps (RunnerDeps): the run's shared bundle (files, prompts, model client, guard).
+
+    Yields:
+        Episode: the game and its player, ready to :meth:`~Episode.play`.
+
+    Raises:
+        SetupError: the game cannot be built (unknown, held out, final test without a
+            permit).
+        UnknownPolicy: a scripted condition names no known policy.
+    """
+    seed = episode_seed(spec.game, spec.trial)
+    scripted = spec.condition.startswith(SCRIPTED)
+    # An LLM episode's store may be kept on disk for inspection (``store_dir``).
+    store = (
+        ":memory:"
+        if scripted
+        else _store_path(deps.store_dir, f"{spec.game}_{spec.condition}_{spec.trial}")
+    )
+    runtime = build_runtime(
+        spec.game,
         seed,
         store,
         games_path=deps.games_path,
@@ -175,70 +237,104 @@ def _runtime(game: str, seed: int, store: str, deps: RunnerDeps):
         tables_dir=deps.tables_dir,
         folds_path=deps.folds_path,
         clusters_path=deps.clusters_path,
-        final_run=deps.final_permit is not None and deps.final_permit.game == game,
+        final_run=deps.final_permit is not None and deps.final_permit.game == spec.game,
     )
-
-
-async def run_llm_episode(spec: EpisodeSpec, deps: RunnerDeps) -> EpisodeRecord:
-    """Play one matrix cell end to end: fresh campaign + in-memory server + model loop.
-
-    The episode is recorded only if it ends normally (see ``run_episode``);
-    failures raise, so the caller leaves it unrecorded and a later run replays it.
-    """
-    # The seed depends on game and trial only, so every condition and model of a trial
-    # plays the same pool under the same aliases: that is what makes comparisons paired.
-    seed = episode_seed(spec.game, spec.trial)
-    condition = deps.conditions[spec.condition]
-    store = _store_path(deps.store_dir, f"{spec.game}_{spec.condition}_{spec.trial}")
-    runtime = _runtime(spec.game, seed, store, deps)
-    campaign = runtime.env.campaign
     try:
+        if scripted:
+            policy = make_policy(
+                spec.condition.removeprefix(SCRIPTED),
+                runtime.feature_config,
+                runtime.preprocessor,
+                runtime.similarity,
+            )
+            yield Episode(runtime.env, ScriptedPlayer(as_choose(policy, seed)))
+            return
         # The condition is applied here: the server registers only its tools. Server and
         # client run in the same process, talking MCP in memory (no subprocess).
-        server = build_server(Toolbox(runtime.tool_context()), condition.tools_arg)
+        server = build_server(
+            Toolbox(runtime.tool_context()), deps.conditions[spec.condition].tools_arg
+        )
         try:
             async with Client(server) as client:
-                trace = await run_episode(
+                player = LLMPlayer(
                     deps.llm,
                     McpBridge(client),
                     system_prompt=deps.system_prompt,
                     user_prompt=deps.user_prompt,
-                    status=lambda: CampaignStatus(
-                        finished=campaign.is_finished(), stopped=campaign.stopped
-                    ),
                     guard=deps.guard,
                     limits=deps.limits,
                     passback_reasoning=deps.passback_reasoning,
                     reasoning_field=deps.reasoning_field,
                 )
+                yield Episode(runtime.env, player)
         except BaseExceptionGroup as group:
             # The MCP client wraps errors in an ExceptionGroup, which would hide a
             # SpendCapReached from the handler in run_matrix; re-raise the real error.
             raise unwrap(group) from None
-        # Collect any outcomes still pending, so the score covers every purchase.
-        campaign.settle()
-        scores = scores_dict(runtime.env.score())
     finally:
         runtime.env.store.close()
+
+
+async def play_episode(spec: EpisodeSpec, deps: RunnerDeps) -> EpisodeRecord:
+    """Play one episode end to end and return its record.
+
+    Args:
+        spec (EpisodeSpec): the episode (game, condition, trial).
+        deps (RunnerDeps): the run's shared bundle.
+
+    Returns:
+        EpisodeRecord: the record to append to ``episodes.jsonl``.
+
+    Raises:
+        SpendCapReached: the spend cap was reached (LLM episodes).
+        LLMError: the model failed (LLM episodes).
+        SetupError: the game cannot be built.
+
+        An episode that raises has no result, so it is not recorded and a later run
+        plays it again.
+    """
+    async with open_episode(spec, deps) as episode:
+        played = await episode.play()
+    return _record(spec, deps, episode, played)
+
+
+def _record(spec: EpisodeSpec, deps: RunnerDeps, episode: Episode, played: Played) -> EpisodeRecord:
+    """Build the record of a finished episode: the player's trace (empty for a scripted
+    player), the score, and what pins the run (config hash, commit)."""
+    common = {
+        "game": spec.game,
+        "condition": spec.condition,
+        "trial": spec.trial,
+        "seed": episode_seed(spec.game, spec.trial),
+        "config_hash": deps.config_hash,
+        "git_sha": deps.git_sha,
+        "git_dirty": deps.git_dirty,
+        "index_version": deps.index_version,
+        "scores": scores_dict(played.score),
+    }
+    if isinstance(episode.player, LLMPlayer):
+        trace = episode.player.trace
+        return EpisodeRecord(
+            **common,
+            model=deps.model,
+            messages=trace.messages,
+            tool_calls=trace.tool_calls,
+            usage=trace.usage,
+            cost_usd=trace.cost_usd,
+            stop_reason=trace.stop_reason,
+            turns=trace.turns,
+            flags=trace.flags,
+            reasoning=trace.reasoning,
+        )
     return EpisodeRecord(
-        game=spec.game,
-        condition=spec.condition,
-        trial=spec.trial,
-        seed=seed,
-        model=deps.model,
-        config_hash=deps.config_hash,
-        git_sha=deps.git_sha,
-        git_dirty=deps.git_dirty,
-        index_version=deps.index_version,
-        messages=trace.messages,
-        tool_calls=trace.tool_calls,
-        usage=trace.usage,
-        cost_usd=trace.cost_usd,
-        stop_reason=trace.stop_reason,
-        turns=trace.turns,
-        scores=scores,
-        flags=trace.flags,
-        reasoning=trace.reasoning,
+        **common,
+        model=None,
+        messages=[],
+        tool_calls=[],
+        usage=[],
+        cost_usd=0.0,
+        stop_reason="policy_stopped" if played.stopped else "policy_finished",
+        turns=0,
     )
 
 
@@ -278,7 +374,7 @@ async def run_matrix(
             if abort.is_set():
                 return
             try:
-                record = await run_llm_episode(spec, deps)
+                record = await play_episode(spec, deps)
             except SpendCapReached:
                 # The cap is shared: once one episode hits it, no new episode starts.
                 abort.set()
@@ -308,7 +404,26 @@ async def run_pilot(
     margin: float = 1.25,
     errors_path: Path | str | None = None,
 ) -> Projection:
-    """Run the first ``n`` unfinished episodes and project the cost of all of ``specs``."""
+    """Play the first ``n`` episodes of ``specs`` not yet recorded, and project the cost
+    of all of ``specs`` from their mean cost.
+
+    Args:
+        specs (Sequence[EpisodeSpec]): the whole matrix, in play order.
+        deps (RunnerDeps): the run's shared bundle (client, guard, limits).
+        records_path (Path | str): the run's ``episodes.jsonl``; pilot episodes are
+            recorded there like any others.
+        n (int): how many episodes to play.
+        concurrency (int): episodes played at once.
+        margin (float): the safety factor applied to the projection.
+        errors_path (Path | str | None): where failed episodes are logged.
+
+    Returns:
+        Projection: the mean cost, the episode count, the margin and the projected total.
+
+    Raises:
+        ValueError: no pilot episode finished (they failed, or the spend cap stopped
+            them), so there is nothing to project from.
+    """
     records_path = Path(records_path)
     done = completed_keys(read_records(records_path))
     first = [s for s in specs if s.key not in done][:n]
@@ -344,32 +459,6 @@ def run_scripted_matrix(
         if spec.key in done:
             summary.skipped += 1
             continue
-        seed = episode_seed(spec.game, spec.trial)
-        runtime = _runtime(spec.game, seed, ":memory:", deps)
-        try:
-            card, reason = play_scripted(runtime, spec.condition.split(":", 1)[1])
-        finally:
-            runtime.env.store.close()
-        append_record(
-            records_path,
-            EpisodeRecord(
-                game=spec.game,
-                condition=spec.condition,
-                trial=spec.trial,
-                seed=seed,
-                model=None,
-                config_hash=deps.config_hash,
-                git_sha=deps.git_sha,
-                git_dirty=deps.git_dirty,
-                index_version=deps.index_version,
-                messages=[],
-                tool_calls=[],
-                usage=[],
-                cost_usd=0.0,
-                stop_reason=reason,
-                turns=0,
-                scores=scores_dict(card),
-            ),
-        )
+        append_record(records_path, asyncio.run(play_episode(spec, deps)))
         summary.completed.append(spec.key)
     return summary

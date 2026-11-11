@@ -36,8 +36,16 @@ def make_rng(seed: int, round_index: int) -> np.random.Generator:
 
 
 def as_choose(policy: Policy, seed: int) -> Callable[[CampaignState, int], list[str]]:
-    """``policy`` as the engine's per-round question (``engine.play``): a full batch, drawn
-    with the generator of ``(seed, round)``."""
+    """Turn ``policy`` into the per-round question a ``ScriptedPlayer`` asks
+    (``engine/episode.py``): a full batch, drawn with the generator of ``(seed, round)``.
+
+    Args:
+        policy (Policy): the scripted policy.
+        seed (int): the episode seed.
+
+    Returns:
+        Callable[[CampaignState, int], list[str]]: ``choose(state, round) -> design ids``.
+    """
 
     def choose(state: CampaignState, round_index: int) -> list[str]:
         return policy.choose(state, state.config.batch_size, make_rng(seed, round_index))

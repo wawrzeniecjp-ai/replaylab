@@ -1,4 +1,4 @@
-"""T08: aliases for design ids."""
+"""Aliases for design ids."""
 
 from __future__ import annotations
 

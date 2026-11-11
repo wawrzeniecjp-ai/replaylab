@@ -1,4 +1,4 @@
-"""T01: feature configuration (FeatureConfig in domain, loader in replaylab.config)."""
+"""Feature configuration (FeatureConfig in domain, loader in replaylab.config)."""
 
 from __future__ import annotations
 

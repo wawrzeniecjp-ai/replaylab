@@ -1,4 +1,4 @@
-"""T09: pool loader and hidden-outcome guard."""
+"""Pool loader and hidden-outcome guard."""
 
 from __future__ import annotations
 
@@ -126,7 +126,7 @@ def test_feature_values_stay_raw_and_gaps_are_omitted(env):
     assert features["proteinmpnn_score"] == pytest.approx(
         table.loc["nip-0010", "proteinmpnn_score"]
     )
-    assert features["proteinmpnn_score"] > 0  # not negated: orientation is applied later (D7)
+    assert features["proteinmpnn_score"] > 0  # not negated: orientation is applied later
     assert "boltz2_ipsae" not in pool.designs["nip-0002"].features  # a gap is omitted
     assert "esmfold_plddt" in pool.designs["nip-0002"].features
     assert "proteinmpnn_score" not in pool.designs["nip-0003"].features

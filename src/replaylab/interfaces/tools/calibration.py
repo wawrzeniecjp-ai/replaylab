@@ -1,4 +1,4 @@
-"""Calibration (D12): the recorded hit-rate predictions, read back for the tools.
+"""Read the recorded hit-rate predictions back for the tools, beside what arrived.
 
 Every model-based ``propose_batch`` records a predicted hit rate with its batch. Once that
 batch is delivered, realized - predicted is a residual. ``propose_batch`` reports how many

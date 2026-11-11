@@ -1,4 +1,4 @@
-"""T12: ReplayBackend (runs the shared contract plus replay-specific tests)."""
+"""ReplayBackend (runs the shared contract plus replay-specific tests)."""
 
 from __future__ import annotations
 

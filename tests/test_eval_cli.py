@@ -1,4 +1,4 @@
-"""T31: the eval command line (conditions, scripted, pilot, run, compare)."""
+"""The eval command line (conditions, scripted, pilot, run, compare)."""
 
 from __future__ import annotations
 
@@ -483,7 +483,7 @@ def test_smoke_fails_when_no_thinking_came_back_to_test_the_pass_back(setup, tmp
 def dirty(monkeypatch):
     """Make the CLI believe src/ has uncommitted changes."""
     monkeypatch.setattr(
-        eval_setup, "uncommitted_frozen_paths", lambda: [" M src/replaylab/eval/loop.py"]
+        eval_setup, "uncommitted_frozen_paths", lambda: [" M src/replaylab/eval/llm_player.py"]
     )
 
 
@@ -496,7 +496,7 @@ def test_a_dirty_tree_refuses_to_record_episodes(setup, dirty, tmp_path):
     refused = invoke(scripted_args(setup, tmp_path))
     assert refused.exit_code == 2
     assert "uncommitted" in refused.output
-    assert "src/replaylab/eval/loop.py" in refused.output  # says what to commit
+    assert "src/replaylab/eval/llm_player.py" in refused.output  # says what to commit
     assert not (tmp_path / "episodes.jsonl").exists()
 
 

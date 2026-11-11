@@ -1,4 +1,4 @@
-"""T27: the OpenAI-compatible adapter (usage, retries, reasoning) and message building."""
+"""The OpenAI-compatible adapter (usage, retries, reasoning) and message building."""
 
 from __future__ import annotations
 

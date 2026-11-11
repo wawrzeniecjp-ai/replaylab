@@ -1,4 +1,4 @@
-"""T22: the advisor tools (propose, fit_and_rank, similar, estimate, stop_advice, summary)."""
+"""The advisor tools (propose, fit_and_rank, similar, estimate, stop_advice, summary)."""
 
 from __future__ import annotations
 

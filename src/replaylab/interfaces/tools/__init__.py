@@ -7,7 +7,7 @@ Start with ``toolbox.py``: ``Toolbox`` lists the 15 tools, one line each, groupe
     campaign.py     submit_batch, pending_batches, wait, get_history, stop, campaign_summary
     models.py       fit_and_rank, fit_custom_model, propose_batch
     estimates.py    similar_designs, estimate_hit_rate, stop_advice
-    calibration.py  the recorded predictions against what arrived (D12)
+    calibration.py  the recorded predictions against what arrived
     catalog.py      tool names, groups and TOOL_DESCRIPTIONS (what the agent reads; hashed)
     context.py      ToolContext (what a tool may use) and ToolFailure (an agent's mistake)
     limits.py       the numeric limits; formatting.py: number rounding and parsing

@@ -1,4 +1,4 @@
-"""T13: Campaign rules and the time model (decisions D1 and D8)."""
+"""Campaign rules and the time model."""
 
 from __future__ import annotations
 

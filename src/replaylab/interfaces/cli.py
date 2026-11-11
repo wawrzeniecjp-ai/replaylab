@@ -12,13 +12,14 @@ Every command except ``serve`` prints one JSON object on stdout. Exit codes: 0 s
 
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 from typing import Annotated, Any
 
 import typer
 
-from replaylab.engine.play import play
+from replaylab.engine.episode import Episode, ScriptedPlayer
 from replaylab.interfaces.runtime import Runtime, SetupError, build_runtime
 from replaylab.interfaces.server import serve as serve_stdio
 from replaylab.interfaces.tools import Toolbox, ToolFailure, resolve_tool_selection
@@ -121,7 +122,9 @@ def campaign_status(store: Store) -> None:
         ids = opened.campaign_ids()
         if not ids:
             raise _fail("error: the store holds no campaign", 1)
-        cid = ids[0]
+        if len(ids) > 1:
+            raise _fail(f"error: the store holds {len(ids)} campaigns; expected exactly one", 2)
+        (cid,) = ids
         state = opened.snapshot(cid)
         stopped = any(e.kind == "campaign_stopped" for e in opened.events(cid))
         _emit(
@@ -204,7 +207,8 @@ def run_scripted(
         )
     except UnknownPolicy as error:
         raise _fail(f"error: {error}", 2) from None
-    card = play(runtime.env, as_choose(scripted, seed)).score
+    player = ScriptedPlayer(as_choose(scripted, seed))
+    card = asyncio.run(Episode(runtime.env, player).play()).score
     _emit(
         {
             "game": game,

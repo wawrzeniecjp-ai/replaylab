@@ -1,14 +1,24 @@
-"""What the eval commands set up before their first episode.
+"""Set up what the eval commands need before their first episode, and refuse bad setups.
 
-Every refusal that must come before money is spent lives here: an uncommitted tree
-(:func:`check_uncommitted`), an unknown model or price (:func:`model_setup`), a final test
-that would be a second run (:func:`final_permit`). :func:`runner_deps` builds what the runner
-shares between episodes; :func:`prepare` adds the model, the spend guard and the config
-hash for the LLM commands. :func:`llm_config_hash` is the hash the pre-registrations name;
+Every refusal that must come before money is spent lives here:
+
+* an uncommitted tree (:func:`check_uncommitted`);
+* an unknown model, a missing price or a missing API key (:func:`model_setup`,
+  :func:`make_llm`);
+* a final test that would be a second run (:func:`final_permit`).
+
+The two builders:
+
+* :func:`runner_deps` builds the :class:`~replaylab.eval.runner.RunnerDeps` bundle that every
+  episode of a run shares (scripted and LLM commands);
+* :func:`prepare` calls it for the LLM commands, adding the model client, the spend guard
+  and the config hash.
+
+:func:`llm_config_hash` is the hash the pre-registrations name;
 ``tests/test_registered_hashes.py`` pins it.
 
-The commands themselves are in ``eval/cli.py``. Refusals exit through :func:`fail` with
-code 2 (bad setup), so this module speaks Typer.
+The commands themselves are in ``eval/cli.py``. Refusals exit through :func:`fail`, usually
+with code 2 (bad setup), so this module speaks Typer.
 """
 
 from __future__ import annotations
@@ -38,7 +48,7 @@ from replaylab.eval.final_run import (
 )
 from replaylab.eval.llm import OpenAICompatClient
 from replaylab.eval.llm_anthropic import AnthropicClient
-from replaylab.eval.loop import Limits
+from replaylab.eval.llm_player import Limits
 from replaylab.eval.models import ModelConfig, ModelConfigError, load_models
 from replaylab.eval.prompts import USER_PROMPT, load_system_prompt, text_hash
 from replaylab.eval.records import config_hash, git_info
@@ -60,11 +70,12 @@ SETUP_ERRORS = (SetupError, OSError, ValueError)
 
 @dataclass(frozen=True)
 class Files:
-    """The data and config files a command reads, one field per path option.
+    """Bundle the data and config files a command reads, one field per path option.
 
-    Every command declares the options it needs (Typer wants them in the signature),
-    then bundles them here once, so the helpers below take one argument instead of nine.
-    The defaults are the repository layout.
+    Every command declares the options it needs (Typer wants them in the signature), then
+    bundles them here once, so the helpers below take one argument instead of nine. The
+    defaults are the repository layout; ``models_config`` and ``prices_config`` are read
+    by the LLM commands only.
     """
 
     tables: Path = Path("data/processed")
@@ -85,13 +96,31 @@ DEFAULT = Files()
 
 
 def fail(message: str, code: int) -> typer.Exit:
+    """Print ``error: <message>`` to stderr and return the exit to raise.
+
+    Args:
+        message (str): what went wrong, in one line.
+        code (int): the exit code (1 refused or incomplete, 2 bad setup).
+
+    Returns:
+        typer.Exit: raise it (``raise fail(...)``) to leave the command.
+    """
     typer.echo(f"error: {message}", err=True)
     return typer.Exit(code)
 
 
 @contextmanager
 def exit_on(code: int, *errors: type[Exception]) -> Iterator[None]:
-    """Turn the given errors into a one-line ``error: ...`` message and exit ``code``."""
+    """Turn the given errors, raised inside the ``with`` block, into a one-line
+    ``error: ...`` message and exit with ``code``.
+
+    Args:
+        code (int): the exit code to leave with.
+        *errors (type[Exception]): the exception types to catch; others propagate.
+
+    Raises:
+        typer.Exit: one of ``errors`` was raised inside the block.
+    """
     try:
         yield
     except errors as error:
@@ -102,13 +131,25 @@ def exit_on(code: int, *errors: type[Exception]) -> Iterator[None]:
 
 
 def check_uncommitted(*, check_tree: bool, allow: bool) -> bool:
-    """Refuse to record episodes from an uncommitted tree; return whether it is dirty.
+    """Refuse to record episodes from a tree with uncommitted changes in ``src``,
+    ``prompts`` or ``config``.
 
     ``config_hash`` pins what the model sees, but not the code behind the tools, the
-    policies or the scoring, nor ``features.yaml``/``games.yaml``, which are tracked but
-    not hashed. ``git_sha`` is the only record of those, so a dirty run would
-    claim a commit it was not played from. ``allow`` is the escape hatch: the run goes
-    ahead and every record it writes says ``git_dirty``.
+    policies or the scoring, nor ``features.yaml`` and ``games.yaml``. The recorded
+    ``git_sha`` is the only record of those, so a run from a dirty tree would claim a
+    commit it was not played from.
+
+    Args:
+        check_tree (bool): False for a command that records nothing (a smoke test, a dry
+            run): nothing is checked.
+        allow (bool): play anyway, with a warning; every record is then marked
+            ``git_dirty``.
+
+    Returns:
+        bool: True if the tree is dirty and ``allow`` let it through.
+
+    Raises:
+        UncommittedTree: the tree is dirty and ``allow`` is False.
     """
     if not check_tree:
         return False
@@ -142,10 +183,28 @@ def runner_deps(
     guard: SpendGuard | None = None,
     store_dir: Path | None = None,
 ) -> RunnerDeps:
-    """What every episode of a run shares. ``model`` is ``None`` for scripted runs.
+    """Build the bundle of files, prompts, conditions and settings that every episode of
+    a run shares, refusing an uncommitted tree before anything is played.
 
-    ``check_tree`` is False for commands that write no record (a smoke test, a dry
-    run); otherwise an uncommitted tree is refused here, before anything is spent.
+    Args:
+        files (Files): the data and config paths.
+        cfg_hash (str): the config hash stamped into every record.
+        check_tree (bool): refuse an uncommitted tree (see :func:`check_uncommitted`);
+            False for commands that write no record.
+        allow_uncommitted (bool): record from an uncommitted tree anyway, marked dirty.
+        model (ModelConfig | None): the model; ``None`` for scripted runs.
+        llm (Any): the model client; ``None`` for scripted runs and dry runs.
+        guard (SpendGuard | None): the spend guard; ``None`` for scripted runs.
+        store_dir (Path | None): where to keep each episode's campaign store for
+            inspection; ``None`` keeps them in memory.
+
+    Returns:
+        RunnerDeps: the shared bundle.
+
+    Raises:
+        UncommittedTree: see :func:`check_uncommitted`.
+        OSError: a config or prompt file cannot be read.
+        ValueError: a config file is invalid.
     """
     sha, _ = git_info(code_root())
     git_dirty = check_uncommitted(check_tree=check_tree, allow=allow_uncommitted)
@@ -183,7 +242,30 @@ def final_permit(
     lock_dir: Path,
     check_only: bool,
 ) -> FinalRunPermit:
-    """Check the frozen state and take (or, with ``check_only``, only check) the final-run lock."""
+    """Check that a final-test leg may be played, and take its lock.
+
+    A leg is one player of the final test: a model, or the scripted ladder. Every leg of a
+    game must be played from a clean commit under the same frozen configuration, and each
+    leg only once.
+
+    Args:
+        deps (RunnerDeps): the run's shared bundle (prompts, limits, config hash).
+        specs (list[EpisodeSpec]): the episodes to play; they must all be of one
+            final-test game.
+        files (Files): the data and config paths.
+        leg (str): the leg's name (a model key, or the scripted leg).
+        run_dir (Path): the run folder, recorded in the lock.
+        lock_dir (Path): the folder of the lock files.
+        check_only (bool): only check that the lock could be taken; write nothing.
+
+    Returns:
+        FinalRunPermit: the permit the runner needs to play a final-test game.
+
+    Raises:
+        FinalRunRefused: the episodes are not exactly one final-test game, the tree is
+            dirty, the frozen configuration differs from the lock, or the leg was
+            already played.
+    """
     # Exactly one final-test game per invocation, so each game gets its own lock.
     games = load_games(deps.games_path)
     names = sorted({s.game for s in specs})
@@ -227,7 +309,21 @@ def final_permit(
 def model_setup(
     model: str, files: Files, run_dir: Path, max_usd: float
 ) -> tuple[ModelConfig, SpendGuard, Any]:
-    """The model's config, its price and a spend guard capped at ``max_usd``."""
+    """Load the model's config and price, and create a spend guard capped at ``max_usd``.
+
+    Args:
+        model (str): the model key in ``models.yaml``.
+        files (Files): the data and config paths.
+        run_dir (Path): the run folder, where the guard keeps ``spend.json``.
+        max_usd (float): the hard spending cap for the run.
+
+    Returns:
+        tuple[ModelConfig, SpendGuard, Any]: the model config, the guard and the price.
+
+    Raises:
+        typer.Exit: (code 2) the configs cannot be read, the model is unknown, or its
+            price is missing or incomplete.
+    """
     try:
         models = load_models(files.models_config)
         prices = load_prices(files.prices_config)
@@ -250,20 +346,37 @@ def model_setup(
 
 
 def hashed(item: Any) -> dict[str, Any]:
-    """A config dataclass for the config hash, without fields left at a newer default.
+    """Return a config dataclass as a dict for the config hash, leaving out ``api`` and
+    ``cache_write_per_mtok`` while they hold their default values.
 
-    Fields added later (``api``, ``cache_write_per_mtok``) are left out while unset, so the
-    configurations of runs already played keep their hash.
+    Leaving them out keeps the hash of a configuration that does not use them equal to
+    the registered hashes, which were computed without these fields.
+
+    Args:
+        item (Any): a ``ModelConfig`` or a price dataclass.
+
+    Returns:
+        dict[str, Any]: the fields to hash.
     """
     unset = {"api": "openai_chat", "cache_write_per_mtok": None}
     return {k: v for k, v in asdict(item).items() if not (k in unset and v == unset[k])}
 
 
 def llm_config_hash(cfg: ModelConfig, price: Any, files: Files) -> str:
-    """Hash of everything that shapes what the model sees or how it is billed.
+    """Hash everything that shapes what the model sees or how it is billed.
 
-    Two records with the same hash were played under the same configuration. The
-    source code is not hashed; the git commit is recorded beside it.
+    The hash covers the model config, the price, the system and user prompts, the
+    conditions file, the tool descriptions and the loop limits. Two records with the same
+    hash were played under the same configuration. The source code is not hashed; the git
+    commit is recorded beside it.
+
+    Args:
+        cfg (ModelConfig): the model config.
+        price (Any): the model's price entry.
+        files (Files): the paths of the system prompt and conditions file.
+
+    Returns:
+        str: the short config hash.
     """
     return config_hash(
         {
@@ -279,6 +392,19 @@ def llm_config_hash(cfg: ModelConfig, price: Any, files: Files) -> str:
 
 
 def make_llm(cfg: ModelConfig) -> OpenAICompatClient | AnthropicClient:
+    """Create the model client for ``cfg``: the native Anthropic client or an
+    OpenAI-compatible one, with retries left to the loop.
+
+    Args:
+        cfg (ModelConfig): the model config; ``api_key_env`` names the key's variable.
+
+    Returns:
+        OpenAICompatClient | AnthropicClient: the client.
+
+    Raises:
+        typer.Exit: (code 2) the API key is not set, or the provider's package is not
+            installed.
+    """
     key = os.environ.get(cfg.api_key_env)
     if not key:
         raise fail(f"environment variable {cfg.api_key_env} is not set", 2)
@@ -313,12 +439,31 @@ def prepare(
     allow_uncommitted: bool = False,
     final_lock_dir: Path | None = None,
 ) -> RunnerDeps:
-    """Everything an LLM command needs before its first episode, or exit with code 2.
+    """Build everything an LLM command needs before its first episode, or exit.
 
-    Order matters: every refusal (bad concurrency, unknown model or price, dirty tree,
-    unknown condition, a final test that would be a second run) happens here, before
-    any money is spent. ``final_lock_dir`` is set only for ``--final-run``; the lock is
-    only *checked* here and written by the command just before it plays.
+    Every refusal (bad concurrency, unknown model or price, dirty tree, unknown condition,
+    a final test that would be a second run) happens here, before any money is spent.
+
+    Args:
+        files (Files): the data and config paths.
+        specs (list[EpisodeSpec]): the episodes the command will play.
+        model (str): the model key in ``models.yaml``.
+        run_dir (Path): the run folder (``spend.json``, ``stores/``).
+        max_usd (float): the hard spending cap.
+        concurrency (int): episodes played at once, 1 to ``MAX_CONCURRENCY``.
+        dry_run (bool): build no client (no API key needed) and skip the tree check.
+        writes_records (bool): False for a command that records nothing (the smoke
+            test); skips the tree check.
+        allow_uncommitted (bool): record from an uncommitted tree anyway, marked dirty.
+        final_lock_dir (Path | None): set only for ``--final-run``. The lock is only
+            *checked* here; the command writes it with :func:`take_final_lock` just
+            before it plays.
+
+    Returns:
+        RunnerDeps: the shared bundle, with the client, the guard and the config hash.
+
+    Raises:
+        typer.Exit: (code 2) any refusal above.
     """
     if not 1 <= concurrency <= MAX_CONCURRENCY:
         raise fail(f"--concurrency must be between 1 and {MAX_CONCURRENCY}", 2)
@@ -347,7 +492,19 @@ def prepare(
 def take_final_lock(
     deps: RunnerDeps, specs: list[EpisodeSpec], files: Files, *, run_dir: Path, lock_dir: Path
 ) -> None:
-    """Write this leg into the final-test lock, just before its first episode is played."""
+    """Write this leg into the final-test lock and attach the permit to ``deps``. Call it
+    just before the first episode is played, after every other refusal.
+
+    Args:
+        deps (RunnerDeps): the run's shared bundle; its ``final_permit`` is set.
+        specs (list[EpisodeSpec]): the episodes to play (one final-test game).
+        files (Files): the data and config paths.
+        run_dir (Path): the run folder, recorded in the lock.
+        lock_dir (Path): the folder of the lock files.
+
+    Raises:
+        typer.Exit: (code 2) :func:`final_permit` refused.
+    """
     with exit_on(2, *SETUP_ERRORS):
         deps.final_permit = final_permit(
             deps, specs, files,
@@ -356,7 +513,16 @@ def take_final_lock(
 
 
 def dry_run_plan(specs, deps) -> dict[str, Any]:
-    """What a dry run reports: how many episodes, which conditions, under which hash."""
+    """Return what a dry run reports: the number of episodes, the tool count of each
+    condition, the model and the config hash.
+
+    Args:
+        specs (list[EpisodeSpec]): the episodes that would be played.
+        deps (RunnerDeps): the run's shared bundle.
+
+    Returns:
+        dict[str, Any]: the report.
+    """
     return {
         "episodes": len(specs),
         "conditions": {

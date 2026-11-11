@@ -170,7 +170,7 @@ def test_the_crosswalk_maps_the_four_columns_under_their_proteinbase_names():
 
 
 def test_feature_values_are_the_published_ones_of_the_winning_seed():
-    # D7: raw, unscaled, not orientation-flipped. Within one target the release's metrics
+    # The player sees raw values: unscaled, not orientation-flipped. Within one target the release's metrics
     # are comparable as published, so there is nothing to rescale.
     frame = build_designs(*release(TWO)).set_index("design_id")
     assert frame.loc["u1", "boltz2_min_ipsae"] == 0.9

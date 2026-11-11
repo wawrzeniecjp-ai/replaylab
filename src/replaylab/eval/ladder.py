@@ -22,6 +22,7 @@ final-test games: their scripted numbers come only from the final run itself
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -47,7 +48,7 @@ from replaylab.datasets.pool import DesignPool, load_pool
 from replaylab.datasets.split_tables import target_has_clusters
 from replaylab.domain.features import FeatureConfig
 from replaylab.domain.types import CampaignState, Design
-from replaylab.engine.play import play
+from replaylab.engine.episode import Episode, ScriptedPlayer
 from replaylab.engine.replay import build_replay_campaign
 from replaylab.engine.scoring import ScoreCard
 from replaylab.policies.core import Policy, WithStop, as_choose
@@ -110,12 +111,11 @@ def run_game(
 
     # env.score() scores a pool without cluster rows (the small stop-game targets) without
     # distinct_families, rather than raising ScoringError for every hit.
-    played = play(
-        env,
+    player = ScriptedPlayer(
         as_choose(policy, seed),
         before_round=None if stop_trace is None else record_advice,
     )
-    return played.score
+    return asyncio.run(Episode(env, player).play()).score
 
 
 @dataclass(frozen=True)

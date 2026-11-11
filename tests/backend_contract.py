@@ -1,4 +1,4 @@
-"""T12: the contract every LabBackend must satisfy.
+"""The contract every LabBackend must satisfy.
 
 This module is NOT collected by pytest (its class name does not start with 'Test').
 A concrete test class subclasses ``BackendContract`` and implements ``make_backend``.

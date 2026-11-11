@@ -1,4 +1,4 @@
-"""T07: games configuration."""
+"""Games configuration."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""T24: the real server in a subprocess over stdio (integration tests)."""
+"""The real server in a subprocess over stdio (integration tests)."""
 
 from __future__ import annotations
 
