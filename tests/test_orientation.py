@@ -1,6 +1,6 @@
 """Feature orientation is described to the player, and weights read against raw values.
 
-The player sees raw values everywhere (D7), but the model fits on oriented features. Before
+The player sees raw values everywhere, but the model fits on oriented features. Before
 this contract existed the two were never reconciled: a lower-is-better column got a positive
 weight, and ``query_pool``'s default sort on it returned the worst designs with nothing
 saying so. ``docs/caveats.md`` entry 4 records what that cost.
@@ -76,7 +76,7 @@ def test_the_ranking_itself_is_unchanged_by_how_the_weights_are_reported():
 
 
 def test_query_pool_still_returns_raw_values_and_sorts_by_them():
-    # D7 is untouched: the fix describes the orientation, it does not apply it
+    # Raw values are untouched: the fix describes the orientation, it does not apply it
     toolbox = planted_toolbox()
     rows = toolbox.query_pool(sort_by="f_down", descending=True, limit=3).rows
     values = [r["f_down"] for r in rows]

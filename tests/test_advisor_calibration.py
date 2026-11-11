@@ -1,4 +1,4 @@
-"""advisor.calibration: the D12 rule, as pure arithmetic."""
+"""advisor.calibration: the calibration rule, as pure arithmetic."""
 
 from __future__ import annotations
 

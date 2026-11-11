@@ -1,4 +1,4 @@
-"""T15: replay harness, leak tests, and kill-and-resume."""
+"""Replay harness, leak tests, and kill-and-resume."""
 
 from __future__ import annotations
 
@@ -264,6 +264,15 @@ def test_a_store_from_another_seed_or_game_is_refused(env, tmp_path):
         build(env, game(), seed=2, store_path=path)
     with pytest.raises(EngineError, match="different campaign"):
         build(env, game(rounds=2, batch=10), seed=1, store_path=path)
+
+
+def test_a_store_with_two_campaigns_is_refused(env, tmp_path):
+    path = tmp_path / "two.db"
+    first = build(env, game(), seed=1, store_path=path)
+    first.store.create_campaign(first.campaign.config)  # a second campaign in the same file
+    first.store.close()
+    with pytest.raises(EngineError, match="holds 2 campaigns"):
+        build(env, game(), seed=1, store_path=path)
 
 
 def test_the_store_object_is_a_campaign_store(env):

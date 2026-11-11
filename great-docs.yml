@@ -153,8 +153,9 @@ reference:
 
     - title: Engine
       desc: >-
-        The rules of the game: rounds are batch slots, submit ticks the
-        clock, settle drains pending deliveries, scoring turns a finished
+        The rules of the game and the game loop: Episode.play asks a
+        Player for one round at a time; rounds are batch slots, submit ticks
+        the clock, settle drains pending deliveries, scoring turns a finished
         campaign into a ScoreCard. build_replay_campaign wires a game from
         the processed tables and can resume from the event log.
       contents:
@@ -163,6 +164,10 @@ reference:
         - engine.ScoreCard
         - engine.ScoringContext
         - engine.score
+        - engine.episode.Episode
+        - engine.episode.Player
+        - engine.episode.ScriptedPlayer
+        - engine.episode.Played
         - engine.replay.ReplayEnvironment
         - engine.replay.build_replay_campaign
         - engine.replay.restore_backend
@@ -181,7 +186,7 @@ reference:
     - title: Advisor
       desc: >-
         The analysis behind the advisor tools, as pure functions over a
-        CampaignState snapshot: preprocessing (orientation applied here, D7), the logistic model
+        CampaignState snapshot: preprocessing (orientation applied here), the logistic model
         (fits delivered purchases only), 3-mer similarity to hits, hit-rate
         estimates and the stop rules.
       contents:
@@ -221,6 +226,10 @@ reference:
         - policies.purchased_scale
         - policies.WithStop
         - policies.make_rng
+        - policies.as_choose
+        - policies.factory.make_policy
+        - policies.factory.policy_help
+        - policies.factory.UnknownPolicy
 
     - title: Evaluation
       desc: >-
@@ -250,12 +259,13 @@ reference:
         seed. Money is capped before every call; the replay viewer turns one
         records file back into a page you can read.
       contents:
-        - eval.loop.run_episode
-        - eval.loop.EpisodeTrace
-        - eval.loop.Limits
-        - eval.loop.CampaignStatus
+        - eval.llm_player.LLMPlayer
+        - eval.llm_player.EpisodeTrace
+        - eval.llm_player.Limits
         - eval.runner.run_matrix
         - eval.runner.run_pilot
+        - eval.runner.play_episode
+        - eval.runner.open_episode
         - eval.runner.EpisodeSpec
         - eval.runner.RunnerDeps
         - eval.runner.expand_matrix
@@ -283,7 +293,6 @@ reference:
         - eval.scorers.argument_validity
         - eval.scorers.first_batch_sort_column
         - eval.scorers.stop_tradeoff
-        - eval.scripted.play_scripted
         - eval.stats.paired_bootstrap
         - eval.stats.PairedResult
         - eval.replay_view.build_page
@@ -303,9 +312,6 @@ reference:
         - interfaces.runtime.Runtime
         - interfaces.runtime.build_runtime
         - interfaces.runtime.SetupError
-        - interfaces.policy_factory.make_policy
-        - interfaces.policy_factory.policy_help
-        - interfaces.policy_factory.UnknownPolicy
         - interfaces.server.build_server
         - interfaces.server.serve
         - interfaces.server.REGISTERED_TOOLS

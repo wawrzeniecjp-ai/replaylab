@@ -185,7 +185,7 @@ class Reason(_Model):
 # predicted rate is clip(raw + mean residual) with a 90% interval of +/- 1.645 x sd of the
 # residuals (see Toolbox._next_batch_estimate).
 class CalibrationInfo(_Model):
-    """How the predicted rate was produced and whether it is calibrated (decision D12)."""
+    """Report how the predicted rate was produced and whether it is calibrated."""
 
     basis: Literal["model", "posterior_mean"]
     n_realized: int

@@ -1,4 +1,4 @@
-"""T10: store foundation: schema, migrations, campaigns, designs, events, clock."""
+"""Store foundation: schema, migrations, campaigns, designs, events, clock."""
 
 from __future__ import annotations
 

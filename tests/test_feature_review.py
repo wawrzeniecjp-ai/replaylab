@@ -1,4 +1,4 @@
-"""T02: feature review (coverage and missingness leakage)."""
+"""Feature review (coverage and missingness leakage)."""
 
 from __future__ import annotations
 

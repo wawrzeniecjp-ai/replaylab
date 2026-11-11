@@ -1,4 +1,4 @@
-"""T17: preprocessing (orientation, imputation, standardization, one-hot classes)."""
+"""Preprocessing (orientation, imputation, standardization, one-hot classes)."""
 
 from __future__ import annotations
 

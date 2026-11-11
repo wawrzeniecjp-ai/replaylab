@@ -1,4 +1,4 @@
-"""T19: the scripted policies (random, fixed metric, learner, learner_sim, with_stop)."""
+"""The scripted policies (random, fixed metric, learner, learner_sim, with_stop)."""
 
 from __future__ import annotations
 

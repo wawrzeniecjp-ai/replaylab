@@ -2,8 +2,8 @@
 
 The computations live in ``advisor/`` (``similarity``, ``rates``, ``stop``); this module checks
 the agent's arguments and reports the result. Only ``estimate_hit_rate``'s next-batch
-prediction is assembled here, from the model's score and the calibration of decision D12
-(``advisor/calibration.py``).
+prediction is assembled here, from the model's score and the calibration in
+``advisor/calibration.py``.
 """
 
 from __future__ import annotations

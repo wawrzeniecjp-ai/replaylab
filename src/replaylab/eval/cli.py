@@ -1,21 +1,63 @@
-"""Eval command line.
+"""The ``replaylab-eval`` command line: play episodes, check what they cost, compare them.
 
-    replaylab-eval conditions
-    replaylab-eval scripted --games N-dev --policies learner_sim,random --trials 5 --run-dir runs/x
-    replaylab-eval pilot --model deepseek-v4-flash --games N-dev --conditions A,B1 --trials 5 --max-usd 3 --run-dir runs/x
-    replaylab-eval run   --model deepseek-v4-flash --games N-dev --conditions A,B1 --trials 5 --max-usd 20 --run-dir runs/x
-    replaylab-eval run   ... --trials 20 --first-trial 100      # a fresh block: trials 100-119
-    replaylab-eval run   ... --games <final-test game> --final-run   # once; see eval/final_run.py
-    replaylab-eval compare --records runs/x/episodes.jsonl --game N-dev --a B1 --b A --ci 0.9 --trial-range 0-9
-    replaylab-eval view --run-dir runs/x        # writes runs/x/replay.html
-    replaylab-eval smoke --model opus --run-dir runs/smoke --max-usd 1   # 3 real turns, no record
+An *episode* is one game played once by one player on one seed. A player is an LLM agent
+under a *condition* (the tool set it is given, from ``config/conditions.yaml``) or a
+scripted policy (recorded as condition ``scripted:<policy>``). A *trial* number fixes the
+seed, so every player of trial ``t`` faces the same pool and the same design aliases, and
+two players can be compared seed by seed. A *run* is a folder (``--run-dir``) that holds:
 
-Exit codes: 0 success, 1 the operation was refused or incomplete, 2 bad setup.
+* ``episodes.jsonl``: one record per finished episode;
+* ``errors.jsonl``: the failed episodes;
+* ``spend.json``: the money spent so far;
+* ``pilot.json``: the pilot's cost projection.
 
-How the file is laid out: the option types first, then one function per command. What
-the commands share before their first episode (the ``Files`` bundle, the runner's
-dependencies, the model and spend guard, the config hash, every refusal) is in
-``eval/setup.py``.
+Rerunning a command plays only the episodes not yet recorded.
+
+Commands, in the order a study uses them:
+
+``conditions``
+    Print each condition's tools, and warn when two conditions offer the same tools.
+``scripted``
+    Play scripted policies (``--policies``) on ``--games`` for ``--trials`` trials from
+    ``--first-trial``. Costs nothing; gives the baselines the agents are compared with,
+    on the same seeds.
+``smoke``
+    Play the first ``--turns`` turns of one real LLM episode on trial 999 and check the
+    provider plumbing (reasoning pass-back, prompt cache, billed cost). Records no episode;
+    writes ``smoke.json``. Use it after adding or changing a model.
+``pilot``
+    Play the first ``--n`` episodes of an LLM matrix (``--games`` x ``--conditions`` x
+    trials, for ``--model``), then project the cost of the whole matrix into
+    ``pilot.json``. ``run`` refuses to start without it.
+``run``
+    Play every missing episode of an LLM matrix, under the hard cap ``--max-usd``. It
+    refuses before playing anything if the pilot's projection exceeds the cap.
+``compare``
+    Compare two conditions (``--a``, ``--b``) on one game: the mean difference of a
+    metric over the seeds both played, with a paired bootstrap interval.
+``view``
+    Write a self-contained HTML page that replays a run's agent episodes, outcomes
+    included. It shows hidden results: for people only.
+
+Every option is described in ``replaylab-eval <command> --help``. The options shared by
+several commands:
+
+* ``--tables``, ``--folds``, ``--clusters``, ``--games-config``, ``--features-config``,
+  ``--conditions-config``, ``--system-prompt``, ``--models-config`` and
+  ``--prices-config``: the data and config files; the defaults are the repository layout.
+* ``--first-trial``: the first trial of a block. A new experiment uses a fresh block of
+  trials, so its seeds have not been seen before.
+* ``--final-run`` and ``--lock-dir``: play a final-test game, once, from a clean commit
+  (see ``eval/final_run.py``).
+* ``--allow-uncommitted``: record episodes from a tree with uncommitted changes; every
+  record is then marked ``git_dirty``.
+
+Exit codes: 0 success, 1 the operation was refused or is incomplete, 2 bad setup.
+
+Layout of this file: the option types, two small helpers, then one function per command
+in the order above. What the commands share before their first episode (the ``Files``
+bundle, the runner's dependencies, the model and spend guard, the config hash, every
+refusal) is in ``eval/setup.py``.
 """
 
 from __future__ import annotations
@@ -30,13 +72,13 @@ import typer
 
 from replaylab.eval.conditions import identical_conditions, load_conditions
 from replaylab.eval.final_run import SCRIPTED_LEG
+from replaylab.eval.llm_player import Limits
 from replaylab.eval.llm_types import LLMError
-from replaylab.eval.loop import Limits
 from replaylab.eval.records import config_hash, read_records
 from replaylab.eval.replay_view import PoolPaths, build_page, pool_view
 from replaylab.eval.runner import (
     expand_matrix,
-    run_llm_episode,
+    play_episode,
     run_matrix,
     run_pilot,
     run_scripted_matrix,
@@ -116,9 +158,13 @@ def _split(value: str) -> list[str]:
     return [part.strip() for part in value.split(",") if part.strip()]
 
 
+# --- commands ---------------------------------------------------------------------------
+
+
 @app.command("conditions")
 def show_conditions(conditions_config: ConditionsConfig = DEFAULT.conditions_config) -> None:
-    """Print the tool set of every condition."""
+    """Print the tools of every condition, and warn when two conditions offer the same
+    tools (they would measure the same thing twice)."""
     with exit_on(2, OSError, ValueError):
         conditions = load_conditions(conditions_config, REGISTERED_TOOLS)
     for first, second in identical_conditions(conditions):
@@ -128,15 +174,12 @@ def show_conditions(conditions_config: ConditionsConfig = DEFAULT.conditions_con
     _emit({n: {"count": len(c.tools), "tools": list(c.tools)} for n, c in conditions.items()})
 
 
-# --- commands ---------------------------------------------------------------------------
-
-
 @app.command("scripted")
 def scripted(
     run_dir: RunDir,
     games: Annotated[str, typer.Option("--games", help="Comma-separated game ids.")],
     policies: Annotated[str, typer.Option("--policies", help="Comma-separated policy names.")],
-    trials: Annotated[int, typer.Option("--trials")] = 5,
+    trials: Annotated[int, typer.Option("--trials", help="Trials per game and policy.")] = 5,
     first_trial: FirstTrial = 0,
     tables: Tables = DEFAULT.tables,
     folds: Folds = DEFAULT.folds,
@@ -149,7 +192,12 @@ def scripted(
     lock_dir: LockDir = Path("reports/final-test"),
     allow_uncommitted: AllowUncommitted = False,
 ) -> None:
-    """Play scripted policies on the same episode seeds as the LLM episodes."""
+    """Play scripted policies on the same seeds as the LLM episodes, as baselines.
+
+    Each policy plays every game for the trials ``--first-trial`` to
+    ``--first-trial + --trials - 1`` and is recorded as condition ``scripted:<policy>``.
+    Costs nothing, but records like any run, so the tree must be committed.
+    """
     files = Files(
         tables=tables,
         folds=folds,
@@ -190,15 +238,21 @@ def scripted(
 @app.command("pilot")
 def pilot(
     run_dir: RunDir,
-    model: Annotated[str, typer.Option("--model")],
-    games: Annotated[str, typer.Option("--games")],
-    conditions: Annotated[str, typer.Option("--conditions")],
+    model: Annotated[str, typer.Option("--model", help="Model key in models.yaml.")],
+    games: Annotated[str, typer.Option("--games", help="Comma-separated game ids.")],
+    conditions: Annotated[
+        str, typer.Option("--conditions", help="Comma-separated condition names, e.g. A,B1.")
+    ],
     max_usd: Annotated[float, typer.Option("--max-usd", help="Hard spending cap for the pilot.")],
-    trials: Annotated[int, typer.Option("--trials")] = 5,
+    trials: Annotated[int, typer.Option("--trials", help="Trials per game and condition.")] = 5,
     first_trial: FirstTrial = 0,
-    n: Annotated[int, typer.Option("--n", help="Pilot size (episodes).")] = 10,
-    concurrency: Annotated[int, typer.Option("--concurrency")] = MAX_CONCURRENCY,
-    dry_run: Annotated[bool, typer.Option("--dry-run")] = False,
+    n: Annotated[int, typer.Option("--n", help="Episodes to play in the pilot.")] = 10,
+    concurrency: Annotated[
+        int, typer.Option("--concurrency", help="Episodes played at once, at most 4.")
+    ] = MAX_CONCURRENCY,
+    dry_run: Annotated[
+        bool, typer.Option("--dry-run", help="Report what would be played; spend nothing.")
+    ] = False,
     tables: Tables = DEFAULT.tables,
     folds: Folds = DEFAULT.folds,
     clusters: Clusters = DEFAULT.clusters,
@@ -212,7 +266,19 @@ def pilot(
     lock_dir: LockDir = Path("reports/final-test"),
     allow_uncommitted: AllowUncommitted = False,
 ) -> None:
-    """Run the first episodes, then write a cost projection for the whole matrix (pilot.json)."""
+    """Play the first ``--n`` episodes of the matrix, then project the cost of the whole
+    matrix into ``pilot.json``.
+
+    The projection keeps the cost of a long run in check: it is the pilot's mean cost per
+    episode times the number of episodes, times a safety margin of 1.25. ``run`` refuses
+    to start without a pilot, and refuses a matrix whose projection exceeds its cap.
+    Pilot episodes are recorded like any others, so ``run`` does not play them again.
+
+    Episodes are ordered trial by trial (every condition of the first trial, then of the
+    next), so the pilot's first episodes include every condition and the projection does
+    not rest on one condition alone. ``--dry-run`` reports what would be played and
+    spends nothing.
+    """
     files = Files(
         tables=tables,
         folds=folds,
@@ -269,7 +335,16 @@ SMOKE_TRIAL = 999  # outside every block a pilot or run uses (0-19, 100-119)
 
 
 def smoke_report(record: Any, spent_usd: float) -> dict[str, Any]:
-    """What a short real episode shows about the provider plumbing, turn by turn.
+    """Report what a short real episode shows about the provider plumbing, turn by turn.
+
+    Args:
+        record (Any): the episode record (messages, usage, tool calls, reasoning).
+        spent_usd (float): what the spend guard added during the episode.
+
+    Returns:
+        dict[str, Any]: ``ok``, the ``checks`` below, the cost and one row per turn.
+
+    The checks:
 
     * ``passback_accepted``: a turn after one with signed thinking blocks was answered, so the
       blocks were sent back in a form the API accepts. None (no thinking came back, so the
@@ -318,11 +393,11 @@ def smoke_report(record: Any, spent_usd: float) -> dict[str, Any]:
 @app.command("smoke")
 def smoke(
     run_dir: RunDir,
-    model: Annotated[str, typer.Option("--model")],
+    model: Annotated[str, typer.Option("--model", help="Model key in models.yaml.")],
     max_usd: Annotated[float, typer.Option("--max-usd", help="Hard spending cap.")],
-    game: Annotated[str, typer.Option("--game")] = "N-dev",
-    condition: Annotated[str, typer.Option("--condition")] = "B1",
-    turns: Annotated[int, typer.Option("--turns", min=2)] = 3,
+    game: Annotated[str, typer.Option("--game", help="Game id.")] = "N-dev",
+    condition: Annotated[str, typer.Option("--condition", help="Condition name.")] = "B1",
+    turns: Annotated[int, typer.Option("--turns", min=2, help="Model calls to play.")] = 3,
     tables: Tables = DEFAULT.tables,
     folds: Folds = DEFAULT.folds,
     clusters: Clusters = DEFAULT.clusters,
@@ -333,10 +408,13 @@ def smoke(
     models_config: ModelsConfig = DEFAULT.models_config,
     prices_config: PricesConfig = DEFAULT.prices_config,
 ) -> None:
-    """Play the first turns of one real episode (trial 999) and check the provider plumbing.
+    """Play the first ``--turns`` turns of one real episode (trial 999) and check the
+    provider plumbing.
 
-    Nothing is recorded in episodes.jsonl; the spend guard and its cap apply as in a run.
-    Writes smoke.json. Exit code 1 if a check fails or the model call fails.
+    The checks: the model's reasoning is passed back in a form the API accepts, every turn
+    after the first reads from the prompt cache, and the episode's cost equals what the
+    spend guard added. Records no episode; the spend guard and ``--max-usd`` apply as in a
+    run. Writes ``smoke.json``; exits with 1 if a check or a model call fails.
     """
     files = Files(
         tables=tables,
@@ -363,7 +441,7 @@ def smoke(
     # Play one short episode; the guard's total before and after gives its cost.
     before = deps.guard.total_usd
     try:
-        record = asyncio.run(run_llm_episode(specs[0], deps))
+        record = asyncio.run(play_episode(specs[0], deps))
     except (LLMError, SpendCapReached) as error:
         raise fail(f"{type(error).__name__}: {error}", 1) from None
 
@@ -377,17 +455,25 @@ def smoke(
 @app.command("run")
 def run(
     run_dir: RunDir,
-    model: Annotated[str, typer.Option("--model")],
-    games: Annotated[str, typer.Option("--games")],
-    conditions: Annotated[str, typer.Option("--conditions")],
+    model: Annotated[str, typer.Option("--model", help="Model key in models.yaml.")],
+    games: Annotated[str, typer.Option("--games", help="Comma-separated game ids.")],
+    conditions: Annotated[
+        str, typer.Option("--conditions", help="Comma-separated condition names, e.g. A,B1.")
+    ],
     max_usd: Annotated[
         float, typer.Option("--max-usd", help="Hard spending cap for the whole run.")
     ],
-    trials: Annotated[int, typer.Option("--trials")] = 5,
+    trials: Annotated[int, typer.Option("--trials", help="Trials per game and condition.")] = 5,
     first_trial: FirstTrial = 0,
-    concurrency: Annotated[int, typer.Option("--concurrency")] = MAX_CONCURRENCY,
-    skip_pilot: Annotated[bool, typer.Option("--skip-pilot")] = False,
-    dry_run: Annotated[bool, typer.Option("--dry-run")] = False,
+    concurrency: Annotated[
+        int, typer.Option("--concurrency", help="Episodes played at once, at most 4.")
+    ] = MAX_CONCURRENCY,
+    skip_pilot: Annotated[
+        bool, typer.Option("--skip-pilot", help="Play without a pilot (no cost projection).")
+    ] = False,
+    dry_run: Annotated[
+        bool, typer.Option("--dry-run", help="Report what would be played; spend nothing.")
+    ] = False,
     tables: Tables = DEFAULT.tables,
     folds: Folds = DEFAULT.folds,
     clusters: Clusters = DEFAULT.clusters,
@@ -401,7 +487,16 @@ def run(
     lock_dir: LockDir = Path("reports/final-test"),
     allow_uncommitted: AllowUncommitted = False,
 ) -> None:
-    """Play every missing episode of the matrix. Needs a pilot first; refuses a run projected over the cap."""
+    """Play every episode of the matrix not yet recorded, under the cap ``--max-usd``.
+
+    The matrix is ``--games`` x ``--conditions`` x the trials ``--first-trial`` to
+    ``--first-trial + --trials - 1``, played by ``--model``. Before anything is played, the
+    command refuses if there is no ``pilot.json`` (unless ``--skip-pilot``) or if the
+    pilot's projection exceeds the cap. While playing, the spend guard stops the run once
+    the cap is reached. An episode that fails or is cut off by the cap is not recorded, so
+    running the same command again plays exactly the missing episodes. Exits with 1 if
+    any episode failed or the cap was reached.
+    """
     files = Files(
         tables=tables,
         folds=folds,
@@ -482,22 +577,30 @@ def run(
 
 @app.command("compare")
 def compare(
-    records: Annotated[Path, typer.Option("--records")],
-    game: Annotated[str, typer.Option("--game")],
+    records: Annotated[Path, typer.Option("--records", help="An episodes.jsonl file.")],
+    game: Annotated[str, typer.Option("--game", help="Game id.")],
     a: Annotated[
         str, typer.Option("--a", help="Condition (or scripted:<policy>) that should be better.")
     ],
-    b: Annotated[str, typer.Option("--b")],
-    metric: Annotated[str, typer.Option("--metric")] = "hits",
-    resamples: Annotated[int, typer.Option("--resamples")] = 10_000,
-    seed: Annotated[int, typer.Option("--seed")] = 0,
-    ci: Annotated[float, typer.Option("--ci", help="Interval level, e.g. 0.9 or 0.95.")] = 0.95,
+    b: Annotated[str, typer.Option("--b", help="The condition (or scripted:<policy>) to beat.")],
+    metric: Annotated[str, typer.Option("--metric", help="Score to compare.")] = "hits",
+    resamples: Annotated[int, typer.Option("--resamples", help="Bootstrap resamples.")] = 10_000,
+    seed: Annotated[int, typer.Option("--seed", help="Seed of the bootstrap.")] = 0,
+    ci: Annotated[
+        float,
+        typer.Option("--ci", help="Interval level, e.g. 0.9 or 0.95."),
+    ] = 0.95,
     trial_range: Annotated[
         str | None,
         typer.Option("--trial-range", help="Only trials FIRST-LAST, inclusive, e.g. 0-9."),
     ] = None,
 ) -> None:
-    """Paired bootstrap of a minus b over episode seeds."""
+    """Compare two conditions on one game, seed by seed.
+
+    For every seed that both ``--a`` and ``--b`` played, take the difference of
+    ``--metric`` (a minus b); report its mean and a paired bootstrap interval at level
+    ``--ci``. A seed that only one of them played is an error (exit 1).
+    """
     loaded = read_records(records)
 
     # Optionally keep one trial block, e.g. the confirmatory 100-119.
@@ -540,7 +643,11 @@ def view(
     games_config: GamesConfig = DEFAULT.games_config,
     features_config: FeaturesConfig = DEFAULT.features_config,
 ) -> None:
-    """Write a self-contained HTML page that replays the run's agent episodes."""
+    """Write a self-contained HTML page that replays the run's agent episodes, turn by
+    turn, with the hidden outcomes of the pool. For people only: never show it to an agent.
+
+    ``--ghosts`` adds scripted episodes on the same seeds, drawn beside the agent's.
+    """
     paths = PoolPaths(
         games=games_config, features=features_config, tables=tables, folds=folds, clusters=clusters
     )

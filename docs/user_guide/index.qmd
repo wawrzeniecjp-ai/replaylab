@@ -6,8 +6,9 @@ guide-section: "Quick Start"
 **Where to start:**
 
 * *New to the codebase?* Read [Architecture](00-architecture.qmd) for the map,
-  then the [Glossary](01-concepts.qmd) for the vocabulary (pools, aliases,
-  rounds, purchases), and continue into the Reference from there.
+  then [How a game is played](03-playing.qmd) for the game loop and the life of
+  one batch, then the [Glossary](01-concepts.qmd) for the vocabulary (pools,
+  aliases, rounds, purchases), and continue into the Reference from there.
 * *Evaluating strategies?* Read the "leak rules" section of the architecture
   page first, because everything else is designed around them. Then read
   [Evaluation](02-evaluation.qmd): how a model is played, what a run writes, and

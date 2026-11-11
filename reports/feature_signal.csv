@@ -1,0 +1,10 @@
+game,feature,higher_is_better,designs,with_value,hits,auc
+N-dev,boltz2_iptm,True,687,685,67,0.6276
+N-dev,boltz2_ipsae,True,687,685,67,0.6596
+N-dev,boltz2_min_ipsae,True,687,685,67,0.6063
+N-dev,boltz2_plddt,True,687,685,67,0.6543
+N-dev,shape_complimentarity_boltz2_binder_ss,True,687,685,67,0.6834
+N-dev,esmfold_plddt,True,687,681,69,0.6192
+N-dev,proteinmpnn_score,False,687,681,69,0.5066
+E,esmfold_plddt,True,826,826,134,0.5427
+E,proteinmpnn_score,False,826,826,134,0.4869

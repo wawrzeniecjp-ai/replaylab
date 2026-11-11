@@ -1,4 +1,4 @@
-"""T27: the MCP bridge (tool schemas, results, errors, truncation)."""
+"""The MCP bridge (tool schemas, results, errors, truncation)."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""T16: hit-rate estimates and stop rules."""
+"""Hit-rate estimates and stop rules."""
 
 from __future__ import annotations
 

@@ -1,8 +1,9 @@
 """Wire a game from the processed tables: pool, aliases, backend, store and campaign.
 
-If the store already holds the campaign (a file store that was used before), the
-backend is restored from the event log and the campaign is resumed, so a process can
-be killed and restarted at any point.
+:func:`build_replay_campaign` is the entry point. A replay store holds exactly one
+campaign. If the store already holds it (a file store that was used before), the backend is
+restored from the store's event log (:func:`restore_backend`) and the campaign is resumed,
+so a process can be killed and restarted at any point.
 """
 
 from __future__ import annotations
@@ -24,9 +25,18 @@ from replaylab.store import CampaignStore
 
 @dataclass
 class ReplayEnvironment:
-    """A game wired together: campaign, hidden scoring context, aliaser and
-    store. ``score()`` is the only place that combines a public state with
-    hidden information."""
+    """Hold one wired game: the campaign, its hidden scoring context, the aliaser and the
+    store.
+
+    :meth:`score` is the only place that combines the campaign's public state with hidden
+    information.
+
+    Attributes:
+        campaign (Campaign): the campaign that players act on.
+        context (ScoringContext): cluster ids, used only to score the finished campaign.
+        aliaser (Aliaser): the map between real design ids and this seed's aliases.
+        store (CampaignStore): the store the campaign writes to.
+    """
 
     campaign: Campaign
     context: ScoringContext
@@ -34,47 +44,16 @@ class ReplayEnvironment:
     store: CampaignStore
 
     def score(self) -> ScoreCard:
-        """Score the campaign -- hidden information; never show to a policy.
+        """Score the campaign as it stands. The result uses hidden information: never show
+        it to a player.
 
-        Without cluster ids (a target that is not clustered) the scoring
-        context is dropped, so ``distinct_families`` stays ``None`` instead of
-        raising "no cluster for hit design(s)".
+        For a target without cluster ids, ``distinct_families`` is ``None``.
+
+        Returns:
+            ScoreCard: hits, purchases, rounds used and the other scores.
         """
         context = self.context if self.context.clusters else None
         return score(self.campaign.state(), context=context)
-
-
-def restore_backend(backend: ReplayBackend, store: CampaignStore, campaign_id: int) -> None:
-    """Bring a fresh ReplayBackend to the state the store describes."""
-    if backend.clock != 0:
-        raise EngineError("restore_backend needs a fresh backend (clock 0)")
-    state = store.snapshot(campaign_id)
-    batches = {b.batch_id: b for b in state.batches}
-    # The backend keeps its state in memory only, so after a restart it is rebuilt by
-    # replaying history: walk the clock forward and resubmit every batch at the round
-    # it was originally submitted, in the original order.
-    for event in store.events(campaign_id):
-        if event.kind != "submission_clock":
-            continue
-        batch = batches[event.payload["batch_id"]]
-        while backend.clock < event.payload["clock"]:
-            backend.advance()
-        # The clock only moves forward, so an event dated earlier than the current
-        # clock means the log is out of order or edited.
-        if backend.clock != event.payload["clock"]:
-            raise EngineError("the event log is inconsistent with the clock")
-        handle = backend.submit(batch)
-        # The backend numbers submissions in order, so a faithful replay must hand back
-        # the reference the store recorded the first time.
-        if handle.backend_ref != batch.backend_ref:
-            raise EngineError(
-                f"restored backend_ref {handle.backend_ref} != stored {batch.backend_ref}"
-            )
-    # Rounds may have passed after the last submission (a `wait`); catch up to them.
-    while backend.clock < state.clock:
-        backend.advance()
-    if backend.clock != state.clock:
-        raise EngineError("the event log is inconsistent with the clock")
 
 
 def build_replay_campaign(
@@ -88,26 +67,34 @@ def build_replay_campaign(
     store_path: Path | str = ":memory:",
     final_run: bool = False,
 ) -> ReplayEnvironment:
-    """Wire one game from the processed tables.
+    """Wire one game from the processed tables and return it ready to play.
 
-    Builds the pool and the hidden outcomes, replaces every real id with a
-    per-seed alias (``d0001``...), and starts a fresh campaign -- or, if
-    ``store_path`` already holds one, restores the backend from the event log
-    and resumes it, so a killed process picks up exactly where it stopped.
+    Load the pool and the hidden outcomes, replace every real design id with a per-seed
+    alias (``d0001``...), and start a fresh campaign. If ``store_path`` already holds the
+    campaign, restore the backend from the store's event log and resume instead, so a
+    killed process picks up exactly where it stopped.
 
     Args:
-        game: the game to play (target, split, budget, delay).
-        tables_dir: directory with designs.parquet / outcomes.parquet.
-        feature_config: visible features and their orientation.
-        seed: episode seed; decides aliases and is stored with the config.
-        folds_path: folds.csv, needed for dev/heldout splits.
-        clusters_path: clusters.csv, for distinct-family scoring.
-        store_path: SQLite path, or ``":memory:"`` for a throwaway store.
-        final_run: must be True to read the held-out split; anything else
-            raises, so the held-out fold cannot be played by accident.
+        game (GameConfig): the game to play (target, split, budget, delay).
+        tables_dir (Path | str): directory with ``designs.parquet`` and
+            ``outcomes.parquet``.
+        feature_config (FeatureConfig): the visible features and their orientation.
+        seed (int): episode seed; decides the aliases and is stored with the config.
+        folds_path (Path | str | None): ``folds.csv``, needed for the dev and held-out
+            splits.
+        clusters_path (Path | str | None): ``clusters.csv``, used only to count distinct
+            hit families when scoring.
+        store_path (Path | str): SQLite path, or ``":memory:"`` for a throwaway store.
+        final_run (bool): must be True to read the held-out split or a final-test pool.
 
     Returns:
-        The environment: campaign plus the hidden scoring context.
+        ReplayEnvironment: the campaign plus the hidden scoring context.
+
+    Raises:
+        HeldOutAccessError: the game is held out and ``final_run`` is False.
+        FinalTestAccessError: the game is a final-test game and ``final_run`` is False.
+        EngineError: the store holds more than one campaign, or a campaign for another
+            game, seed or pool, or its event log cannot be replayed.
     """
     # 1. Load the game's designs and their answers, both still under real ids.
     pool = load_pool(
@@ -150,12 +137,16 @@ def build_replay_campaign(
 
     # 4. Start a new campaign, or resume the one this store already holds.
     existing = store.campaign_ids()
+    if len(existing) > 1:
+        raise EngineError(
+            f"the store holds {len(existing)} campaigns; a replay store holds exactly one"
+        )
     if not existing:
         campaign = Campaign.create(config, designs, store, backend)
     else:
         # Resuming into a store made for another game, seed or pool would silently mix
         # two campaigns, so check both before touching anything.
-        campaign_id = existing[0]
+        (campaign_id,) = existing
         if store.get_config(campaign_id) != config:
             raise EngineError("the store holds a different campaign (game or seed differ)")
         if {d.design_id for d in store.get_designs(campaign_id)} != {d.design_id for d in designs}:
@@ -163,3 +154,52 @@ def build_replay_campaign(
         restore_backend(backend, store, campaign_id)
         campaign = Campaign.resume(store, backend, campaign_id)
     return ReplayEnvironment(campaign, context, aliaser, store)
+
+
+# --- resuming a stored campaign ------------------------------------------------------
+
+
+def restore_backend(backend: ReplayBackend, store: CampaignStore, campaign_id: int) -> None:
+    """Replay the store's submission log into a fresh backend.
+
+    The replay backend keeps its state in memory only, so after a restart it is rebuilt
+    by walking the clock forward and resubmitting every batch at the round it was first
+    submitted, in the original order. :func:`build_replay_campaign` calls this when it
+    resumes a stored campaign.
+
+    Args:
+        backend (ReplayBackend): a backend that has not been used yet (clock 0).
+        store (CampaignStore): the store that holds the campaign.
+        campaign_id (int): the campaign whose submissions are replayed.
+
+    Raises:
+        EngineError: ``backend`` has been used already, the event log disagrees with the
+            clock, or a resubmitted batch gets a different backend reference than the
+            one stored (the log is out of order or was edited).
+    """
+    if backend.clock != 0:
+        raise EngineError("restore_backend needs a fresh backend (clock 0)")
+    state = store.snapshot(campaign_id)
+    batches = {b.batch_id: b for b in state.batches}
+    for event in store.events(campaign_id):
+        if event.kind != "submission_clock":
+            continue
+        batch = batches[event.payload["batch_id"]]
+        while backend.clock < event.payload["clock"]:
+            backend.advance()
+        # The clock only moves forward, so an event dated earlier than the current
+        # clock means the log is out of order or edited.
+        if backend.clock != event.payload["clock"]:
+            raise EngineError("the event log is inconsistent with the clock")
+        handle = backend.submit(batch)
+        # The backend numbers submissions in order, so a faithful replay must hand back
+        # the reference the store recorded the first time.
+        if handle.backend_ref != batch.backend_ref:
+            raise EngineError(
+                f"restored backend_ref {handle.backend_ref} != stored {batch.backend_ref}"
+            )
+    # Rounds may have passed after the last submission (a `wait`); catch up to them.
+    while backend.clock < state.clock:
+        backend.advance()
+    if backend.clock != state.clock:
+        raise EngineError("the event log is inconsistent with the clock")

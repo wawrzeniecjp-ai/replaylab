@@ -1,4 +1,4 @@
-"""T24: the command line interface."""
+"""The command line interface."""
 
 from __future__ import annotations
 
@@ -142,6 +142,15 @@ def test_status_errors(tmp_path):
     CampaignStore.open(empty).close()
     result = invoke("campaign", "status", "--store", empty)
     assert result.exit_code == 1 and "holds no campaign" in result.stderr
+
+
+def test_status_refuses_a_store_with_two_campaigns(env, tmp_path):
+    store = tmp_path / "two.db"
+    invoke("run-scripted", "--policy", "random", "--store", store, *paths(env))
+    with CampaignStore.open(store) as opened:
+        opened.create_campaign(opened.get_config(opened.campaign_ids()[0]))
+    result = invoke("campaign", "status", "--store", store)
+    assert result.exit_code == 2 and "holds 2 campaigns" in result.stderr
 
 
 # --- campaign propose and ingest --------------------------------------------------------

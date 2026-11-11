@@ -1,4 +1,4 @@
-"""T18: the logistic model (gating, fitting, scoring) and the similarity index."""
+"""The logistic model (gating, fitting, scoring) and the similarity index."""
 
 from __future__ import annotations
 

@@ -16,9 +16,33 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+from replaylab.engine import ScoreCard
+
 SCHEMA_VERSION = 2  # 2 (2026-10-28): adds `reasoning` (one entry per assistant
 # message, None when the endpoint returned none); lines written before that
 # simply lack the key and readers must use .get().
+
+
+def scores_dict(card: ScoreCard) -> dict[str, Any]:
+    """Return a score card as the JSON-ready dict a record's ``scores`` field holds.
+
+    Args:
+        card (ScoreCard): the score of a settled campaign.
+
+    Returns:
+        dict[str, Any]: hits, purchases, rounds used, early stop, distinct families,
+        best Kd, the hit curve and the hits at each round boundary.
+    """
+    return {
+        "hits": card.hits,
+        "purchases": card.purchases,
+        "rounds_used": card.rounds_used,
+        "stopped_early": card.stopped_early,
+        "distinct_families": card.distinct_families,
+        "best_kd": card.best_kd,
+        "curve": list(card.curve),
+        "hits_at_boundaries": list(card.hits_at_boundaries),
+    }
 
 
 class CorruptRecords(Exception):

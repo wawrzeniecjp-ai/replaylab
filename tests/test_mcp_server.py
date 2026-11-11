@@ -1,4 +1,4 @@
-"""T23: the MCP server, exercised through a real in-memory MCP client."""
+"""The MCP server, exercised through a real in-memory MCP client."""
 
 from __future__ import annotations
 

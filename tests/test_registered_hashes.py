@@ -21,7 +21,7 @@ import pytest
 from replaylab.config import load_feature_config, load_games
 from replaylab.eval import setup as eval_setup
 from replaylab.eval.final_run import frozen_hash
-from replaylab.eval.loop import Limits
+from replaylab.eval.llm_player import Limits
 from replaylab.eval.models import load_models
 from replaylab.eval.prompts import USER_PROMPT, load_system_prompt
 from replaylab.eval.spend import load_prices

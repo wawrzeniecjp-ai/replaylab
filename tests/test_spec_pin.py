@@ -1,4 +1,4 @@
-"""T04: pinning the OpenAPI spec."""
+"""Pinning the OpenAPI spec."""
 
 from __future__ import annotations
 

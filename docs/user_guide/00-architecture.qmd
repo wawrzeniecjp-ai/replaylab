@@ -92,6 +92,8 @@ round, the player reads a `CampaignState` snapshot and chooses a batch;
 `Campaign.submit` records it and advances the clock, and the replay backend
 delivers the outcomes that are due. After the last round, `settle` collects any
 outcomes still pending and `score` produces a `ScoreCard`.
+[How a game is played](03-playing.qmd) follows this loop and the life of one
+batch in detail.
 
 ```{d2}
 direction: down
@@ -208,6 +210,12 @@ independent layers enforce this:
    final run (`HeldOutAccessError`), and the evaluation runner refuses held-out
    games with a `ValueError`. Real design ids never appear in the state or in
    any file the store writes: players see `d0001`-style aliases.
+
+These layers hold against code that uses the public API. Inside one Python
+process nothing is truly private: the campaign holds the backend, and the
+backend holds every outcome. Why that is still a real boundary for the LLM agent,
+and only a checked convention for scripted policies, is explained in
+[What keeps the results hidden](03-playing.qmd#what-keeps-the-results-hidden).
 
 # Persistence and kill-and-resume
 

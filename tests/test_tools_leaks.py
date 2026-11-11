@@ -1,4 +1,4 @@
-"""T22: nothing hidden ever appears in a tool response (spec 6.3).
+"""Nothing hidden ever appears in a tool response (spec 6.3).
 
 A whole game is played through every tool. Every response is then scanned for
 (a) amino-acid sequences, (b) real design ids, (c) outcome fields of designs that were not

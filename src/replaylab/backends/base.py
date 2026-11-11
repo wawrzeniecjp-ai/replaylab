@@ -45,18 +45,19 @@ class PollResult:
 
 
 class LabBackend(Protocol):
-    """What any lab (or the replay harness) must implement to serve outcomes.
+    """Define what a lab (or the replay backend) implements to measure designs.
 
-    Deliberately tiny: there is no bulk accessor, so the only way to learn an
-    outcome is to submit its design and poll afterwards.
+    A class satisfies this protocol by having these methods; it does not inherit from it.
+    The surface is deliberately tiny: there is no bulk accessor, so the only way to learn
+    an outcome is to submit its design and poll afterwards.
     """
 
     def submit(self, batch: Batch) -> SubmissionHandle:
-        """Accept a batch for measurement; returns its handle."""
+        """Accept a batch for measurement and return its receipt."""
         ...
 
     def poll(self, handle: SubmissionHandle) -> PollResult:
-        """Everything delivered so far for this submission (cumulative)."""
+        """Return the submission's status and everything delivered so far (cumulative)."""
         ...
 
     def advance(self) -> None:

@@ -29,6 +29,12 @@ cold start.
 
 ![B1 (campaign + advisor tools) minus A (campaign tools only), paired by seed: +2.45 and +6.80 on Nipah, +6.70 and +4.50 on EGFR, +5.11 pooled over all four cells, with 90% paired intervals](reports/figures/advisor-effect.svg)
 
+> **Figure 1. Advisor tools increase hits on both targets and with both models.**
+> Hits per 60 purchases, condition B1 (campaign + advisor tools) minus condition A (campaign
+> tools only), paired by seed, with 90% paired bootstrap intervals; 20 trials per cell
+> (Nipah-G trials 0–19, EGFR trials 100–119). The pooled estimate was computed after the fact
+> (see Methods, *Choice of the primary outcome*).
+
 ## Introduction
 
 [Adaptyv API: Giving everyone access to a real lab](https://www.adaptyvbio.com/blog/adaptyv-api)
@@ -89,12 +95,6 @@ B1 found 2.45 (deepseek-flash) and 6.80 (mimo-v2.6-flash) more hits per 60 purch
 the same seeds; on EGFR it found 6.70 and 4.50 more. Three of the four 90% paired intervals
 exclude zero, and the fourth points the same way. Pooled over the four cells, the advisor tools
 added **5.1 hits** (90% interval about [3.0, 7.2]).
-
-> **Figure 1. Advisor tools increase hits on both targets and with both models.**
-> Hits per 60 purchases, condition B1 (campaign + advisor tools) minus condition A (campaign
-> tools only), paired by seed, with 90% paired bootstrap intervals; 20 trials per cell
-> (Nipah-G trials 0–19, EGFR trials 100–119). The pooled estimate was computed after the fact
-> (see Methods, *Choice of the primary outcome*).
 
 ### The agent loses to a tuned learner on Nipah-G but beats every baseline on EGFR
 
@@ -337,13 +337,25 @@ they appear as `scripted:<policy>`.
 We chose all model settings on `N-dev` only (`config/frozen_v1.yaml`). The agent's
 `fit_and_rank` tool applies the same model gate.
 
-*Purchased-scaling flip.* `learner_sim_purchased` gains 11.9 hits over `learner_sim` on Nipah-G
-and loses 5.9 on EGFR (100 seeds each). The gain replicates on the delayed Nipah-G game (+8.7)
-and on an earlier legacy game (+6.3), and the loss persists on EGFR over a doubled horizon
-(8 rounds: −2.6). The cause is not established. One untested explanation: the L2 penalty acts
-on standardized features, and on EGFR the only fit uses 45 designs all bought by the fallback
-sort on ESMFold pLDDT, so standardizing on their narrow spread distorts that fit
-(`docs/design-notes.md` sections 6 and 8).
+*Why the purchased-scaling variants help on Nipah-G and hurt on EGFR.* `learner_sim_purchased`
+gains 11.9 hits over `learner_sim` on Nipah-G and loses 5.9 on EGFR (100 seeds each). Both
+effects hold up elsewhere: +8.7 on the delayed Nipah-G game, +6.3 on an earlier legacy game,
+−2.6 on EGFR over 8 rounds. We have not tested the cause; a plausible one has three steps.
+
+1. The model is fitted only on the designs bought so far. Those were mostly picked from the
+   top of one score column, so they span a narrow range of that score.
+2. The L2 penalty acts on standardized features. Pool-wide scaling measures that narrow range
+   in units of the whole pool, where it looks small, so the score's weight is shrunk hard.
+   Purchased scaling stretches the narrow range to unit spread, so the weight survives.
+3. When the model then ranks the whole pool, a surviving weight on the score dominates the
+   ranking. That helps on Nipah-G, where the Boltz-2 scores carry signal (AUC 0.61 to 0.68).
+   It hurts on EGFR, where the only fit uses 45 designs bought by ESMFold pLDDT, a score with
+   almost no signal there (AUC 0.54). The design class, which the model also sees (unscaled,
+   as one-hot columns), separates EGFR hits far better: from 3% hits among miniproteins to
+   46% among scFvs.
+
+The numbers behind each step are in `docs/design-notes.md` sections 6 and 8 and
+`reports/feature_signal.csv`.
 
 ### Experimental sequence and pre-registration
 
@@ -551,7 +563,7 @@ episode and mark the game `final_test: true`, which puts it behind the run-once 
   snapshot with `pytest tests/test_mcp_server.py --update-tool-snapshot`. New tools must keep
   the leak rules that `tests/test_tools_leaks.py` checks.
 * **A baseline policy:** a class with `choose(state, k, rng) -> list[str]` in `policies/`,
-  registered in `interfaces/policy_factory.py` (`make_policy`, `POLICY_NAMES`), and in
+  registered in `policies/factory.py` (`make_policy`, `POLICY_NAMES`), and in
   `eval/ladder.py` if the ladder should run it.
 
 [`docs/code-tour.md`](docs/code-tour.md) shows where each of these sits in the call path.

@@ -1,4 +1,4 @@
-"""T21: the campaign tools (describe, summarize, query, submit, wait, history, stop)."""
+"""The campaign tools (describe, summarize, query, submit, wait, history, stop)."""
 
 from __future__ import annotations
 

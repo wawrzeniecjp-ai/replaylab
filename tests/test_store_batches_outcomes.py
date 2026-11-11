@@ -1,4 +1,4 @@
-"""T11: batches, outcomes, predictions and snapshots."""
+"""Batches, outcomes, predictions and snapshots."""
 
 from __future__ import annotations
 

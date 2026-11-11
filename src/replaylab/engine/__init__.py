@@ -1,7 +1,7 @@
-"""The game engine: the rules (``Campaign``), the loop (``play``), assembly and scoring.
+"""The game engine: the rules (``Campaign``), the loop (``Episode``), assembly and scoring.
 
 campaign.py  Campaign: submit, wait, stop, settle; validates and advances the clock
-play.py      play(env, choose): the one game loop every scripted run goes through
+episode.py   Episode.play: the one game loop, for every player; Player, ScriptedPlayer
 replay.py    build_replay_campaign: one game assembled for one seed
 scoring.py   score a settled campaign
 """

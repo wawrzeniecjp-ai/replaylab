@@ -1,4 +1,4 @@
-"""T28: prices, the spend guard, and cost projections."""
+"""Prices, the spend guard, and cost projections."""
 
 from __future__ import annotations
 

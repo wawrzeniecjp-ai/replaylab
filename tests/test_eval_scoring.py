@@ -1,4 +1,4 @@
-"""T30: scorers and the paired bootstrap."""
+"""Scorers and the paired bootstrap."""
 
 from __future__ import annotations
 

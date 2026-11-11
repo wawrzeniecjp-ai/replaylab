@@ -1,4 +1,4 @@
-"""T30: the matrix runner (resume, concurrency, spend cap, pilot, scripted matrix, refusals)."""
+"""The matrix runner (resume, concurrency, spend cap, pilot, scripted matrix, refusals)."""
 
 from __future__ import annotations
 
@@ -10,8 +10,8 @@ from fakes_llm import HeuristicLLM
 from toolbox_env import make_env
 
 from replaylab.eval.conditions import Condition
+from replaylab.eval.llm_player import Limits
 from replaylab.eval.llm_types import Usage
-from replaylab.eval.loop import Limits
 from replaylab.eval.records import append_record, read_records
 from replaylab.eval.runner import (
     EpisodeSpec,

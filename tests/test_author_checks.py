@@ -1,4 +1,4 @@
-"""T03: author and nearest-neighbour checks."""
+"""Author and nearest-neighbour checks."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""T26: episode seeds, conditions, the system prompt, records and configuration files."""
+"""Episode seeds, conditions, the system prompt, records and configuration files."""
 
 from __future__ import annotations
 
@@ -35,7 +35,7 @@ from replaylab.interfaces.tools import ADVISOR_TOOLS, CAMPAIGN_TOOLS
 ROOT = Path(__file__).resolve().parents[1]
 
 
-# --- seeds (decision D4) ----------------------------------------------------------------
+# --- seeds ----------------------------------------------------------------------------
 
 
 def test_episode_seed_values_are_fixed():
