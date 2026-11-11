@@ -84,6 +84,22 @@ contains**, and both `load_pool` and `load_outcomes` filter through it. No model
 is cross-validated on the folds; a model is only ever fitted on what a campaign
 has bought.
 
+**What `data/splits/` holds.** Three committed files, all keyed by Proteinbase's
+public design ids (names such as `amber-crow-willow`), with no sequences and no
+outcomes:
+
+* `clusters.csv`: the cluster of every design;
+* `folds.csv`: the fold of every design;
+* `nipah_heldout_ids.txt`: the 343 Nipah-G design ids of fold 2, one per line.
+  `data/build_folds.py` writes it next to `folds.csv`, and a data test checks
+  that it matches fold 2 exactly. No code reads it at run time; it is there so
+  the held-out set can be inspected and audited without loading the tables.
+
+Committing real ids does not break the leak rules: those rules govern what a
+*player* sees, and players only ever see per-seed aliases. Anyone with the public
+Proteinbase data could rebuild these files anyway; committing them freezes the
+split so every run uses the same one.
+
 # Playing a campaign
 
 `build_replay_campaign` assembles a game for one seed: it loads the pool and the
