@@ -3,6 +3,9 @@
 **replaylab**: an environment, an MCP toolkit and a set of baseline policies that score
 protein design–test campaigns by replaying real lab outcomes.
 
+**Documentation:** [wawrzeniecjp-ai.github.io/replaylab](https://wawrzeniecjp-ai.github.io/replaylab/)
+(user guide, how a game is played, and the API reference).
+
 ## Summary
 
 Lab platforms such as Adaptyv now take experiments through an API and expect AI agents to run
@@ -20,12 +23,11 @@ diversity. Against hand-coded baseline policies the result is two-sided: the age
 of a tuned learner on Nipah-G but beats every baseline on EGFR, where fixed rules stall at a
 cold start.
 
-**Highlights**
+**Main findings**
 
 * Advisor tools raise the hits an agent finds by about 5 per 60 purchases.
 * Following up on hits through sequence similarity carries most of that gain.
 * Agents escape a cold start that traps fixed selection rules, but lose where those rules work.
-* A warning written into a tool description did not change agent behavior.
 
 ![B1 (campaign + advisor tools) minus A (campaign tools only), paired by seed: +2.45 and +6.80 on Nipah, +6.70 and +4.50 on EGFR, +5.11 pooled over all four cells, with 90% paired intervals](reports/figures/advisor-effect.svg)
 
@@ -461,6 +463,10 @@ Read [`docs/caveats.md`](docs/caveats.md) before quoting the results.
 
 ## For developers
 
+The [documentation site](https://wawrzeniecjp-ai.github.io/replaylab/) has the architecture,
+how a game is played step by step, a glossary and the API reference; it is built from
+`docs/user_guide/` and the docstrings by `.github/workflows/docs.yml`.
+
 ```text
 src/replaylab/
   domain/     core types and feature specs
@@ -469,7 +475,7 @@ src/replaylab/
               pool loader
   store/      SQLite store: append-only campaign history
   backends/   replay backend: serves recorded outcomes to the agent
-  engine/     campaign rules (clock, submit/settle/wait), scoring
+  engine/     campaign rules (clock, submit/settle/wait), the game loop, scoring
   advisor/    preprocessing, logistic model, similarity index, rate and stop rules
   policies/   batch selection: random, fixed metric, learner, learner_sim (+stop)
   eval/       evaluation harness: agent loop, runner, spend guard, comparisons
