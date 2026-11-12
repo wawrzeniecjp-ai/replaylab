@@ -1,0 +1,1 @@
+{"a": "B1", "b": "scripted:learner_sim_purchased", "ci": 0.9, "ci_high": 6.475, "ci_low": 4.075, "game": "N-held", "losses": 4, "mean_diff": 5.275, "metric": "hits", "n": 40, "n_resamples": 10000, "ties": 2, "trial_range": [0, 39], "wins": 34}

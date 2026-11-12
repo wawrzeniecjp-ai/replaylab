@@ -1,0 +1,59 @@
+{
+  "frozen_hash": "c1149b131e11",
+  "game": "N-held",
+  "git_sha": "c364803cb5b8af94c020287b7c2d60ff439d2fa2",
+  "legs": {
+    "deepseek": {
+      "conditions": [
+        "A",
+        "B1",
+        "B2"
+      ],
+      "config_hash": "0fecb4a7e74a",
+      "first_trial": 0,
+      "records": "runs/held-ds/episodes.jsonl",
+      "started_at": "2026-11-11T20:31:04+00:00",
+      "trials": 40
+    },
+    "mimo": {
+      "conditions": [
+        "A",
+        "B1",
+        "B2"
+      ],
+      "config_hash": "c2c8dac7e136",
+      "first_trial": 0,
+      "records": "runs/held-mimo/episodes.jsonl",
+      "started_at": "2026-11-11T21:04:55+00:00",
+      "trials": 40
+    },
+    "scripted": {
+      "conditions": [
+        "scripted:learner",
+        "scripted:learner_purchased",
+        "scripted:learner_sim",
+        "scripted:learner_sim_purchased",
+        "scripted:random"
+      ],
+      "config_hash": "e3f984bbcaf7",
+      "first_trial": 0,
+      "records": "runs/held-ds/episodes.jsonl",
+      "started_at": "2026-11-11T20:27:22+00:00",
+      "trials": 40
+    },
+    "scripted@runs/held-mimo/episodes.jsonl": {
+      "conditions": [
+        "scripted:learner",
+        "scripted:learner_purchased",
+        "scripted:learner_sim",
+        "scripted:learner_sim_purchased",
+        "scripted:random"
+      ],
+      "config_hash": "e3f984bbcaf7",
+      "first_trial": 0,
+      "records": "runs/held-mimo/episodes.jsonl",
+      "started_at": "2026-11-11T20:27:59+00:00",
+      "trials": 40
+    }
+  }
+}

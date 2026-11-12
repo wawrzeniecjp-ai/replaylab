@@ -1,0 +1,1 @@
+{"a": "B1", "b": "scripted:learner_purchased", "ci": 0.9, "ci_high": 2.2125, "ci_low": 1.5, "games": ["AB-nipah", "AB-egfr", "AB-bbf14", "AB-bhrf1"], "losses": 3, "mean_diff": 1.85, "metric": "hits", "n": 80, "n_resamples": 10000, "ties": 22, "trial_range": [0, 19], "wins": 55}

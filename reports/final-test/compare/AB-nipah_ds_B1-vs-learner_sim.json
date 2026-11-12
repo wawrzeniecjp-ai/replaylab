@@ -1,0 +1,1 @@
+{"a": "B1", "b": "scripted:learner_sim", "ci": 0.9, "ci_high": 6.45, "ci_low": 4.9, "game": "AB-nipah", "losses": 0, "mean_diff": 5.7, "metric": "hits", "n": 20, "n_resamples": 10000, "ties": 0, "trial_range": [0, 19], "wins": 20}

@@ -1,0 +1,1 @@
+{"a": "B1", "b": "A", "ci": 0.9, "ci_high": 3.3, "ci_low": 1.85, "game": "AB-bhrf1", "losses": 1, "mean_diff": 2.55, "metric": "hits", "n": 20, "n_resamples": 10000, "ties": 1, "trial_range": [0, 19], "wins": 18}
