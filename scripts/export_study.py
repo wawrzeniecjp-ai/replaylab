@@ -18,22 +18,28 @@ import csv
 import json
 from pathlib import Path
 
-# run dir -> (game, trial range) the write-up draws on
-BLOCKS: dict[str, tuple[str, range]] = {
-    "confirm1": ("N-dev", range(100, 120)),  # the confirmatory N-dev block (section 12)
-    "ds2": ("N-dev", range(0, 20)),  # N-dev development block, deepseek
-    "mimo2": ("N-dev", range(0, 20)),  # N-dev development block, mimo
-    "egfr-ds": ("E", range(100, 120)),  # the E verdict block (sections 15, 16)
-    "egfr-mimo": ("E", range(100, 120)),
-    "auth-ds": ("N-dev", range(140, 180)),  # the authorship ablation (section 18)
-    "auth-mimo": ("N-dev", range(140, 180)),
+# run dir -> the (game, trial range) blocks the write-up draws on from it
+AB_GAMES = ("AB-nipah", "AB-egfr", "AB-bbf14", "AB-bhrf1")
+BLOCKS: dict[str, tuple[tuple[str, range], ...]] = {
+    "confirm1": (("N-dev", range(100, 120)),),  # the confirmatory N-dev block (section 12)
+    "ds2": (("N-dev", range(0, 20)),),  # N-dev development block, deepseek
+    "mimo2": (("N-dev", range(0, 20)),),  # N-dev development block, mimo
+    "egfr-ds": (("E", range(100, 120)),),  # the E verdict block (sections 15, 16)
+    "egfr-mimo": (("E", range(100, 120)),),
+    "auth-ds": (("N-dev", range(140, 180)),),  # the authorship ablation (section 18)
+    "auth-mimo": (("N-dev", range(140, 180)),),
+    "held-ds": (("N-held", range(0, 40)),),  # the held-out test (docs/prereg-heldout.md)
+    "held-mimo": (("N-held", range(0, 40)),),
+    "ab-ds": tuple((g, range(0, 20)) for g in AB_GAMES),  # the final test (prereg-anthropic)
+    "ab-mimo": tuple((g, range(0, 20)) for g in AB_GAMES),
 }
 FIELDS = ["run", "game", "model", "condition", "trial", "hits", "purchases", "rounds_used",
           "distinct_families", "stopped_early", "r1", "r2", "r3", "r4"]  # fmt: skip
 
 
 def rows(runs_dir: Path):
-    for run, (game, trials) in sorted(BLOCKS.items()):
+    for run, blocks in sorted(BLOCKS.items()):
+        wanted = dict(blocks)
         path = runs_dir / run / "episodes.jsonl"
         if not path.exists():
             print(f"  skipped {run}: no {path}")
@@ -43,7 +49,7 @@ def rows(runs_dir: Path):
             if not line.strip():
                 continue
             record = json.loads(line)
-            if record["game"] != game or record["trial"] not in trials:
+            if record["trial"] not in wanted.get(record["game"], ()):
                 continue
             scores = record["scores"]
             boundaries = list(scores.get("hits_at_boundaries") or [])

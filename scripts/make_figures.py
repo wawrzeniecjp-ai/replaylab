@@ -96,6 +96,19 @@ def pooled(rows, cells, a, b, ci=0.9):
     return _bootstrap(left, right, ci)
 
 
+def pooled_over_games(rows, run, games, a, b, ci=0.9):
+    """The same, pooled over several games of one run; pairs are keyed by (game, seed).
+
+    This is how ``compare --game G1 --game G2 ...`` keys them, so the interval is the one
+    the registered pooled comparison reports.
+    """
+    left, right = {}, {}
+    for game in games:
+        left.update({(game, k): v for k, v in hits_by_seed(rows, game, run, a).items()})
+        right.update({(game, k): v for k, v in hits_by_seed(rows, game, run, b).items()})
+    return _bootstrap(left, right, ci)
+
+
 def ladder_means():
     means = defaultdict(list)
     with LADDER.open(encoding="utf-8") as handle:
@@ -189,6 +202,35 @@ def interval_figure(
         svg(width, height, "".join(parts), title, f"{subtitle}. {note}"), encoding="utf-8"
     )
     return path
+
+
+AB_GAMES = ("AB-nipah", "AB-egfr", "AB-bbf14", "AB-bhrf1")
+
+
+def final_test_figure(rows, path):
+    """The two final tests: each registered primary and secondary, per model."""
+    lsp = "scripted:learner_sim_purchased"
+    ab = [
+        (f"{label} B1 - {name}", *pooled_over_games(rows, run, AB_GAMES, "B1", bar))
+        for name, bar in (("A", "A"), ("learner_sim", "scripted:learner_sim"))
+        for label, run in (("deepseek", "ab-ds"), ("mimo", "ab-mimo"))
+    ]
+    held = [
+        (f"{label} B1 - {name}", *paired(rows, "N-held", run, "B1", bar))
+        for name, bar in (("A", "A"), ("learner_sim_purchased", lsp))
+        for label, run in (("deepseek", "held-ds"), ("mimo", "held-mimo"))
+    ]
+    return interval_figure(
+        [
+            ("Anthropic pools: 4 targets, unseen designs, pooled (80 pairs a row)", ab),
+            ("Held-out Nipah-G fold (40 pairs a row)", held),
+        ],
+        path,
+        "Final tests: the tools help on the Anthropic pools, not measurably on held-out Nipah-G",
+        "Hits per 32 purchases, paired by seed; each primary (B1 - A) and secondary as registered",
+        "On N-held every learner variant buys the same ranking and scores 2.00.",
+        width=920,
+    )
 
 
 # --- figure 2: the ladder inversion -----------------------------------------------------
@@ -471,6 +513,7 @@ def main() -> None:
             axis_label="90% paired interval",
         )
     )
+    written.append(final_test_figure(rows, OUT / "final-test.svg"))
     written.append(ladder_figure(OUT / "ladder-inversion.svg"))
     written.append(curves_figure(rows, OUT / "e-round-curves.svg"))
     for path in written:
