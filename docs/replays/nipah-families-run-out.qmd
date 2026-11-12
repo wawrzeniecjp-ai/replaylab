@@ -1,0 +1,44 @@
+---
+title: "Nipah-G, two families found and bought out"
+resources:
+  - pages/nipah-families-run-out.html
+toc: false
+---
+
+[Open the replay in a full page](pages/nipah-families-run-out.html){target="_blank"}. The
+agent's own words, in *This turn*, narrate most of the episode.
+
+
+A deepseek-flash episode on the Nipah-G development pool, trial 0, condition **B1**. The agent
+plays well for three rounds and then runs out of leads: it ends with 12 hits, against 26 for
+the tuned scripted learner `learner_sim_purchased` on the same seed. On Nipah-G this is the
+common pattern; the agent falls short of that learner on average (README, *The agent loses to a
+tuned learner on Nipah-G*).
+
+<iframe src="pages/nipah-families-run-out.html#e=0&s=7" title="Replay: Nipah-G trial 0, B1"
+  style="width:100%;height:1000px;border:1px solid #ccc;border-radius:6px"></iframe>
+
+## What to watch
+
+**Two leads from the first batch.** The first batch, the top designs by ipSAE and ipTM spread
+over design classes, holds 2 hits: a long design of class "Other" and an scFv
+([step 7](pages/nipah-families-run-out.html#e=0&s=7){target="_blank"}).
+
+**Both are followed up.** `similar_designs` finds a tight scFv family around the second hit,
+and the agent adds long "Other" designs like the first. Round 2 brings 7 hits: "the scFv family
+(3/3) and the 220-residue 'Other' designs (3/3)"
+([step 14](pages/nipah-families-run-out.html#e=0&s=14){target="_blank"}).
+
+**The families run out.** Before round 3 the agent checks the neighborhoods again and finds the
+scFv family "exhausted" ([step 19](pages/nipah-families-run-out.html#e=0&s=19){target="_blank"}).
+It concentrates on the 220-residue designs and finds 3 more. After round 3 that family is 
+“fully bought out” too (step 20{target="blank"}): all seven of its 220-residue designs were 
+hits. A last similar_designs call finds that the nearest designs left in the pool are only 
+distantly related (step 21{target="blank"}). With no lead left, the agent spends its last 
+15 purchases probing “the most plausible untested pockets”: mid-length “Other” designs, 
+the unclassified designs and a band of lengths it has not tried. None binds 
+(step 25{target="_blank"}).
+
+The learner keeps going. On the same seed, learner_sim_purchased has 16 hits after round 3 
+and adds 10 in round 4, ending with 26. The agent stops at 12. Following a family pays 
+while the family lasts; a fitted model keeps ranking the whole pool after the leads run out.

@@ -1,0 +1,40 @@
+---
+title: "Replays"
+toc: false
+---
+
+Three recorded episodes from the main study, played back one tool call at a time. Each page
+is what `replaylab-eval view` writes for a run (see [Evaluation](../../user-guide/evaluation.html)),
+cut down to the episodes discussed.
+
+* [EGFR, one seed, with and without the advisor tools](egfr-same-seed.qmd): the advisor
+  effect in a single pair. The agent with `similar_designs` turns two hits into twelve more in
+  round 2; the agent without it is still looking for its first hit.
+* [EGFR, a wrong turn after an empty first round](egfr-wrong-turn.qmd): an agent reads one
+  empty round as proof that the scores are inverted, buys the worst-scored designs, and ends
+  below random selection.
+* [Nipah-G, two families found and bought out](nipah-families-run-out.qmd): where the tuned
+  learner wins. The agent finds two families of hits, buys them out by round 3, and has
+  nothing left for round 4.
+
+These are illustrations, chosen because each shows one behavior clearly, not typical
+episodes: the averages are in the README.
+
+## Reading a replay
+
+* **Playback.** Step with the arrow keys or the buttons, or press space to play. One step is
+  one tool call. *Actions* lists the calls so far with a summary of each result; *This turn*
+  shows the model's text and reasoning for the current turn.
+* **Pool map.** Every design in the pool, grouped by sequence family (or as a scatter of two
+  score columns). Bought designs turn green (hit) or red (miss); the designs named in the
+  current tool result are outlined.
+* **Lift fog** (key `F`) shows the hits the agent never bought. The agent never saw them; the
+  replay shows them so you can see what was there to find.
+* **Race against the scripted players.** The agent's cumulative hits against the baseline
+  policies played on the same seed, so the same pool and the same aliases.
+* **Episode menu.** A page with several episodes has a menu at the top.
+* **Links to a moment.** A link of the form `page.html#e=1&s=12` opens episode 1 (counting from
+  0) at step 12; add `&fog=1` to lift the fog.
+
+Design ids are per-seed aliases (`d0001`...), as the agent saw them; sequences and real
+design ids are never in the page.

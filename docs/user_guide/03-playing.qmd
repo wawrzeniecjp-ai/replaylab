@@ -1,6 +1,7 @@
 ---
 title: "How a game is played"
 guide-section: "Understanding replaylab"
+toc: false
 ---
 
 This page follows one game from the first round to the score: who calls whom, where

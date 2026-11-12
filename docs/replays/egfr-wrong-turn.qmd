@@ -1,0 +1,42 @@
+---
+title: "EGFR, a wrong turn after an empty first round"
+resources:
+  - pages/egfr-wrong-turn.html
+toc: false
+---
+
+[Open the replay in a full page](pages/egfr-wrong-turn.html){target="_blank"}. Open *This turn*
+to read the model's reasoning at each step.
+
+A deepseek-flash episode on EGFR, trial 116, condition **A** (campaign tools only). It finds 2
+hits in 60 purchases; random selection on the same seed finds 13. The reasoning trace shows
+why: the agent builds a theory from very little evidence and spends its budget testing it.
+
+<iframe src="pages/egfr-wrong-turn.html#e=0&s=6" title="Replay: EGFR trial 116, A"
+  style="width:100%;height:1000px;border:1px solid #ccc;border-radius:6px"></iframe>
+
+## What to watch
+
+**An empty first round.** The agent buys the best-scored designs of each design class, three
+or four per class. None binds ([step 6](pages/egfr-wrong-turn.html#e=0&s=6){target="_blank"}).
+On EGFR that is common: about 16% of designs bind, and the two score columns barely separate
+hits from non-hits.
+
+**One empty round becomes a theory.** The reasoning at
+[step 7](pages/egfr-wrong-turn.html#e=0&s=7){target="_blank"} concludes that the scores "are not
+just weakly informative — maybe inverted", and the agent buys an "anti-score probe": 15 designs
+with the lowest pLDDT and the worst ProteinMPNN scores. One of them, a long scFv, is a hit
+([step 13](pages/egfr-wrong-turn.html#e=0&s=13){target="_blank"}).
+
+**One hit becomes a target.** The agent spends round 3 on 15 more scFvs with low pLDDT, the
+region of its single hit. None binds ([step 17](pages/egfr-wrong-turn.html#e=0&s=17){target="_blank"}).
+In round 4 it buys designs from other classes whose length and scores resemble the hit, and
+finds one more.
+
+This is the failure the advisor tools guard against. `estimate_hit_rate` would have put one
+hit in 30 purchases in context, and `similar_designs` would have looked for the hit's relatives
+by sequence rather than by score values. Condition B1 on the same seed found 33 hits. Lift
+the fog (`F`) at the end to see where the hits were.
+
+Some of the worst-first ProteinMPNN sorts counted in the README's section on the orientation
+defect are deliberate probes like this one, not misreadings of the sort direction.
