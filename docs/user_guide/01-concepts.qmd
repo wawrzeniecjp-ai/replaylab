@@ -1,6 +1,7 @@
 ---
 title: "Glossary"
 guide-section: "Understanding replaylab"
+toc: false
 ---
 
 The vocabulary used in the code and the documentation.

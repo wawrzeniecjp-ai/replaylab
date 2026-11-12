@@ -1,6 +1,7 @@
 ---
 title: "Evaluation"
 guide-section: "Understanding replaylab"
+toc: false
 ---
 
 # Evaluating an agent

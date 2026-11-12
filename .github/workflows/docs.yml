@@ -1,6 +1,6 @@
 # Build the documentation site (great-docs + Quarto + d2) and publish it to GitHub Pages.
 #
-# Runs only when something the site is built from changes: the guide pages, the
+# Runs only when something the site is built from changes: the guide and replay pages, the
 # docstrings under src/ (the API reference), the README (the home page), the
 # great-docs config or the dependencies. A pull request builds the site to check it;
 # only a push to main publishes it. The built site is uploaded as a Pages artifact,
@@ -15,6 +15,7 @@ on:
     branches: [main]
     paths:
       - "docs/user_guide/**"
+      - "docs/replays/**"
       - "src/**"
       - "README.md"
       - "great-docs.yml"
@@ -24,6 +25,7 @@ on:
   pull_request:
     paths:
       - "docs/user_guide/**"
+      - "docs/replays/**"
       - "src/**"
       - "README.md"
       - "great-docs.yml"

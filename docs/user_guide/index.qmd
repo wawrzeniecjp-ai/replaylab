@@ -1,6 +1,7 @@
 ---
 title: "User Guide"
 guide-section: "Quick Start"
+toc: false
 ---
 
 **Where to start:**

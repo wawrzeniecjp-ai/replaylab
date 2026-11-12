@@ -10,11 +10,19 @@ dynamic: false
 # Narrative first, then the reference.
 navbar_order:
   - User Guide
+  - Replays
   - Reference
 
 # The config lives at the repository root (not inside docs/), so point at the
 # guide directory explicitly; path is relative to this file.
 user_guide: docs/user_guide
+
+# Recorded episodes played back in the replay viewer. The pages under
+# docs/replays/pages/ are built by scripts/make_replay_examples.py (from runs/,
+# which is not in the repository) and committed.
+sections:
+  - title: Replays
+    dir: docs/replays
 
 # GitHub integration: navbar widget + "source" links on every API page.
 repo: https://github.com/wawrzeniecjp-ai/replaylab

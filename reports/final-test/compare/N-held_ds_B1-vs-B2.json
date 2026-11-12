@@ -1,0 +1,1 @@
+{"a": "B1", "b": "B2", "ci": 0.9, "ci_high": 0.7, "ci_low": -1.8, "game": "N-held", "losses": 20, "mean_diff": -0.55, "metric": "hits", "n": 40, "n_resamples": 10000, "ties": 4, "trial_range": [0, 39], "wins": 16}

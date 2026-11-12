@@ -1,0 +1,1 @@
+{"a": "B1", "b": "scripted:random", "ci": 0.9, "ci_high": 4.075, "ci_low": 3.0375, "games": ["AB-nipah", "AB-egfr", "AB-bbf14", "AB-bhrf1"], "losses": 6, "mean_diff": 3.5625, "metric": "hits", "n": 80, "n_resamples": 10000, "ties": 8, "trial_range": [0, 19], "wins": 66}
