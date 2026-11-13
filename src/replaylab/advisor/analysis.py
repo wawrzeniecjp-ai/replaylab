@@ -15,8 +15,11 @@ A logistic regression on the delivered designs, with the options an agent may se
 Validation is leave-one-out over the delivered designs, against a base-rate baseline
 that is also left-one-out. The similarity input is recomputed inside every fold from
 that fold's hits, and a row is never compared with itself, so a hit's own label never
-reaches its own input. (The similarity column's standardizing statistics come from the
-full data; that leaks no label of the held-out row into its own prediction.)
+reaches its own input. One small leak remains: the similarity column's centre and spread
+come from the full data, so the held-out design's label shifts the scale used in its own
+fold (with the L2 penalty, scale matters). Measured on random data, it moves a fold's
+prediction by about 0.0003 typically and 0.012 at most. It affects the validation numbers
+only, never the ranking of the candidates.
 
 Defaults (``l2``, ``C = 0.1``, no similarity, ranked by mean) give the same model as
 ``fit_and_rank``. Pure computation: no store, no ids, no sequences.
