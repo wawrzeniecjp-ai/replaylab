@@ -414,8 +414,9 @@ every condition equally but weakens absolute claims.
 Two smaller points bear on the final tests. The main-study episodes were played before the
 orientation fix, and the final tests after it. And in the final tests, 8 of about 360 mimo
 episodes (2.2%, spread over all three conditions) hit the 32,768-token output limit
-mid-reasoning and were replayed on the same seed, as the runner is designed to do; how those
-second draws affect the scores is unknown.
+mid-reasoning, and 4 more failed on a provider error. Each was replayed on the same seed, as
+the runner is designed to do; how those second draws affect the scores is unknown
+([`docs/caveats.md`](docs/caveats.md) entry 9).
 
 Taken together, these findings suggest that agentic lab platforms might gain from giving agents
 analysis tools — free inspection of the pool, follow-up on discoveries, a model fitted on what
