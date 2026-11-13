@@ -1472,3 +1472,68 @@ Each main-study gap after round 2 rests on 20 pairs (90% intervals about 1.5 hit
 and 4 rounds of 8 are not the same game as 2 rounds of 15. This is a reading, not a test; the
 registered verdicts above are unchanged by it. `scripts/audit/pairing.py` recomputes every
 number in this section from the records.
+
+## 21. How well the hit-rate forecasts matched (2026-11-13, descriptive)
+
+Written after both final tests, over trials already played: the main study's blocks and the
+final tests' (`scripts/export_study.py`), agent episodes only. Nothing here is a registered
+test, and nothing in it changes a configuration. `scripts/calibration_report.py` reads the
+recorded transcripts, writes `reports/calibration_forecasts.csv` and
+`reports/calibration_proposals.csv` (no design ids), and prints every number below.
+
+**What the agent is told.** Two tools state a hit rate for a batch. `propose_batch` returns a
+batch with a predicted rate: the fitted model's mean prediction once the model gate (2 hits,
+8 delivered purchases) is open (basis `model`), and before that the posterior mean of the hit
+rate so far under a flat prior (basis `posterior_mean`; 0.5 with no data).
+`estimate_hit_rate(next_batch=...)` gives the model's predicted rate for a batch the agent
+names, with a 90% interval. `advisor/calibration.py` is meant to correct that forecast: with at
+least 3 residuals (realized minus predicted rate of a **model-based proposal that was bought
+exactly as proposed**), the forecast is shifted by their mean and its interval becomes
++/- 1.645 sd of the residuals; before that, the interval is the Beta interval of the raw
+rate as if the batch's k designs had shown it.
+
+**Scoring rule.** A prediction is about one batch, so it is scored only against a batch of
+exactly the same designs bought at the end of the round it was made in. For a forecast, the
+last one of that exact set counts.
+
+**1. The calibration never fired, and could not have.** All 495 next-batch forecasts were
+`calibrated: false`. In a game of 4 rounds with one purchase per round, a model-based
+proposal can be made in round 2 at the earliest, so at most two (rounds 2 and 3) are delivered
+before the last purchase: 3 residuals cannot exist in time, whatever the agent does. In
+practice even that ceiling was far off: agents bought 5 of 582 model-based proposals exactly as
+proposed, and no episode had more than 2 residuals (3 episodes had 1, one had 2). The
+calibrated branch was therefore never exercised in this study; the evidence on it is that
+it is unreachable with these games, not that it works or fails.
+
+**2. The 90% intervals covered 54%.** 231 of the 495 forecasts described the batch the agent
+then bought. Their point predictions were close (bias -0.049, realized minus predicted; mean absolute
+error 0.207), but the intervals, 0.435 wide on average, covered the realized rate
+125 times (54.1%). Misses were twice as often below the interval as above it (72 against 34).
+By game: N-dev 39/77, E 4/9, AB-nipah 23/36, AB-egfr 21/34, AB-bhrf1 30/49, AB-bbf14 0/1, and
+N-held 8/25, where the agent did better than the model predicted (bias +0.215), as expected
+from a model that fitted to almost nothing on that fold (section 20). By model: deepseek 15/25,
+mimo 110/206. The uncalibrated interval treats the predicted rate as if it had been observed
+on k designs; it leaves out the model's own error, and with k = 8 or 15 binary outcomes that
+error is most of the spread.
+
+**3. Proposals are read, not bought.** Of 1,021 `propose_batch` results, 66 were bought exactly
+as proposed (6.5%): 61 of 439 posterior-mean proposals and 5 of 582 model-based ones. Agents
+use the tool for its prediction and its per-design reasons, then build the batch themselves
+(the README's section on how agents query the pool). This is why the calibration had no data.
+
+**4. The round-1 prediction is the flat prior.** All 167 round-1 proposals predict 0.5, the
+posterior mean of a Beta(1, 1) prior with no data, against base rates of 3% to 26% in these
+pools. It is labelled `posterior_mean` and returned with a wide interval, so it is
+uninformative rather than wrong; an agent could still anchor on it. The 61 posterior-mean
+proposals that were bought (37 of them in round 1) realized 0.176 against a predicted 0.332.
+
+**Limits.** Coverage is measured only on forecasts of batches the agent chose to buy, which
+may differ from the ones it did not. The counts per game are small. Scoring a prediction on the
+part of a proposal the agent happened to buy would measure the hit rate of the agent's own
+selection, not of the batch predicted; such partial matches are left out on purpose.
+
+**If the calibration is redesigned** (a new pre-registration and fresh trial blocks: it changes
+the tools' outputs): calibrate from the model's own leave-one-out residuals, available from
+round 2 on, instead of from bought proposals, so it no longer depends on agents buying what they
+are offered; and give a predictive interval (a beta-binomial for k outcomes, widened by the
+model's error) instead of a Beta interval for the rate.

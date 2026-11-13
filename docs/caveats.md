@@ -384,3 +384,19 @@ at all Nipah-G outcomes, this fold included (design notes section 1).
 **What the write-up should say.** Report the secondary with this explanation, and lead with
 the primary (B1 - A, inconclusive on both models).
 
+## 11. The next-batch intervals are too narrow, and the calibration that should widen them never ran (2026-11-13)
+
+**What.** `estimate_hit_rate(next_batch=...)` reports a 90% interval for a batch's hit rate.
+Scored on the 231 forecasts whose batch the agent then bought, it covered 54% (design notes
+section 21). The correction meant to calibrate it from past errors needs 3 residuals from
+model-based proposals bought exactly as proposed, which a 4-round game cannot supply in time,
+and it never ran: all 495 forecasts were uncalibrated.
+
+**Why it matters.** An agent that trusts the interval underestimates how far a batch can fall
+short, mostly on the low side (72 misses below against 34 above). Any claim that the advisor
+"quantifies uncertainty" would overstate what it did.
+
+**What the write-up should say.** Report the point accuracy (bias -0.05, MAE 0.21) beside the
+coverage, say that the calibrated branch was never exercised in these games, and that this is
+a post hoc look at played trials, scored only on batches the agent chose to buy.
+

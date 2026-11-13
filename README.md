@@ -641,7 +641,10 @@ the main figures are in `reports/agent_study.csv` (written by `scripts/export_st
 redrawn by `scripts/make_figures.py`. The side figures (S1–S5) read
 `reports/agent_episodes.csv`, `reports/agent_tool_calls.csv` and `reports/feature_signal.csv`
 (written by `scripts/export_side_data.py`) and are redrawn by `scripts/make_side_figures.py`.
-None of these files holds a sequence or a design id. The final tests' locks and the output of
+The hit-rate forecasts the agents saw, scored against what their batches delivered, are in
+`reports/calibration_forecasts.csv` and `reports/calibration_proposals.csv` (written by
+`scripts/calibration_report.py`; design notes section 21). None of these files holds a
+sequence or a design id. The final tests' locks and the output of
 every comparison are in [`reports/final-test/`](reports/final-test/). Four audits in
 [`scripts/audit/`](scripts/audit/README.md) check the recorded results from outside the
 package (`make audit`): they re-score the episodes from the raw export, scan every transcript
