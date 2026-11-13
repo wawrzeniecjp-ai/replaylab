@@ -1,10 +1,12 @@
 # Analysis tools help language-model agents find more protein binders
 
+[![CI](https://github.com/wawrzeniecjp-ai/replaylab/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/wawrzeniecjp-ai/replaylab/actions/workflows/ci.yml)
+
 **replaylab**: an environment, an MCP toolkit and a set of baseline policies that score
 protein design–test campaigns by replaying real lab outcomes.
 
 **Documentation:** [wawrzeniecjp-ai.github.io/replaylab](https://wawrzeniecjp-ai.github.io/replaylab/)
-(user guide, how a game is played, and the API reference).
+(user guide, how a game is played, recorded episodes to replay, and the API reference).
 
 ## Summary
 
