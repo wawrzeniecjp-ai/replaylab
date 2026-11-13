@@ -79,8 +79,13 @@ def recorded_controls(report: c.Report, raw: c.Raw, games: dict, paths: list[Pat
     for key in clashes[:10]:
         report.fail(f"B. {key} has different scores in different runs")
 
-    # A. Random against n K / N, over distinct trials.
+    # A. Random against n K / N, over distinct trials. The Anthropic pools are not in the
+    # Proteinbase export, so their expected value cannot be rebuilt here (audit 1 skips them
+    # for the same reason).
     for game_id, per_trial in sorted(random_hits.items()):
+        if games[game_id]["target"] not in raw.pool_by_target:
+            report.note(f"A. {game_id}: skipped, its target is not in the raw export")
+            continue
         expected, hits, size = expected_hits(raw, games[game_id])
         values = list(per_trial.values())
         z = z_score(values, expected)
