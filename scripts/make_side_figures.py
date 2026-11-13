@@ -480,13 +480,14 @@ def defaults_figure(calls, path, width=880):
     for model in ("deepseek", "mimo", "sonnet"):
         counts = [0] * 4
         for r in calls:
-            if r["tool"] == "propose_batch" and r["model"] == model:
+            # a failed call ran no policy, so it chose nothing
+            if r["tool"] == "propose_batch" and r["model"] == model and r["ok"] == "True":
                 counts[policy_group(r["choice"])] += int(r["calls"])
         if sum(counts):
             rows.append((f"{model}: propose_batch policy", counts))
     scaling = [0, 0, 0, 0]
     for r in calls:
-        if r["tool"] == "fit_custom_model":
+        if r["tool"] == "fit_custom_model" and r["ok"] == "True":
             scaling[2 if r["choice"] == "purchased" else 0] += int(r["calls"])
     left, right, top, row_h = 290, 70, 104, 46
     height = top + (len(rows) + 1) * row_h + 70
@@ -496,7 +497,7 @@ def defaults_figure(calls, path, width=880):
         text(
             24,
             50,
-            "Share of calls by the choice made, all agent episodes; n is the number of calls",
+            "Share of successful calls by the choice made, all agent episodes; n is their number",
             12.5,
             INK2,
         ),

@@ -18,9 +18,10 @@ import csv
 import json
 from pathlib import Path
 
-# run dir -> the (game, trial range) blocks the write-up draws on from it
 AB_GAMES = ("AB-nipah", "AB-egfr", "AB-bbf14", "AB-bhrf1")
-BLOCKS: dict[str, tuple[tuple[str, range], ...]] = {
+# run dir -> the (game, trial range) blocks the write-up draws on from it.
+# The main study: Nipah-G development and EGFR transfer.
+MAIN_STUDY_BLOCKS: dict[str, tuple[tuple[str, range], ...]] = {
     "confirm1": (("N-dev", range(100, 120)),),  # the confirmatory N-dev block (section 12)
     "ds2": (("N-dev", range(0, 20)),),  # N-dev development block, deepseek
     "mimo2": (("N-dev", range(0, 20)),),  # N-dev development block, mimo
@@ -28,11 +29,15 @@ BLOCKS: dict[str, tuple[tuple[str, range], ...]] = {
     "egfr-mimo": (("E", range(100, 120)),),
     "auth-ds": (("N-dev", range(140, 180)),),  # the authorship ablation (section 18)
     "auth-mimo": (("N-dev", range(140, 180)),),
+}
+# The two once-only final tests.
+FINAL_TEST_BLOCKS: dict[str, tuple[tuple[str, range], ...]] = {
     "held-ds": (("N-held", range(0, 40)),),  # the held-out test (docs/prereg-heldout.md)
     "held-mimo": (("N-held", range(0, 40)),),
     "ab-ds": tuple((g, range(0, 20)) for g in AB_GAMES),  # the final test (prereg-anthropic)
     "ab-mimo": tuple((g, range(0, 20)) for g in AB_GAMES),
 }
+BLOCKS = {**MAIN_STUDY_BLOCKS, **FINAL_TEST_BLOCKS}
 FIELDS = ["run", "game", "model", "condition", "trial", "hits", "purchases", "rounds_used",
           "distinct_families", "stopped_early", "r1", "r2", "r3", "r4"]  # fmt: skip
 

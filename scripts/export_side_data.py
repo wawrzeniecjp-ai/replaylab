@@ -26,15 +26,17 @@ import csv
 import json
 from pathlib import Path
 
-from export_study import BLOCKS as STUDY_BLOCKS
+from export_study import MAIN_STUDY_BLOCKS
 
-# run dir -> (game, trial range): the study's blocks plus the two runs that only the side
-# figures use (the Sonnet probe of design-notes section 10, the condition C development block)
+# run dir -> (game, trial range): the main study's blocks (never the final tests: the side
+# figures describe the main study) plus the two runs that only the side figures use (the
+# Sonnet probe of design-notes section 10, the condition C development block)
 BLOCKS: dict[str, tuple[str, range]] = {
-    **STUDY_BLOCKS,
+    **{run: blocks[0] for run, blocks in MAIN_STUDY_BLOCKS.items()},
     "sonnet1": ("N-dev", range(0, 10)),
     "condC1": ("N-dev", range(40, 50)),
 }
+assert all(len(blocks) == 1 for blocks in MAIN_STUDY_BLOCKS.values())
 # the one argument per tool that a side figure reads; every other argument stays out
 CHOICE = {"query_pool": "sort_by", "propose_batch": "policy", "fit_custom_model": "scaling"}
 GAMES = ("N-dev", "E")
