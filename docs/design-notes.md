@@ -1369,3 +1369,106 @@ Open points that do not change any recorded result, kept here so they are not lo
 * **Three phase 7 mutants are left alive on purpose**: dropping `fsync` in
   `eval/records.py:append_record`, an abort flag that only saves setup work, and a duplicated
   held-out check (see the guards table in `docs/code-tour.md`, section 5).
+
+## 20. The final tests, played (2026-11-11 and 2026-11-12)
+
+Both once-only tests were played from one clean commit on `main`, `c364803`, with the
+registered configuration: `config_hash` `0fecb4a7e74a` (deepseek) and `c2c8dac7e136` (mimo),
+`e3f984bbcaf7` for the scripted ladder. Pre-registrations: `docs/prereg-anthropic.md`
+(the four `AB-` games, trials 0-19) and `docs/prereg-heldout.md` (`N-held`, trials 0-39). Both
+ran conditions A, B1 and B2 with both models, with the scripted ladder on the same seeds. The
+locks, with their legs and frozen hashes, are in `reports/final-test/`; the output of every
+comparison below is in `reports/final-test/compare/`.
+
+### Gates
+
+Checked before any hit count was read, and all passed: every agent episode `finished`; one
+record per (game, condition, trial) with no duplicates (240 agent and 400 scripted episodes
+per Anthropic run directory, 120 and 200 per held-out one); one `config_hash` per model, equal
+to the registered one; every record at `c364803` with `git_dirty` false; every lock's
+`frozen_hash` equal to the value pinned in `tests/test_registered_hashes.py` since 2026-11-10
+(`de44e444dfcd` AB-nipah, `25e93623ed1a` AB-egfr, `3bb06367dc15` AB-bbf14, `4fda9854f46d`
+AB-bhrf1, `c1149b131e11` N-held).
+
+### What failed and was replayed
+
+An episode that fails leaves no record and is played again on the same seed (the runner's
+design; see the guards table in `docs/code-tour.md`). Three kinds of failure occurred, listed
+from each run directory's `errors.jsonl`:
+
+* **Output-token limit (8 episodes, all mimo).** 7 in the Anthropic run (AB-nipah A 16,
+  AB-egfr B2 1, and AB-bhrf1 B2 0, A 5, B1 4, A 6, B1 12) and 1 in the held-out run. A reply
+  hit `max_tokens` (32,768) mid-reasoning and raised `ResponseTruncated`. The transcripts
+  checked showed long deliberation, not a loop. Spread over all three conditions. How the
+  second draws differ from what the first would have scored is unknown. Raising `max_tokens`
+  (mimo allows 131K by third-party listings) changes the config hash, so it waits for a new
+  pre-registration.
+* **HTTP 400 "Unsupported model" (4 episodes, mimo, AB-bhrf1).** The provider briefly
+  rejected the model id near the end of the run; the calls are not retried (a 400 is not a
+  transient error) and the four episodes were played again once the id was accepted.
+* **Refused before any model call (13, mimo).** A command without `--tables
+  data/processed/anthropic` could not load the pool ("no designs for target"). No model call,
+  no spend.
+
+deepseek had no failures.
+
+### Spend
+
+At list price, from each run directory's `spend.json` (deepseek priced at its peak tariff,
+so it overstates what was billed for runs played off-peak): `held-ds` 3.87, `ab-ds` 5.43,
+`held-mimo` 2.60, `ab-mimo` 4.83, in all 16.73 USD for 720 agent episodes. The ledgers include
+the episodes that failed and were replayed.
+
+**One deviation: the mimo cap on the Anthropic test.** Registered at 4 USD
+(`docs/prereg-anthropic.md` section 6). After the first three games the `ab-mimo` ledger stood
+at 3.68 USD, and the last game's pilot projected 1.46 more, beyond what the money gate allows
+at 4 USD. The cap was raised to 6 USD for that game, the same cap the held-out runs use. A cap
+only stops play: it enters no hash and changes no episode. Recorded as an amendment in the
+pre-registration.
+
+### Results
+
+All comparisons paired by seed, `replaylab-eval compare`, 90%, 10,000 resamples, seed 0. Hits
+per 32 purchases.
+
+| test | comparison | deepseek | mimo | rule | verdict |
+| --- | --- | --- | --- | --- | --- |
+| Anthropic, pooled (80 pairs) | **B1 - A** (primary) | **+0.94** [+0.59, +1.29] | **+0.69** [+0.36, +1.04] | low > 0 | **tools help**, both models |
+| | B1 - `learner_sim` (secondary) | +2.24 [+1.76, +2.74] | +1.95 [+1.55, +2.38] | margin 1.07 | **EXCEEDS**, both |
+| | B1 - B2 | +0.55 [+0.14, +0.97] | +0.25 [-0.06, +0.57] | none | descriptive |
+| | A - `learner_sim` | +1.30 [+0.89, +1.71] | +1.26 [+0.85, +1.69] | none | descriptive |
+| N-held (40 pairs) | **B1 - A** (primary) | +0.53 [-0.80, +1.80] | -0.38 [-2.33, +1.52] | low > 0 | **inconclusive**, both |
+| | B1 - `learner_sim_purchased` (secondary) | +4.15 [+3.35, +4.97] | +5.28 [+4.08, +6.47] | margin 1.07 | **EXCEEDS**, both |
+
+Per game, B1 - A (deepseek / mimo): AB-nipah +1.60 / -0.15, AB-egfr 0.00 / +0.25, AB-bbf14
++0.20 / +0.10, AB-bhrf1 +1.95 / +2.55. The pools hold 19, 10, 3 and 23 hits in 90 designs, so
+two of them leave little room for any difference, and the pooled effect rests on BHRF1 (both
+models) and AB-nipah (deepseek). The agent was also ahead of every other scripted policy,
+pooled.
+
+**The held-out bar is weak.** On N-held every learner variant scores exactly 2.00 hits on every
+seed, below `random` (3.58): the 8 designs with the highest ipSAE, every learner's first batch,
+hold 1 hit, the model gate never opens in time, and all four learners buy down the same
+ranking. So the secondary's EXCEEDS says little; the primary is the informative row.
+
+### Against the registered prediction (post hoc)
+
+`docs/prereg-anthropic.md` (amendment of 2026-11-01) predicted +2.5 to +3.0 hits for the
+primary, by scaling the main-study effect to 32 purchases in proportion to purchases. The
+result is a quarter to a third of that. The cumulative hits that every record keeps at each
+round boundary suggest why, read after the fact:
+
+* **The effect builds up over rounds.** In the main study, B1 - A after round 2 (30
+  purchases) was +0.45 and +2.55 on N-dev and +2.10 and -0.80 on E (deepseek, mimo), about +1.1
+  on average, against +2.45, +6.80, +6.70 and +4.50 after round 4. A rescale in proportion to
+  purchases assumes hits accrue evenly; they do not.
+* **The Anthropic pools run out of hits.** Each game buys 32 of 90 designs (36% of the pool,
+  against about 8% in the main study), and the pooled gap stops growing after round 3
+  (deepseek +0.96 then +0.94; mimo +0.85 then +0.69) where the main-study gap was still
+  widening. BHRF1, the one pool with hits left at the end (B1 holds 53% of them, A 43%), shows
+  the predicted size.
+
+Each main-study gap after round 2 rests on 20 pairs (90% intervals about 1.5 hits either side),
+and 4 rounds of 8 are not the same game as 2 rounds of 15. This is a reading, not a test; the
+registered verdicts above are unchanged by it. `scripts/audit/pairing.py` recomputes every
+number in this section from the records.

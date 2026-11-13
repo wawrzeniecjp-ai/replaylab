@@ -546,6 +546,29 @@ draws) and on `N-dev`, trials 0-19, pooled over the two. The rehearsal checks th
 the pooled mean equals the average of the two per-game means, the ledgers add up -- and says
 nothing about any `AB-` pool.
 
+### Amendment, 2026-11-13: after the run, one deviation and the frozen hashes
+
+Written **after** the run (played 2026-11-11 and 12 from commit `c364803`), to record what
+departed from this document; nothing registered above is changed by it.
+
+**The mimo cap.** Section 6 registers 4 USD for `runs/ab-mimo`. After three of the four
+games the ledger stood at 3.68 USD, and the last game's pilot projected 1.46 USD more, beyond
+what the money gate allows at 4 USD. The cap was raised to 6 USD (the deepseek cap, and the
+held-out runs' cap) to play that game. A cap only stops play; it enters neither the config
+hash nor the frozen hash, and changes no episode. The cost estimate of section 6 (2.62 USD,
+called an upper bound) was wrong by almost a factor of two for mimo: the ledger ended at
+4.83 USD, including episodes that failed and were played again.
+
+**The frozen hashes.** Section 6 registers the two `config_hash` values; the four games'
+`frozen_hash` values were pinned in `tests/test_registered_hashes.py` on 2026-11-10, before
+the run, and every lock matches them: `de44e444dfcd` (AB-nipah), `25e93623ed1a` (AB-egfr),
+`3bb06367dc15` (AB-bbf14), `4fda9854f46d` (AB-bhrf1).
+
+**Failed episodes.** 7 mimo episodes hit the output-token limit and 4 more failed on an HTTP
+400 from the provider; none was recorded, and each was played again on its own seed, as the
+runner is designed to do. Details, the gates and the results are in `docs/design-notes.md`
+section 20.
+
 ---
 
 *Editorial note, 2026-11-10, on publication:* before the repository went public, its history
