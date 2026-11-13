@@ -333,16 +333,16 @@ about twelve filtered queries per episode.
 
 When an agent does ask for a proposal, it usually takes the default (Figure S3). The default policy,
 `learner_sim`, accounts for 83% of deepseek's `propose_batch` calls (n = 178) and 72% of mimo's
-(n = 241). In condition C, the explicit scaling argument of `fit_custom_model` stays at its
-default in 99% of 87 calls. The purchased-scaling variants, the best baseline on Nipah-G and
-the worst on EGFR, are rarely tried. Always using them would not be right either, but an agent
+(n = 240). In condition C, the explicit scaling argument of `fit_custom_model` stays at its
+default in 83 of its 84 successful calls. The purchased-scaling variants, the best baseline on
+Nipah-G and the worst on EGFR, are rarely tried. Always using them would not be right either, but an agent
 that compared the scalings on its own results could pick per pool; ours did not.
 
 ![Share of calls by the choice made: learner_sim, the default, is 83% of deepseek's propose_batch calls and 72% of mimo's; Sonnet splits 50/50 between learner and learner_sim; in condition C, 99% of fit_custom_model calls keep the default scaling](reports/figures/side/defaults.svg)
 
 > **Figure S3. Agents take the default.** Share of `propose_batch` calls by the policy chosen,
 > per model, and of `fit_custom_model` calls by the scaling chosen (condition C), over all
-> main-study episodes; n is the number of calls.
+> main-study episodes; n is the number of successful calls.
 
 The first column an agent sorts on also correlates with how its campaign ends (Figure S4). On
 Nipah-G, episodes whose first sorted query is on ipSAE average 22.6 hits (n = 158), against
@@ -636,10 +636,15 @@ place.
 ### Data and code availability
 
 All code, configuration and pre-registrations are in this repository. Per-episode scores behind
-every figure are in `reports/agent_study.csv`; the figures are regenerated from it by
-`scripts/make_figures.py`, and the side figures (S1–S5) by `scripts/make_side_figures.py`. The
-final tests' locks and the output of every comparison are in
-[`reports/final-test/`](reports/final-test/). The full baseline ladder is in [`reports/ladder.md`](reports/ladder.md),
+the main figures are in `reports/agent_study.csv` (written by `scripts/export_study.py`) and are
+redrawn by `scripts/make_figures.py`. The side figures (S1–S5) read
+`reports/agent_episodes.csv`, `reports/agent_tool_calls.csv` and `reports/feature_signal.csv`
+(written by `scripts/export_side_data.py`) and are redrawn by `scripts/make_side_figures.py`.
+None of these files holds a sequence or a design id. The final tests' locks and the output of
+every comparison are in [`reports/final-test/`](reports/final-test/). Four audits in
+[`scripts/audit/`](scripts/audit/README.md) check the recorded results from outside the
+package (`make audit`): they re-score the episodes from the raw export, scan every transcript
+for leaks, run shuffled-label controls and recompute every comparison reported here. The full baseline ladder is in [`reports/ladder.md`](reports/ladder.md),
 and every number behind every decision is in [`docs/design-notes.md`](docs/design-notes.md).
 Read [`docs/caveats.md`](docs/caveats.md) before quoting the results.
 
