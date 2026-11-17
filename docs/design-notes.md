@@ -1536,4 +1536,8 @@ selection, not of the batch predicted; such partial matches are left out on purp
 the tools' outputs): calibrate from the model's own leave-one-out residuals, available from
 round 2 on, instead of from bought proposals, so it no longer depends on agents buying what they
 are offered; and give a predictive interval (a beta-binomial for k outcomes, widened by the
-model's error) instead of a Beta interval for the rate.
+model's error) instead of a Beta interval for the rate. The calibrated branch's width would
+need fixing too: +/- 1.645 sd is a normal quantile, but the sd is the sample sd of as few as 3
+residuals (2 degrees of freedom). A 90% interval for the next residual is +/- t(0.95, n-1) x sd
+x sqrt(1 + 1/n): at n = 3 that is 2.92 x 1.155 = 3.37 sd, about twice the width used; 2.34 sd
+at n = 5 and 1.92 sd at n = 10.
