@@ -83,6 +83,23 @@ def test_dev_and_heldout_are_disjoint_and_cover_the_target(env):
     assert held == set(folds.loc[folds["fold"] == 2, "design_id"])
 
 
+def test_the_pool_is_built_without_reading_any_outcome(env, tmp_path):
+    # An outcomes table stripped to the two columns that say which designs belong to a
+    # target: if the loader asked for a result column (hit, strength, kd_molar...),
+    # reading it would fail here.
+    stripped = tmp_path / "processed"
+    stripped.mkdir()
+    for table in env["dir"].glob("*.parquet"):
+        frame = pd.read_parquet(table)
+        if table.name == "outcomes.parquet":
+            frame = frame[["design_id", "target"]]
+        frame.to_parquet(stripped / table.name)
+    for g in (game("a", NIPAH, "all"), game("d", NIPAH, "dev"), game("e", EGFR, "all")):
+        full = pool_for(env, g)
+        blind = load_pool(stripped, g, ALL_FEATURES, folds_path=env["folds"])
+        assert blind.designs == full.designs
+
+
 def test_dev_and_heldout_need_a_folds_file(env):
     with pytest.raises(ValueError, match="folds_path"):
         load_pool(env["dir"], game("d", NIPAH, "dev"), ALL_FEATURES)

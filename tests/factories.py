@@ -242,7 +242,9 @@ def make_signal_pool(
     * ``f_strong`` and ``f_weak`` shift upwards by ``strong_shift`` and ``weak_shift``
       standard deviations for hits; ``f_lower`` shifts downwards (lower is better);
       ``f_noise`` carries no information.
-    * ``design_class`` is ``'A'``, ``'B'`` or ``'C'`` by family, unrelated to hits.
+    * ``design_class`` is ``'A'``, ``'B'`` or ``'C'`` by family and is not generated from the
+      hits; with only a dozen or so hit families, though, a class can hold more hits than
+      another by chance (seed 0: 24 of 45 in A, 10 of 52 in B).
     """
     sequences, families = make_families(n_families, seed=seed)
     rng = random.Random(seed + 1)

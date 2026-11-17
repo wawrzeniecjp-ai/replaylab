@@ -49,8 +49,15 @@ def test_leave_one_out_recomputes_similarity_without_the_held_out_hit():
     settings = AnalysisSettings(similarity=True)
     result = analyse(x, y, np.zeros((2, 1)), ("z",), settings,
                      s_train=s, s_cand=np.zeros((2, n)))  # fmt: skip
-    # In-sample the feature separates perfectly; out of sample it carries nothing.
-    assert result.loo_auc <= 0.6
+    # In-sample the feature separates perfectly: both hits at 1, every other row at 0.
+    in_sample = similarity_to_hits(s, y == 1, own=True)
+    assert in_sample.tolist() == [1.0, 1.0] + [0.0] * (n - 2)
+    # Out of sample it carries nothing. With a hit held out, its twin is the fold's only hit
+    # and is not similar to any other hit, so the column is flat in training and the held-out
+    # hit gets the fold's lower base rate: both hits rank below every miss (AUC 0). Building
+    # the column from all the hits instead would rank them first (AUC 1); a model that
+    # ignored its inputs would give 0.5.
+    assert result.loo_auc <= 0.1
 
 
 # --- the model options -------------------------------------------------------------------
@@ -81,6 +88,29 @@ def test_upper_bounds_come_from_the_laplace_posterior():
     assert np.allclose(flat.upper, flat.mean)
     # the order follows the requested ranking
     assert list(upper.order) == sorted(range(len(cand)), key=lambda i: (-upper.upper[i], i))
+
+
+def test_weight_sds_are_the_inverse_curvature_of_the_fitted_objective():
+    # scikit-learn minimizes C * sum(log loss) + |w|^2 / 2, the intercept unpenalized; divided
+    # by C that is a Gaussian prior of variance C on each weight. The Laplace sds must be the
+    # square roots of the diagonal of the inverse Hessian of that objective at the fit,
+    # computed here by finite differences, independently of the code's formula.
+    x, y, cand = data()
+    c = 0.5
+    result = analyse(x, y, cand, COLUMNS, AnalysisSettings(C=c))
+    theta = np.r_[result.intercept, result.coef]
+
+    def objective(t):
+        z = t[0] + x @ t[1:]
+        return np.sum(np.logaddexp(0, z) - y * z) + t[1:] @ t[1:] / (2 * c)
+
+    h, k = 1e-4, len(theta)
+    step = np.eye(k) * h
+    hessian = np.array([[(objective(theta + step[a] + step[b]) - objective(theta + step[a] - step[b])
+                          - objective(theta - step[a] + step[b]) + objective(theta - step[a] - step[b]))
+                         / (4 * h * h) for b in range(k)] for a in range(k)])  # fmt: skip
+    expected = np.sqrt(np.diag(np.linalg.inv(hessian))[1:])
+    assert np.allclose(result.coef_sd, expected, rtol=1e-4)
 
 
 def test_upper_needs_the_l2_model():

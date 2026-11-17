@@ -193,7 +193,6 @@ def test_window_hits_at_boundaries():
     # Boundaries after 5, 10, ..., 30 purchases; windows of 15 exist from 15 on.
     expected = [sum(FLAGS_30[b - 15 : b]) for b in (15, 20, 25, 30)]
     assert window_hits_at_boundaries(state, 15) == expected
-    assert len(expected) == 4
 
 
 def test_pending_batches_are_not_boundaries():

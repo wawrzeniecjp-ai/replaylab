@@ -109,13 +109,16 @@ def test_inconclusive_outcomes_count_as_purchases_but_are_not_used_for_training(
 
 
 def test_pending_purchases_are_not_used(pool):
-    designs, outcomes, pre = pool
+    designs, _, pre = pool
     ids = list(designs)
+    # Delivered: 12 designs with 2 hits (ids 0 and 6). Pending: 6 designs, 3 of them hits.
+    hits = {ids[0], ids[6], ids[12], ids[13], ids[14]}
+    outcomes = {d: Outcome(d, hit=d in hits) for d in ids}
     state = state_after(designs, outcomes, [ids[:6], ids[6:12], ids[12:18]], delay=2)
     assert len(state.outcomes) == 12 and len(state.pending_ids) == 6
     model = fit_model(state, pre)
-    if isinstance(model, FittedModel):
-        assert model.n_train == 12
+    assert isinstance(model, FittedModel)  # else the check below would not run
+    assert (model.n_train, model.n_hits) == (12, 2)  # the pending hits are not counted
 
 
 # --- fitting ----------------------------------------------------------------------------
