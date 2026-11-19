@@ -24,7 +24,10 @@ only, never the ranking of the candidates.
 The two standard errors (``improvement_se``, ``loo_auc_se``) treat the n held-out
 predictions as independent. They are not: every pair of folds shares n - 2 training
 rows. Read them as a yardstick for the size of the validation numbers, not as a
-calibrated test (``improvement > 2 * improvement_se`` is not a 5% level).
+calibrated test (``improvement > 2 * improvement_se`` is not a 5% level). The AUC's
+SE is Hanley and McNeil's closed form, a convenience choice: it assumes a shape for the
+score distributions and runs high near AUC 1. DeLong's estimator, which uses the
+observed scores, is the usual alternative.
 
 Defaults (``l2``, ``C = 0.1``, no similarity, ranked by mean) give the same model as
 ``fit_and_rank``. Pure computation: no store, no ids, no sequences.
