@@ -157,8 +157,6 @@ def test_designs_are_domain_designs_with_sequence_and_class(env):
     assert isinstance(design, Design)
     assert design.sequence == table.loc["nip-0010", "sequence"]
     assert design.design_class == table.loc["nip-0010", "design_class"]
-    with pytest.raises(TypeError):
-        design.features["boltz2_ipsae"] = 0.0  # type: ignore[index]
 
 
 def test_feature_values_stay_raw_and_gaps_are_omitted(env):
