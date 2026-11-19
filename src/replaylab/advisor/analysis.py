@@ -21,6 +21,11 @@ fold (with the L2 penalty, scale matters). Measured on random data, it moves a f
 prediction by about 0.0003 typically and 0.012 at most. It affects the validation numbers
 only, never the ranking of the candidates.
 
+The two standard errors (``improvement_se``, ``loo_auc_se``) treat the n held-out
+predictions as independent. They are not: every pair of folds shares n - 2 training
+rows. Read them as a yardstick for the size of the validation numbers, not as a
+calibrated test (``improvement > 2 * improvement_se`` is not a 5% level).
+
 Defaults (``l2``, ``C = 0.1``, no similarity, ranked by mean) give the same model as
 ``fit_and_rank``. Pure computation: no store, no ids, no sequences.
 """
@@ -88,9 +93,9 @@ class Analysis:
     converged: bool
     loo_log_loss: float
     baseline_log_loss: float
-    improvement_se: float  # standard error of the per-design (model - baseline) loss
+    improvement_se: float  # iid SE of the mean per-design (model - baseline) loss; see module
     loo_auc: float
-    loo_auc_se: float
+    loo_auc_se: float  # Hanley-McNeil, also iid; see the module docstring
     mean: np.ndarray  # predicted hit probability per candidate
     upper: np.ndarray | None  # optimistic bound per candidate (rank_by upper only)
     order: tuple[int, ...]  # candidate indices, best first; ties by index

@@ -60,7 +60,8 @@ def test_leave_one_out_recomputes_similarity_without_the_held_out_hit():
     assert result.loo_auc <= 0.1
 
 
-# --- the model options -------------------------------------------------------------------
+# --- the options reach the estimator ------------------------------------------------------
+# Wiring checks: scikit-learn does the shrinking; these confirm the settings get there.
 
 
 def test_l1_zeroes_weights_that_l2_keeps():
@@ -76,6 +77,9 @@ def test_a_larger_c_shrinks_less():
     weak = analyse(x, y, cand, COLUMNS, AnalysisSettings(C=10.0))
     strong = analyse(x, y, cand, COLUMNS, AnalysisSettings(C=0.01))
     assert abs(weak.coef[0]) > abs(strong.coef[0]) > 0
+
+
+# --- the optimistic bound -----------------------------------------------------------------
 
 
 def test_upper_bounds_come_from_the_laplace_posterior():
@@ -120,13 +124,20 @@ def test_upper_needs_the_l2_model():
 
 
 @pytest.mark.parametrize(
-    "settings",
-    [AnalysisSettings(penalty="elastic"), AnalysisSettings(C=0.0), AnalysisSettings(C=1e4),
-     AnalysisSettings(rank_by="median"), AnalysisSettings(kappa=-1), AnalysisSettings(kappa=9)],
-)  # fmt: skip
-def test_settings_outside_the_offered_range_are_refused(settings):
+    ("settings", "message"),
+    [
+        (AnalysisSettings(penalty="elastic"), "penalty must be one of"),
+        (AnalysisSettings(C=0.0), "C must be between"),
+        (AnalysisSettings(C=1e4), "C must be between"),
+        (AnalysisSettings(scaling="rank"), "scaling must be one of"),
+        (AnalysisSettings(rank_by="median"), "rank_by must be one of"),
+        (AnalysisSettings(kappa=-1), "kappa must be between"),
+        (AnalysisSettings(kappa=9), "kappa must be between"),
+    ],
+)
+def test_settings_outside_the_offered_range_are_refused(settings, message):
     x, y, cand = data()
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match=message):
         analyse(x, y, cand, COLUMNS, settings)
 
 
@@ -148,10 +159,63 @@ def test_an_informative_feature_beats_the_baseline_and_noise_does_not():
     x, y, cand = data(informative=True)
     good = analyse(x, y, cand, COLUMNS, AnalysisSettings(C=1.0))
     assert good.loo_log_loss < good.baseline_log_loss and good.loo_auc > 0.85
-    assert good.improvement_se > 0 and good.loo_auc_se > 0
     xn, yn, cn = data(informative=False, seed=3)
     noise = analyse(xn, yn, cn, COLUMNS, AnalysisSettings(C=1.0))
     assert noise.loo_log_loss > noise.baseline_log_loss - 2 * noise.improvement_se
+
+
+def own_leave_one_out(x, y, c):
+    """Leave-one-out hit probabilities, refitted here with scikit-learn's L2 model."""
+    from sklearn.linear_model import LogisticRegression
+
+    loo = np.empty(len(y))
+    for i in range(len(y)):
+        keep = np.arange(len(y)) != i
+        model = LogisticRegression(C=c, solver="lbfgs", max_iter=1000).fit(x[keep], y[keep])
+        loo[i] = model.predict_proba(x[i : i + 1])[0, 1]
+    return loo
+
+
+@pytest.mark.parametrize("informative", [True, False])
+def test_the_standard_errors_are_rederived_from_the_leave_one_out_predictions(informative):
+    # The two SEs reach the agent as the yardstick for the validation numbers, so their
+    # size is pinned here, not only their sign: both are recomputed from predictions this
+    # test makes itself, and the AUC's SE is also checked against a bootstrap.
+    x, y, cand = data(informative=informative, seed=0 if informative else 3)
+    result = analyse(x, y, cand, COLUMNS, AnalysisSettings(C=1.0))
+    loo = own_leave_one_out(x, y, 1.0)
+    n, hits = len(y), y == 1
+
+    # Per-design log-loss difference against the left-one-out base rate; SE of its mean.
+    base = (y.sum() - y) / (n - 1)
+    model_loss = -np.where(hits, np.log(loo), np.log(1 - loo))
+    base_loss = -np.where(hits, np.log(base), np.log(1 - base))
+    assert result.loo_log_loss == pytest.approx(model_loss.mean(), rel=1e-4)
+    diff = model_loss - base_loss
+    assert result.improvement_se == pytest.approx(np.std(diff, ddof=1) / math.sqrt(n), rel=1e-3)
+
+    # AUC by counting pairs (ties count a half), then Hanley and McNeil (1982), eq. 2.
+    pos, neg = loo[hits], loo[~hits]
+    wins = (pos[:, None] > neg[None, :]) + 0.5 * (pos[:, None] == neg[None, :])
+    auc = wins.mean()
+    q1, q2 = auc / (2 - auc), 2 * auc * auc / (1 + auc)
+    se = math.sqrt(
+        (auc * (1 - auc) + (len(pos) - 1) * (q1 - auc**2) + (len(neg) - 1) * (q2 - auc**2))
+        / (len(pos) * len(neg))
+    )
+    assert result.loo_auc == pytest.approx(auc, rel=1e-3)
+    assert result.loo_auc_se == pytest.approx(se, rel=1e-2)
+    # Hanley-McNeil is an approximation (conservative near AUC 1: about 1.65 times the
+    # bootstrap at 0.97 here); it must still be the size of the AUC's spread under
+    # resampling of the designs (stratified, so both classes stay present).
+    rng = np.random.default_rng(1)
+    boot = [
+        (lambda p, q: ((p[:, None] > q) + 0.5 * (p[:, None] == q)).mean())(
+            rng.choice(pos, len(pos)), rng.choice(neg, len(neg))
+        )
+        for _ in range(2000)
+    ]
+    assert 0.5 < result.loo_auc_se / np.std(boot) < 2.0
 
 
 def test_results_are_deterministic():
