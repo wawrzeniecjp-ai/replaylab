@@ -61,12 +61,13 @@ def env(tmp_path_factory):
 
 
 def build(env, g=None, seed=0, **kwargs):
+    g = g or game()
     return build_replay_campaign(
-        g or game(),
+        g,
         env["dir"],
         FEATURES,
         seed=seed,
-        folds_path=env["folds"],
+        folds_path=env["folds"] if g.split != "all" else None,  # never a split target whole
         clusters_path=env["clusters"],
         **kwargs,
     )
@@ -87,7 +88,7 @@ def test_build_returns_a_working_environment(env):
     state = environment.campaign.state()
     from replaylab.datasets.pool import load_pool
 
-    pool = load_pool(env["dir"], game(), FEATURES, folds_path=env["folds"])
+    pool = load_pool(env["dir"], game(), FEATURES)
     assert len(state.designs) == len(pool.designs)
     assert state.outcomes == {} and state.n_purchased == 0 and state.clock == 0
     assert state.config.budget == 20 and state.config.seed == 0

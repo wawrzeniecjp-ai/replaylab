@@ -13,9 +13,11 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
+from replaylab.config import load_games
 from replaylab.datasets.split_tables import HELDOUT_FOLD, NIPAH, heldout_ids
 
-SPLITS = Path(__file__).resolve().parents[1] / "data" / "splits"
+ROOT = Path(__file__).resolve().parents[1]
+SPLITS = ROOT / "data" / "splits"
 
 
 @pytest.fixture(scope="module")
@@ -48,3 +50,14 @@ def test_the_heldout_id_list_is_fold_two(nipah):
     listed = (SPLITS / "nipah_heldout_ids.txt").read_text().split()
     assert listed == heldout_ids(folds)
     assert set(listed) == set(folds.loc[folds["fold"] == HELDOUT_FOLD, "design_id"])
+
+
+def test_no_configured_game_plays_a_split_target_whole(nipah):
+    folds, _ = nipah
+    split_targets = set(folds["target"])
+    whole = [
+        game_id
+        for game_id, game in load_games(ROOT / "config" / "games.yaml").items()
+        if game.target in split_targets and game.split not in ("dev", "heldout")
+    ]
+    assert not whole, f"games that would include the held-out fold: {whole}"
