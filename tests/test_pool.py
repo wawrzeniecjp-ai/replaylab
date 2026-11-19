@@ -54,7 +54,8 @@ def env(tmp_path_factory):
 
 
 def pool_for(env, g: GameConfig, config: FeatureConfig = ALL_FEATURES, **kwargs) -> DesignPool:
-    return load_pool(env["dir"], g, config, folds_path=env["folds"], **kwargs)
+    folds = env["folds"] if g.split != "all" else None  # a split target is never loaded whole
+    return load_pool(env["dir"], g, config, folds_path=folds, **kwargs)
 
 
 def target_ids(env, target: str) -> set[str]:
@@ -96,8 +97,24 @@ def test_the_pool_is_built_without_reading_any_outcome(env, tmp_path):
         frame.to_parquet(stripped / table.name)
     for g in (game("a", NIPAH, "all"), game("d", NIPAH, "dev"), game("e", EGFR, "all")):
         full = pool_for(env, g)
-        blind = load_pool(stripped, g, ALL_FEATURES, folds_path=env["folds"])
+        folds = env["folds"] if g.split != "all" else None
+        blind = load_pool(stripped, g, ALL_FEATURES, folds_path=folds)
         assert blind.designs == full.designs
+
+
+def test_a_target_the_folds_file_splits_cannot_be_loaded_whole(env):
+    # "all" on Nipah would put the held-out fold in the pool, past every held-out guard.
+    whole = game("w", NIPAH, "all")
+    with pytest.raises(HeldOutAccessError, match="split"):
+        load_pool(env["dir"], whole, ALL_FEATURES, folds_path=env["folds"])
+    for final_run in (False, True):
+        with pytest.raises(HeldOutAccessError, match="split"):
+            load_outcomes(env["dir"], whole, folds_path=env["folds"], final_run=final_run)
+    # A target the folds file does not split is loaded whole as before.
+    egfr = game("e", EGFR, "all")
+    assert set(load_pool(env["dir"], egfr, ALL_FEATURES, folds_path=env["folds"]).designs) == (
+        target_ids(env, EGFR)
+    )
 
 
 def test_dev_and_heldout_need_a_folds_file(env):
