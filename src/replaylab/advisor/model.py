@@ -19,6 +19,9 @@ from sklearn.linear_model import LogisticRegression
 from replaylab.advisor.preprocess import Preprocessor
 from replaylab.domain.types import CampaignState, Design
 
+MIN_HITS = 2  # the model gate: hits among the delivered purchases needed to fit
+MIN_PURCHASES = 8  # ... and delivered purchases needed to fit
+
 
 @dataclass(frozen=True)
 class ModelConfig:
@@ -32,8 +35,8 @@ class ModelConfig:
     solver: str = "lbfgs"
     class_weight: str | None = None
     max_iter: int = 1000
-    min_hits: int = 2
-    min_purchases: int = 8
+    min_hits: int = MIN_HITS
+    min_purchases: int = MIN_PURCHASES
 
 
 @dataclass(frozen=True)

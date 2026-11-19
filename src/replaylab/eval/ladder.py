@@ -31,7 +31,7 @@ from typing import Any
 import pandas as pd
 import yaml
 
-from replaylab.advisor.model import ModelConfig
+from replaylab.advisor.model import MIN_HITS, MIN_PURCHASES, ModelConfig
 from replaylab.advisor.preprocess import Preprocessor
 from replaylab.advisor.similarity import SimilarityIndex
 from replaylab.advisor.stop import (
@@ -145,8 +145,8 @@ class FrozenConfig:
             C=float(learner.get("C", 0.1)),
             solver=str(learner.get("solver", "lbfgs")),
             class_weight=learner.get("class_weight"),
-            min_hits=int(learner.get("min_hits", 2)),
-            min_purchases=int(learner.get("min_purchases", 8)),
+            min_hits=int(learner.get("min_hits", MIN_HITS)),
+            min_purchases=int(learner.get("min_purchases", MIN_PURCHASES)),
         )
         stop_rules = {name: dict(values) for name, values in (data.get("stop_rules") or {}).items()}
         expected = {

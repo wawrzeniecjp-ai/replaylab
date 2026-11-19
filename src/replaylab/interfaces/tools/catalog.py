@@ -10,6 +10,10 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
+from replaylab.advisor.model import MIN_HITS, MIN_PURCHASES
+
+GATE = f"at least {MIN_HITS} hits and {MIN_PURCHASES} delivered purchases"
+
 CAMPAIGN_TOOLS = (
     "describe_campaign",
     "column_summary",
@@ -85,7 +89,7 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
     "propose_batch": (
         "Run a pre-registered scripted policy on your data so far and get the batch it would buy, with reasons. "
         "It spends nothing: to buy the batch, pass its design_ids to submit_batch. "
-        "Until a model can be fitted (at least 2 hits and 8 delivered purchases), the model-based policies "
+        f"Until a model can be fitted ({GATE}), the model-based policies "
         "rank by a preset feature instead.\n"
         "Policies:\n"
         "- learner: fits a model on your delivered results and ranks the pool by it, plus random exploration.\n"
@@ -97,14 +101,14 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
     ),
     "fit_and_rank": (
         "Fit a regularized logistic model on delivered designs and rank unpurchased designs by predicted hit probability. "
-        "Needs at least 2 hits and 8 delivered purchases, otherwise it returns insufficient_data. "
+        f"Needs {GATE}, otherwise it returns insufficient_data. "
         "Use it to see which features matter: each weight is in the raw-value direction, so positive means a "
         "higher raw value of that column goes with binding."
     ),
     "fit_custom_model": (
         "Fit your own logistic regression on the delivered results, with the options below, and rank the unpurchased "
         "designs; each reported weight is in the raw-value direction, so positive means a higher raw value goes with binding. "
-        "It needs at least 2 hits and 8 delivered purchases, otherwise it returns insufficient_data; with the default options "
+        f"It needs {GATE}, otherwise it returns insufficient_data; with the default options "
         "it is the same model as fit_and_rank. "
         "validation compares the model's leave-one-out log loss with a base-rate baseline (improvement above 0 means better "
         "than the baseline; compare it with improvement_se) and gives the leave-one-out AUC with its standard error.\n"

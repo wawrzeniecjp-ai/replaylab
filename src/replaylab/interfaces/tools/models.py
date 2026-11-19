@@ -16,7 +16,13 @@ from typing import Any
 import numpy as np
 
 from replaylab.advisor.analysis import AnalysisSettings, analyse
-from replaylab.advisor.model import FittedModel, InsufficientData, fit_model
+from replaylab.advisor.model import (
+    MIN_HITS,
+    MIN_PURCHASES,
+    FittedModel,
+    InsufficientData,
+    fit_model,
+)
 from replaylab.advisor.preprocess import Preprocessor
 from replaylab.advisor.rates import estimate_hit_rate as rates_estimate
 from replaylab.domain.features import FeatureConfig
@@ -268,7 +274,7 @@ def fit_or_refuse(
     fitted = fit_model(state, preprocessor or ctx.preprocessor)
     if isinstance(fitted, InsufficientData):
         raise ToolFailure(
-            "insufficient_data: need at least 2 hits and 8 delivered purchases; "
+            f"insufficient_data: need at least {MIN_HITS} hits and {MIN_PURCHASES} delivered purchases; "
             f"have {fitted.n_hits} hits and {fitted.n_purchases} purchases. Buy more, or use query_pool."
         )
     return fitted

@@ -299,7 +299,6 @@ reference:
         - eval.spend.SpendCapReached
         - eval.scorers.hits
         - eval.scorers.argument_validity
-        - eval.scorers.first_batch_sort_column
         - eval.scorers.stop_tradeoff
         - eval.stats.paired_bootstrap
         - eval.stats.PairedResult
