@@ -11,7 +11,14 @@ import pytest
 from factories import make_signal_pool
 from sklearn.metrics import roc_auc_score
 
-from replaylab.advisor.model import FittedModel, InsufficientData, ModelConfig, fit_model
+from replaylab.advisor.model import (
+    MIN_HITS,
+    MIN_PURCHASES,
+    FittedModel,
+    InsufficientData,
+    ModelConfig,
+    fit_model,
+)
 from replaylab.advisor.preprocess import Preprocessor
 from replaylab.advisor.similarity import SimilarityIndex
 from replaylab.backends import ReplayBackend
@@ -73,15 +80,15 @@ def custom_outcomes(designs, n_purchases, n_hits, inconclusive=0):
 @pytest.mark.parametrize(
     ("n_purchases", "n_hits", "fitted"),
     [
-        (20, 1, False),  # only one hit
-        (7, 2, False),  # only seven purchases
-        (8, 2, True),  # exactly at both thresholds
-        (8, 7, True),
-        (10, 10, False),  # no misses: one class only
-        (30, 0, False),
+        (MIN_PURCHASES * 3, MIN_HITS - 1, False),  # one hit short
+        (MIN_PURCHASES - 1, MIN_HITS, False),  # one purchase short
+        (MIN_PURCHASES, MIN_HITS, True),  # exactly at both thresholds
+        (MIN_PURCHASES, MIN_PURCHASES - 1, True),  # a single miss is enough
+        (MIN_PURCHASES + 2, MIN_PURCHASES + 2, False),  # no misses: one class only
+        (MIN_PURCHASES * 3, 0, False),
     ],
 )
-def test_fit_needs_two_hits_eight_purchases_and_both_classes(pool, n_purchases, n_hits, fitted):
+def test_fit_needs_the_gate_hits_and_purchases_and_both_classes(pool, n_purchases, n_hits, fitted):
     designs, _, pre = pool
     outcomes, bought = custom_outcomes(designs, n_purchases, n_hits)
     state = state_after(designs, outcomes, [bought])
@@ -269,8 +276,15 @@ def test_one_index_serves_many_states():
     index = SimilarityIndex(designs)
     first = index.max_to_hits(early)
     assert first["u1"][1] == "h1" and "h2" in first  # h2 is still unpurchased
+    assert first["u2"] == (0.0, "h1")  # u2 resembles only h2, not a hit yet
     _, later = similarity_state(buy=("h1", "h2"))
-    assert "h2" not in index.max_to_hits(later)
+    second = index.max_to_hits(later)
+    assert "h2" not in second
+    # The same index recomputes the answer for the new state: u2 now has h2 as a hit.
+    matrix = cosine_similarity_matrix(kmer_matrix(list(SEQUENCES.values())))
+    ids = list(SEQUENCES)
+    assert second["u2"] == (pytest.approx(matrix[ids.index("u2"), ids.index("h2")]), "h2")
+    assert second["u2"][0] > 0.6
 
 
 def test_similarity_values_are_plain_floats_and_ids():
