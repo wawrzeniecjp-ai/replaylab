@@ -32,7 +32,8 @@ from typing import Any
 
 import _common as c
 
-ID_PATTERN = re.compile(r"\b[a-z]+(?:-[a-z]+){2}\b")  # real ids look like "amber-bat-vine"
+# Real ids: Proteinbase's "amber-bat-vine", the Anthropic release's UUIDs.
+ID_PATTERN = re.compile(r"\b[a-z]+(?:-[a-z]+){2}\b|\b[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\b")
 AA_RUN = re.compile(r"[ACDEFGHIKLMNPQRSTVWY]{10,}")
 OUTCOME_KEYS = ("hit", "strength", "kd_molar")
 NOT_FEATURES = {"design_id", "length", "design_class", "batch_id", "round", "features"} | set(
@@ -74,10 +75,11 @@ def due(submitted: list[tuple[list[str], int]], clock: int, delay: int) -> set[s
 
 def main(arguments: list[str]) -> int:
     report = c.Report("audit 2: leak scan of agent transcripts")
-    raw, games = c.load_raw(), c.load_games()
+    sources = {"Proteinbase": c.load_raw(), "Anthropic": c.load_anthropic()}
+    games = c.load_games()
     folds = c.read_csv(c.FOLDS)
-    real_ids = set(raw.sequences)
-    sequences = "\n".join(raw.sequences.values())
+    real_ids = {d for raw in sources.values() for d in raw.sequences}
+    sequences = "\n".join(s for raw in sources.values() for s in raw.sequences.values())
     pools: dict[str, list[str]] = {}
     counts: Counter[str] = Counter()
 
@@ -86,8 +88,15 @@ def main(arguments: list[str]) -> int:
             continue
         where = f"{path.parent.name} {record['game']}/{record['condition']}/{record['trial']}"
         game = games.get(record["game"])
-        if game is None or game["target"] not in raw.pool_by_target:
+        source = next(
+            (name for name, raw in sources.items()
+             if game is not None and game["target"] in raw.pool_by_target),
+            None,
+        )  # fmt: skip
+        if source is None:  # AB-rehearsal: a shuffled copy, not a published pool
+            counts["episodes skipped (no published pool)"] += 1
             continue
+        raw = sources[source]
         target, delay = game["target"], int(game.get("delay_rounds", 0))
         if record["game"] not in pools:
             pools[record["game"]] = c.pool_ids(raw, game, folds)
@@ -95,6 +104,7 @@ def main(arguments: list[str]) -> int:
             pools[record["game"]], c.episode_seed(record["game"], record["trial"])
         )
         counts["episodes"] += 1
+        counts[f"{source} episodes"] += 1
 
         # 1. Real ids and sequences, anywhere in what the agent was sent.
         for message in record["messages"]:

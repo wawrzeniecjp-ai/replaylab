@@ -3,7 +3,9 @@
 These scripts check that the recorded results mean what the README says they mean. Audits 1,
 2 and 4 import nothing from `replaylab`: they rebuild pools, aliases, outcomes and statistics
 from `data/raw/proteinbase.csv`, the split files, `config/games.yaml` and the recorded
-`runs/*/episodes.jsonl`, by the rules the README's Methods describe. A bug in the package
+`runs/*/episodes.jsonl`, by the rules the README's Methods describe; audit 2 also reads the
+Anthropic release's own tables (`design_summary`, `cofold_predictions`) by the rules of
+`docs/prereg-anthropic.md`. A bug in the package
 would therefore not be shared by its audit. Audit 3 runs the package's own scripted policies,
 because they are what it tests, but on tables it writes to a temporary folder.
 
@@ -29,6 +31,18 @@ Each audit was checked against tampered input (a score off by one, a flipped out
 wrong seed, an outcome planted on a pool row, a real id, a sign-flipped value, an inflated
 count), and it failed on every one.
 
+## Audit 2 on the Anthropic pools (2026-11-19)
+
+Audit 2 now covers the 480 Anthropic agent episodes as well. It rebuilds their pools from the
+release's tables, without the package: a target's pool is every design with a binder call;
+the features are the seed-best co-fold row (highest `ipsae_min` at a design-complex
+stoichiometry on the design target, ties to the lowest seed); real ids include the release's
+UUIDs. It passes on all 1,310 agent episodes (830 Proteinbase, 480 Anthropic): 70,062 outcome
+rows, 9,578 `nearest_hit` hints and 1,783,328 feature values checked, every Anthropic value
+equal to the release's. Planted into an Anthropic episode, a UUID, a 12-residue sequence
+fragment, an outcome on an undelivered pool row and a feature value off by one part in 10^9
+each made it fail. Audit 1 and part A of audit 3 still skip these episodes.
+
 ## What the audits found (2026-11-13, after the final tests)
 
 All four pass on the 21 recorded runs. Audits 1 and 2 re-scored and scanned 830 agent
@@ -40,7 +54,7 @@ held-out test and the round-by-round table). Two limits to know:
 * **The Anthropic pools are only partly audited.** Their designs are not in the Proteinbase
   export these audits rebuild from, so audits 1 and 2 and part A of audit 3 skip their 480
   agent episodes (each says so). Audit 4 covers them: seeds, registered hashes, commits and
-  the statistics.
+  the statistics. (Audit 2 has covered them since 2026-11-19; see above.)
 * **Records name commits from before the history rewrite.** Audit 4 maps the 16 such commits
   through the table in `docs/history-rewrite.md`; all 16 map to commits in this repository.
 
