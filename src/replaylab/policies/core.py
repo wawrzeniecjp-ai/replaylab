@@ -29,7 +29,18 @@ _FLOAT_GUARD = 1e-9
 
 
 def make_rng(seed: int, round_index: int) -> np.random.Generator:
-    """The generator for one round of one episode."""
+    """Build the generator for one round of one episode.
+
+    Seeding on (seed, round) gives each round its own stream, so a round's draws do not
+    depend on how many random numbers earlier rounds happened to use.
+
+    Args:
+        seed (int): the episode seed.
+        round_index (int): the round.
+
+    Returns:
+        np.random.Generator: the round's generator.
+    """
     # Seeding on (seed, round) gives each round its own stream, so a round's draws do not
     # depend on how many random numbers earlier rounds happened to use.
     return np.random.default_rng([seed, round_index])
@@ -64,7 +75,18 @@ class Policy(Protocol):
     name: str
 
     def choose(self, state: CampaignState, k: int, rng: np.random.Generator) -> list[str]:
-        """Return up to ``k`` unpurchased design ids, or ``[]`` to mean stop."""
+        """Decide what to buy this round.
+
+        Implementations document only what they do differently.
+
+        Args:
+            state (CampaignState): the campaign snapshot (delivered outcomes only).
+            k (int): the most designs to return.
+            rng (np.random.Generator): the round's generator (:func:`make_rng`).
+
+        Returns:
+            list[str]: up to ``k`` unpurchased design ids, or ``[]`` to mean stop.
+        """
         ...
 
 
@@ -193,11 +215,11 @@ class LearnerSim(Learner):
 class WithStop:
     """Wrap a policy: return [] (stop) as soon as one of the named stop rules fires.
 
-    The default listens to ``low_yield`` only. ``decay`` was dropped from the
-    default on 2026-10-13: it false-stopped 77-98% of N-dev runs (one hit of
-    decline inside a 15-purchase window is 0.067 > 0.05), so it gave away a
-    round almost every game. It is still computed by :func:`stop_advice` for
-    measurement and can be requested explicitly with ``rules=("decay",)``.
+    The default listens to ``low_yield`` only. ``decay`` false-stops 77-98% of
+    N-dev runs (one hit of decline inside a 15-purchase window is 0.067 > 0.05),
+    so it would give away a round almost every game. It is still computed by
+    :func:`stop_advice` for measurement and can be requested explicitly with
+    ``rules=("decay",)``.
     """
 
     policy: Policy
@@ -209,9 +231,10 @@ class WithStop:
         return f"{self.policy.name}+stop"
 
     def choose(self, state: CampaignState, k: int, rng: np.random.Generator) -> list[str]:
-        """``[]`` (stop) as soon as one of the named rules fires; otherwise
-        delegate to the wrapped policy. ``low_yield`` only by default -- see
-        the class docstring for why ``decay`` was dropped."""
+        """Return ``[]`` (stop) as soon as one of the named rules fires; otherwise delegate to the
+        wrapped policy. ``low_yield`` only by default; see the class docstring for why ``decay``
+        is not in the default.
+        """
         for verdict in stop_advice(state).rules:
             if verdict.fired and verdict.name in self.rules:
                 return []

@@ -161,7 +161,28 @@ def load_outcomes(
     folds_path: Path | str | None = None,
     final_run: bool = False,
 ) -> dict[str, Outcome]:
-    """Hidden outcomes of the game's pool, keyed by real design id."""
+    """Load the hidden outcomes of the game's pool.
+
+    The access guards run before any file is opened, so a refused call reads nothing.
+
+    Args:
+        tables_dir (Path | str): the folder holding ``outcomes.parquet``.
+        game (GameConfig): the game whose pool is loaded.
+        folds_path (Path | str | None): the frozen split; required unless the game's split
+            is ``all``.
+        final_run (bool): True only inside a final run; held-out and final-test games
+            refuse otherwise.
+
+    Returns:
+        dict[str, Outcome]: outcomes keyed by real design id.
+
+    Raises:
+        HeldOutAccessError: a held-out game outside its final run, or split ``all`` on a
+            target the folds file splits.
+        FinalTestAccessError: a final-test game outside its final run.
+        ValueError: the target has no designs, the split needs a folds file that was not
+            given, or a design has no fold.
+    """
     # The two guards run before any file is opened, so a refused call reads nothing.
     if game.split == "heldout" and not final_run:
         raise HeldOutAccessError(

@@ -84,12 +84,25 @@ def run_game(
 ) -> ScoreCard:
     """Play ``policy`` on ``game`` for one seed and return the final score.
 
-    Each round asks the policy for a batch with the seeded generator of
-    ``(seed, round)``. An empty batch stops the campaign (decision: the policy said
-    stop). When ``stop_trace`` is given it receives the stop advice at every round
-    boundary, whether or not the policy is wrapped in ``WithStop``.
+    Each round asks the policy for a batch with the seeded generator of ``(seed, round)``.
+    An empty batch stops the campaign (the policy said stop).
 
-    Held-out and final-test games raise ``ValueError`` before anything is loaded.
+    Args:
+        game (GameConfig): the game.
+        policy (Policy): the scripted policy.
+        seed (int): the episode seed.
+        tables_dir (Path | str): the processed tables.
+        feature_config (FeatureConfig): the target's features.
+        folds_path (Path | str | None): the frozen split, for split games.
+        clusters_path (Path | str | None): the cluster table, for ``distinct_families``.
+        stop_trace (list[StopAdvice] | None): when given, receives the stop advice at every
+            round boundary, whether or not the policy is wrapped in ``WithStop``.
+
+    Returns:
+        ScoreCard: the settled campaign's score.
+
+    Raises:
+        ValueError: the game is held out or a final test (refused before anything loads).
     """
     if game.split == "heldout":
         raise ValueError(
@@ -131,10 +144,17 @@ class FrozenConfig:
     def from_dict(cls, data: Any, *, where: str = "frozen config") -> FrozenConfig:
         """Parse a ``frozen_v1.yaml`` mapping into the typed configuration.
 
+        Args:
+            data (Any): the parsed YAML.
+            where (str): the source, for error messages.
+
+        Returns:
+            FrozenConfig: the configuration.
+
         Raises:
-            ValueError: wrong version, or ``stop_rules`` that disagree with
-                the library's constants -- those rules are not configurable
-                yet, so silently accepting them would be a lie.
+            ValueError: wrong version, or ``stop_rules`` that disagree with the library's
+                constants: those rules are not configurable, so silently accepting them would
+                be a lie.
         """
         if not isinstance(data, dict) or data.get("version") != 1:
             raise ValueError(f"{where}: expected a mapping with version: 1")
@@ -169,7 +189,18 @@ class FrozenConfig:
 
 
 def load_frozen(path: Path | str | None) -> FrozenConfig | None:
-    """Read ``config/frozen_v1.yaml``, or return None when no file is given."""
+    """Read ``config/frozen_v1.yaml``.
+
+    Args:
+        path (Path | str | None): the file.
+
+    Returns:
+        FrozenConfig | None: the configuration, or None when ``path`` is None or does not
+        exist (the ladder then plays the library defaults, which equal the frozen values).
+
+    Raises:
+        ValueError: see :meth:`FrozenConfig.from_dict`.
+    """
     if path is None:
         return None
     path = Path(path)
@@ -200,8 +231,21 @@ class LadderGame:
         folds_path: Path | str | None = None,
         clusters_path: Path | str | None = None,
     ) -> LadderGame:
-        """Load the pool once. Clusters are passed on only for clustered targets:
-        ``load_pool`` raises for a target the cluster table does not cover."""
+        """Load the pool and fit the preprocessor once for every seed.
+
+        Clusters are passed on only for clustered targets: ``load_pool`` raises for a target
+        the cluster table does not cover.
+
+        Args:
+            game (GameConfig): the game.
+            tables_dir (Path | str): the processed tables.
+            feature_config (FeatureConfig): the target's features.
+            folds_path (Path | str | None): the frozen split, for split games.
+            clusters_path (Path | str | None): the cluster table, for ``distinct_families``.
+
+        Returns:
+            LadderGame: the loaded game.
+        """
         resolved = clusters_path if target_has_clusters(clusters_path, game.target) else None
         pool = load_pool(
             tables_dir, game, feature_config, folds_path=folds_path, clusters_path=resolved
@@ -217,7 +261,14 @@ class LadderGame:
         )
 
     def aliased_designs(self, seed: int) -> dict[str, Design]:
-        """The pool keyed by this seed's aliases, as the campaign state sees it."""
+        """Key the pool by this seed's aliases, as the campaign state sees it.
+
+        Args:
+            seed (int): the episode seed.
+
+        Returns:
+            dict[str, Design]: the designs by alias.
+        """
         aliaser = Aliaser.from_seed(self.pool.designs, seed)
         return {
             alias: Design(
@@ -231,11 +282,17 @@ class LadderGame:
         }
 
     def policies(self, seed: int, *, frozen: FrozenConfig | None = None) -> list[Policy]:
-        """The ladder's policy list for one seed, in a stable order (the CSV row order).
+        """List the ladder's policies for one seed, in a stable order (the CSV row order).
 
-        Every policy comes from ``make_policy``, the same factory ``propose_batch`` uses, with
-        the frozen settings when given (``config/frozen_v1.yaml``, equal to the defaults).
-        Two are also played wrapped in ``WithStop`` (``learner+stop``, ``learner_sim+stop``).
+        Every policy comes from ``make_policy``, the same factory ``propose_batch`` uses. Two are
+        also played wrapped in ``WithStop`` (``learner+stop``, ``learner_sim+stop``).
+
+        Args:
+            seed (int): the episode seed (the similarity index is keyed by its aliases).
+            frozen (FrozenConfig | None): the frozen settings; the defaults when None.
+
+        Returns:
+            list[Policy]: the policies.
         """
         names = self.feature_config.names
         first = self.feature_config.first_column
@@ -276,7 +333,16 @@ class LadderGame:
         *,
         stop_trace: list[StopAdvice] | None = None,
     ) -> ScoreCard:
-        """Run one policy of this game for one seed (delegates to :func:`run_game`)."""
+        """Run one policy of this game for one seed (see :func:`run_game`).
+
+        Args:
+            policy (Policy): the scripted policy.
+            seed (int): the episode seed.
+            stop_trace (list[StopAdvice] | None): receives the stop advice per round boundary.
+
+        Returns:
+            ScoreCard: the settled campaign's score.
+        """
         return run_game(
             self.game,
             policy,
@@ -304,9 +370,25 @@ def run_ladder(
 ) -> tuple[pd.DataFrame, dict[tuple[str, str, int], list[StopAdvice]]]:
     """Play every policy of every selected game for ``seeds`` seeds.
 
-    Returns the ladder frame (columns :data:`LADDER_COLUMNS`) and, for the stop
-    game, the per-run stop advice keyed by ``(game, policy, seed)``.
-    Raises ``ValueError`` if a selected game is held out or has no feature config.
+    Args:
+        games (Mapping[str, GameConfig]): the games, by id.
+        feature_configs (Mapping[str, FeatureConfig]): the features, by target.
+        tables_dir (Path | str): the processed tables.
+        seeds (int): seeds 0 to ``seeds - 1`` are played.
+        game_ids (Sequence[str] | None): the games to play; all of ``games`` when None.
+        folds_path (Path | str | None): the frozen split.
+        clusters_path (Path | str | None): the cluster table.
+        frozen (FrozenConfig | None): the frozen policy settings.
+        stop_game (str | None): the game whose stop advice is traced.
+        stop_policies (Sequence[str]): the policies whose stop advice is traced.
+
+    Returns:
+        tuple[pd.DataFrame, dict[tuple[str, str, int], list[StopAdvice]]]: the ladder frame
+        (:data:`LADDER_COLUMNS`) and the stop advice keyed by ``(game, policy, seed)``.
+
+    Raises:
+        ValueError: a selected game is held out, a final test, or has no feature config.
+        KeyError: a selected game is not in ``games``.
     """
     selected = list(game_ids) if game_ids is not None else list(games)
     rows: list[dict[str, Any]] = []
@@ -364,7 +446,16 @@ def run_ladder(
 
 
 def game_table(frame: pd.DataFrame, game_id: str) -> str:
-    """Markdown table for one game: per-policy mean/sd/min/max hits and means."""
+    """Render one game's ladder as a markdown table.
+
+    Args:
+        frame (pd.DataFrame): the ladder frame.
+        game_id (str): the game.
+
+    Returns:
+        str: per policy, the mean, sd, min and max hits, mean purchases and mean distinct
+        families.
+    """
     part = frame[frame["game"] == game_id]
     lines = [
         "| policy | mean hits | sd | min | max | mean purchases | mean distinct families |",
@@ -385,7 +476,15 @@ def game_table(frame: pd.DataFrame, game_id: str) -> str:
 def false_stop_section(
     traces: Mapping[tuple[str, str, int], Sequence[StopAdvice]],
 ) -> str:
-    """Markdown table: share of runs in which each stop rule fired at least once."""
+    """Render the share of runs in which each stop rule fired at least once.
+
+    Args:
+        traces (Mapping[tuple[str, str, int], Sequence[StopAdvice]]): the stop advice per
+            run; must not be empty.
+
+    Returns:
+        str: a markdown section.
+    """
     by_policy: dict[str, list[Sequence[StopAdvice]]] = {}
     stop_games = set()
     for (game_id, policy, _seed), advice in traces.items():
@@ -418,7 +517,16 @@ def summarize(
     frame: pd.DataFrame,
     traces: Mapping[tuple[str, str, int], Sequence[StopAdvice]] | None = None,
 ) -> str:
-    """The full ``reports/ladder.md``: one table per game, then the stop table."""
+    """Render the full ``reports/ladder.md``: one table per game, then the stop table.
+
+    Args:
+        frame (pd.DataFrame): the ladder frame.
+        traces (Mapping[tuple[str, str, int], Sequence[StopAdvice]] | None): the stop
+            advice; the stop table is left out without it.
+
+    Returns:
+        str: the report.
+    """
     parts = ["# Ladder", ""]
     for game_id in frame["game"].unique():
         parts += [f"## {game_id}", "", game_table(frame, game_id), ""]
@@ -433,7 +541,14 @@ def write_reports(
     md_path: Path | str,
     traces: Mapping[tuple[str, str, int], Sequence[StopAdvice]] | None = None,
 ) -> None:
-    """Write the CSV and the markdown report (directories are created)."""
+    """Write the ladder CSV and the markdown report (folders are created).
+
+    Args:
+        frame (pd.DataFrame): the ladder frame.
+        csv_path (Path | str): where to write the CSV.
+        md_path (Path | str): where to write the markdown.
+        traces (Mapping[tuple[str, str, int], Sequence[StopAdvice]] | None): the stop advice.
+    """
     csv_path, md_path = Path(csv_path), Path(md_path)
     csv_path.parent.mkdir(parents=True, exist_ok=True)
     md_path.parent.mkdir(parents=True, exist_ok=True)

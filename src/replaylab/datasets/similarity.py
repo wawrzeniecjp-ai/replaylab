@@ -34,11 +34,22 @@ _TOLERANCE = 1e-9
 
 
 def kmer_matrix(sequences: Sequence[str], k: int = DEFAULT_K) -> sparse.csr_matrix:
-    """Binary k-mer presence matrix with L2-normalized rows.
+    """Build the binary k-mer presence matrix with L2-normalized rows.
 
-    Rows follow the input order. Column ids are assigned in sorted k-mer order
-    within each row as it is read, so the matrix is identical across runs (no
-    dependence on string hashing).
+    Rows follow the input order. Column ids are assigned in sorted k-mer order within each
+    row as it is read, so the matrix is identical across runs (no dependence on string
+    hashing).
+
+    Args:
+        sequences (Sequence[str]): one sequence per row.
+        k (int): the k-mer length.
+
+    Returns:
+        sparse.csr_matrix: one unit-length row per sequence (a sequence shorter than ``k``
+        gives a zero row).
+
+    Raises:
+        ValueError: ``k`` is below 1.
     """
     if k < 1:
         raise ValueError("k must be at least 1")
@@ -76,8 +87,18 @@ def cosine_similarity_matrix(matrix: sparse.spmatrix) -> np.ndarray:
 def canonical_labels(labels: np.ndarray, keys: Sequence[Hashable]) -> np.ndarray:
     """Relabel clusters 0..C-1 in order of their smallest key.
 
-    With unique, orderable keys (for example design ids) the result does not
-    depend on the order of the rows.
+    With unique, orderable keys (for example design ids) the result does not depend on the
+    order of the rows.
+
+    Args:
+        labels (np.ndarray): one cluster label per row.
+        keys (Sequence[Hashable]): one unique, orderable key per row.
+
+    Returns:
+        np.ndarray: the new labels, row for row.
+
+    Raises:
+        ValueError: ``keys`` and ``labels`` differ in length, or ``keys`` repeats.
     """
     if len(keys) != len(labels):
         raise ValueError("keys and labels must have the same length")
@@ -99,11 +120,21 @@ def cluster_ids(
     max_distance: float = DEFAULT_MAX_DISTANCE,
     keys: Sequence[Hashable] | None = None,
 ) -> np.ndarray:
-    """Connected components of the graph linking pairs within ``max_distance``.
+    """Label the connected components of the graph linking pairs within ``max_distance``.
 
-    Returns one integer label per row. Without ``keys`` the labels are arbitrary
-    (but deterministic for a given row order); with unique ``keys`` they are
-    canonical, see :func:`canonical_labels`.
+    Args:
+        matrix (sparse.spmatrix): unit-length rows, as :func:`kmer_matrix` returns.
+        max_distance (float): the largest cosine distance (1 - similarity) that links two
+            rows.
+        keys (Sequence[Hashable] | None): unique keys per row; with them the labels are
+            canonical (:func:`canonical_labels`), without them arbitrary but deterministic
+            for a given row order.
+
+    Returns:
+        np.ndarray: one integer label per row.
+
+    Raises:
+        ValueError: ``max_distance`` is outside [0, 1], or ``keys`` is invalid.
     """
     if not 0.0 <= max_distance <= 1.0:
         raise ValueError("max_distance must be between 0 and 1")
@@ -128,11 +159,19 @@ def count_boundary_pairs(
     max_distance: float = DEFAULT_MAX_DISTANCE,
     width: float = 1e-6,
 ) -> int:
-    """Number of pairs whose cosine distance is within ``width`` of the threshold.
+    """Count the pairs whose cosine distance is within ``width`` of the threshold.
 
     Such pairs are the only ones whose clustering decision can differ between
-    implementations because of floating-point rounding. If this is 0, the
-    tolerance used in :func:`cluster_ids` cannot matter.
+    implementations because of floating-point rounding. If this is 0, the tolerance used in
+    :func:`cluster_ids` cannot matter.
+
+    Args:
+        matrix (sparse.spmatrix): unit-length rows.
+        max_distance (float): the clustering threshold.
+        width (float): how close to the threshold counts.
+
+    Returns:
+        int: the number of unordered pairs that close.
     """
     products = (matrix @ matrix.T).tocoo()
     distance = 1.0 - products.data
@@ -147,10 +186,20 @@ def cluster_sizes(labels: np.ndarray) -> np.ndarray:
 
 
 def summarize_clusters(labels: np.ndarray, hits: np.ndarray | None = None) -> dict[str, Any]:
-    """Cluster count, largest cluster, singletons and, given hits, where they sit.
+    """Summarize a clustering: count, largest cluster, singletons and, given hits, where they sit.
 
-    ``top5_hit_share`` is the share of all hits that fall in the five clusters
-    holding the most hits.
+    ``top5_hit_share`` is the share of all hits that fall in the five clusters holding the
+    most hits.
+
+    Args:
+        labels (np.ndarray): one cluster label (0..C-1) per row.
+        hits (np.ndarray | None): one hit flag per row, or None to skip the hit counts.
+
+    Returns:
+        dict[str, Any]: the summary.
+
+    Raises:
+        ValueError: ``hits`` and ``labels`` differ in length.
     """
     counts = np.bincount(labels) if len(labels) else np.zeros(0, dtype=np.int64)
     summary: dict[str, Any] = {

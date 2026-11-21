@@ -22,10 +22,6 @@ The output is compared **run against run**, not against the records: tools that 
 since an episode was played (the orientation fix, for example) give different answers, and
 the replay then diverges from the record, but it diverges the same way in both runs.
 
-The script plays through ``Episode`` and ``LLMPlayer`` when they exist, and through the
-older ``eval/loop.py:run_episode`` otherwise, so the same script can record the "before"
-side from a worktree at an older commit.
-
 Episodes whose condition no longer exists in ``config/conditions.yaml`` are counted as
 skipped, and so are held-out and final-test games (``build_runtime`` refuses them).
 """
@@ -49,7 +45,9 @@ except ModuleNotFoundError:
 
 from mcp.client import Client  # noqa: E402
 
+from replaylab.engine.episode import Episode  # noqa: E402
 from replaylab.eval.conditions import load_conditions  # noqa: E402
+from replaylab.eval.llm_player import LLMPlayer, unwrap  # noqa: E402
 from replaylab.eval.llm_types import AssistantTurn, ToolCall, Usage  # noqa: E402
 from replaylab.eval.mcp_bridge import McpBridge  # noqa: E402
 from replaylab.interfaces.runtime import SetupError, build_runtime  # noqa: E402
@@ -109,45 +107,21 @@ class RecordedLLM:
 
 
 async def _play(llm: RecordedLLM, runtime: Any, tools_arg: str | None) -> dict[str, Any]:
-    """Play one episode with the loop of the code that is installed; return its trace."""
+    """Play one episode through ``Episode`` and ``LLMPlayer``; return its trace."""
     server = build_server(Toolbox(runtime.tool_context()), tools_arg)
     try:
-        from replaylab.engine.episode import Episode  # the refactored loop
-        from replaylab.eval.llm_player import LLMPlayer
-    except ModuleNotFoundError:
-        from replaylab.eval.loop import CampaignStatus, run_episode, unwrap  # the old loop
-
-        campaign = runtime.env.campaign
-        try:
-            async with Client(server) as client:
-                trace = await run_episode(
-                    llm,
-                    McpBridge(client),
-                    system_prompt=SYSTEM,
-                    user_prompt=USER,
-                    status=lambda: CampaignStatus(campaign.is_finished(), campaign.stopped),
-                    passback_reasoning=True,
-                )
-        except BaseExceptionGroup as group:
-            raise unwrap(group) from None
-        campaign.settle()
-        score = runtime.env.score()
-    else:
-        from replaylab.eval.llm_player import unwrap
-
-        try:
-            async with Client(server) as client:
-                player = LLMPlayer(
-                    llm,
-                    McpBridge(client),
-                    system_prompt=SYSTEM,
-                    user_prompt=USER,
-                    passback_reasoning=True,
-                )
-                played = await Episode(runtime.env, player).play()
-        except BaseExceptionGroup as group:
-            raise unwrap(group) from None
-        trace, score = player.trace, played.score
+        async with Client(server) as client:
+            player = LLMPlayer(
+                llm,
+                McpBridge(client),
+                system_prompt=SYSTEM,
+                user_prompt=USER,
+                passback_reasoning=True,
+            )
+            played = await Episode(runtime.env, player).play()
+    except BaseExceptionGroup as group:
+        raise unwrap(group) from None
+    trace, score = player.trace, played.score
     return {
         "messages": trace.messages,
         "tool_calls": trace.tool_calls,

@@ -47,7 +47,20 @@ def designs_per_author(
     target: str,
     ids: Collection[str] | None = None,
 ) -> pd.Series:
-    """Number of the target's designs per author, largest first (ties by author name)."""
+    """Count the target's designs per author.
+
+    Args:
+        designs (pd.DataFrame): the designs table (``design_id``, ``sequence``,
+            ``meta_author``).
+        outcomes (pd.DataFrame): the outcomes table (``design_id``, ``target``, ``hit``).
+        target (str): the target whose pool is checked.
+        ids (Collection[str] | None): restrict the pool to these design ids; None keeps
+            every design with an outcome for ``target``.
+
+    Returns:
+        pd.Series: designs per author, indexed by author, largest first (ties by author
+        name); designs without an author are left out.
+    """
     pool = _pool(designs, outcomes, target, ids)
     counts = pool["meta_author"].dropna().value_counts()
     counts = counts.rename_axis("author").rename("n_designs").reset_index()
@@ -62,7 +75,24 @@ def nearest_neighbor_table(
     ids: Collection[str] | None = None,
     k: int = 3,
 ) -> pd.DataFrame:
-    """One row per design with its nearest neighbour (see the module docstring)."""
+    """Pair every design of the pool with its nearest neighbour (see the module docstring).
+
+    Args:
+        designs (pd.DataFrame): the designs table (``design_id``, ``sequence``,
+            ``meta_author``).
+        outcomes (pd.DataFrame): the outcomes table (``design_id``, ``target``, ``hit``).
+        target (str): the target whose pool is checked.
+        ids (Collection[str] | None): restrict the pool to these design ids; None keeps
+            every design with an outcome for ``target``.
+        k (int): k-mer length of the similarity.
+
+    Returns:
+        pd.DataFrame: one row per design: ``design_id``, ``nn_id``, ``nn_similarity``,
+        ``hit``, ``nn_hit``, ``author``, ``nn_author``, ``same_author``.
+
+    Raises:
+        ValueError: the pool has fewer than 2 designs.
+    """
     pool = _pool(designs, outcomes, target, ids)
     if len(pool) < 2:
         raise ValueError("need at least 2 designs")
@@ -89,7 +119,15 @@ def nearest_neighbor_table(
 
 
 def summarize_author_checks(table: pd.DataFrame, per_author: pd.Series) -> dict[str, Any]:
-    """Plain-dict summary (JSON-serializable) of both questions."""
+    """Summarize both questions of the module docstring as a JSON-ready dict.
+
+    Args:
+        table (pd.DataFrame): from :func:`nearest_neighbor_table`.
+        per_author (pd.Series): from :func:`designs_per_author`.
+
+    Returns:
+        dict[str, Any]: counts and rates; a rate is None when nothing could be counted.
+    """
     known = table["author"].notna() & table["nn_author"].notna()
     pairs = table[table["hit"] & table["nn_hit"]]
     summary: dict[str, Any] = {

@@ -40,7 +40,20 @@ class FoldSelection:
 
 
 def assign_folds(groups: Sequence, y: Sequence[int], seed: int, n_splits: int = 3) -> np.ndarray:
-    """Fold index per row from ``StratifiedGroupKFold(shuffle=True, random_state=seed)``."""
+    """Assign a fold to every row with ``StratifiedGroupKFold(shuffle=True, random_state=seed)``.
+
+    Args:
+        groups (Sequence): one group (cluster) per row; a group lands in one fold.
+        y (Sequence[int]): one 0/1 label per row, to stratify on.
+        seed (int): the splitter's random state.
+        n_splits (int): the number of folds.
+
+    Returns:
+        np.ndarray: the fold index per row, in input order.
+
+    Raises:
+        ValueError: ``groups`` and ``y`` differ in length.
+    """
     y_array = np.asarray(y, dtype=int)
     group_array = np.asarray(groups)
     if len(y_array) != len(group_array):
@@ -59,7 +72,16 @@ def assign_folds(groups: Sequence, y: Sequence[int], seed: int, n_splits: int = 
 def fold_counts(
     folds: np.ndarray, y: Sequence[int], n_splits: int
 ) -> tuple[tuple[int, ...], tuple[int, ...]]:
-    """Per-fold sizes and hit counts."""
+    """Count the rows and hits of every fold.
+
+    Args:
+        folds (np.ndarray): the fold index per row.
+        y (Sequence[int]): one 0/1 label per row.
+        n_splits (int): the number of folds.
+
+    Returns:
+        tuple[tuple[int, ...], tuple[int, ...]]: the sizes and the hit counts, per fold.
+    """
     y_array = np.asarray(y, dtype=int)
     sizes = tuple(int((folds == f).sum()) for f in range(n_splits))
     hits = tuple(int(y_array[folds == f].sum()) for f in range(n_splits))
@@ -72,7 +94,17 @@ def is_balanced(
     size_tol: float = 2,
     hit_tol: float = 2,
 ) -> bool:
-    """True if every fold is within tolerance of an even split of designs and hits."""
+    """Return whether every fold is within tolerance of an even split of designs and hits.
+
+    Args:
+        sizes (Sequence[int]): rows per fold.
+        hits (Sequence[int]): hits per fold.
+        size_tol (float): how far a size may be from the even split.
+        hit_tol (float): how far a hit count may be from the even split.
+
+    Returns:
+        bool: True if every fold is within both tolerances.
+    """
     n_splits = len(sizes)
     even_size = sum(sizes) / n_splits
     even_hits = sum(hits) / n_splits
@@ -89,9 +121,21 @@ def select_folds(
     size_tol: float = 2,
     hit_tol: float = 2,
 ) -> FoldSelection:
-    """Return the first seed whose folds meet the balance rule.
+    """Pick the first seed whose folds meet the balance rule.
 
-    Raises :class:`NoBalancedSplit` (listing the best attempt) if none does.
+    Args:
+        groups (Sequence): one group (cluster) per row.
+        y (Sequence[int]): one 0/1 label per row.
+        n_splits (int): the number of folds.
+        seeds (Iterable[int]): the candidate seeds, tried in order.
+        size_tol (float): how far a fold's size may be from an even split.
+        hit_tol (float): how far a fold's hit count may be from an even split.
+
+    Returns:
+        FoldSelection: the winning seed, its folds and their counts.
+
+    Raises:
+        NoBalancedSplit: no seed met the rule; the message names the closest attempt.
     """
     best: tuple[float, int, tuple[int, ...], tuple[int, ...]] | None = None
     for seed in seeds:

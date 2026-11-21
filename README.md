@@ -709,6 +709,12 @@ replaylab-eval view --run-dir runs/x                                 # one HTML 
 `build_folds.py` refuses to overwrite a frozen split (exit code 3); pass `--force` only if you
 really mean to replace it.
 
+**Work from a `git clone`, not a downloaded archive.** Every command that records episodes
+(`run`, `pilot`, `scripted`) stamps each record with the commit it was played from and
+refuses a tree whose `src`, `prompts` or `config` have uncommitted changes. Outside a git
+repository that cannot be checked, so these commands refuse to start, even with
+`--allow-uncommitted`.
+
 The figures in this README are generated, not pasted. `scripts/export_study.py` extracts the
 per-episode scores from the run records (scores only: no transcripts, identifiers or
 sequences), and `scripts/make_figures.py` redraws the SVGs from that CSV with the project's own
@@ -759,9 +765,12 @@ episode and mark the game `final_test: true`, which puts it behind the run-once 
 
 ### Adding a tool or a policy
 
-* **A tool:** a method on `Toolbox` in `interfaces/tools.py` with a response model in
-  `interfaces/schemas.py`, a closure in `interfaces/server.py`, and its name in one of the tool
-  groups at the top of `tools.py`. Expose it through a new condition in
+* **A tool:** its code in the group module under `interfaces/tools/` (`pool`, `campaign`,
+  `models` or `estimates`) with a response model in `interfaces/schemas.py`; a one-line method
+  on `Toolbox` in `interfaces/tools/toolbox.py`; a closure in `interfaces/server.py`; and its
+  name, group and description in `interfaces/tools/catalog.py`. The descriptions are hashed
+  into every run's `config_hash`, so a new or edited one makes later runs a different
+  configuration (`tests/test_registered_hashes.py` fails). Expose it through a new condition in
   `config/conditions.yaml` (conditions are tool allow-lists), then refresh and review the tool
   snapshot with `pytest tests/test_mcp_server.py --update-tool-snapshot`. New tools must keep
   the leak rules that `tests/test_tools_leaks.py` checks.

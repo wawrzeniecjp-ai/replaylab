@@ -145,7 +145,19 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
 
 
 def resolve_tool_selection(selection: str | None, registered: Sequence[str]) -> list[str]:
-    """Turn ``--tools a,b,campaign`` into tool names (group names expand; order follows ``registered``)."""
+    """Turn a selection such as ``a,b,campaign`` into tool names.
+
+    Args:
+        selection (str | None): comma-separated tool and group names; None or blank selects
+            every registered tool.
+        registered (Sequence[str]): the server's tool names, in registration order.
+
+    Returns:
+        list[str]: the selected tools, in ``registered`` order (groups expand).
+
+    Raises:
+        ValueError: a name is neither a group nor a registered tool.
+    """
     if selection is None or not selection.strip():
         return list(registered)
     wanted: set[str] = set()

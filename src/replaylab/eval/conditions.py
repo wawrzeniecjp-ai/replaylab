@@ -38,10 +38,18 @@ def _tokens(value: Any, where: str) -> str:
 def parse_conditions(data: Any, registered: Sequence[str]) -> dict[str, Condition]:
     """Resolve ``config/conditions.yaml`` into per-name tool tuples.
 
-    Each entry has ``include`` (groups or tool names) and an optional
-    ``exclude``; names resolve against ``registered`` in server order.
-    Raises :class:`ConditionError` for anything malformed, including a
-    condition that would end up with no tools at all.
+    Each entry has ``include`` (groups or tool names) and an optional ``exclude``; names
+    resolve against ``registered`` in server order.
+
+    Args:
+        data (Any): the parsed YAML.
+        registered (Sequence[str]): the server's tool names, in registration order.
+
+    Returns:
+        dict[str, Condition]: the conditions, by name.
+
+    Raises:
+        ConditionError: anything malformed, including a condition left with no tools.
     """
     if not isinstance(data, Mapping) or set(data) != {"version", "conditions"}:
         raise ConditionError("conditions config needs exactly the keys version and conditions")
@@ -81,7 +89,19 @@ def parse_conditions(data: Any, registered: Sequence[str]) -> dict[str, Conditio
 
 
 def load_conditions(path: Path | str, registered: Sequence[str]) -> dict[str, Condition]:
-    """Read and parse a conditions YAML file (see :func:`parse_conditions`)."""
+    """Read and parse a conditions YAML file (see :func:`parse_conditions`).
+
+    Args:
+        path (Path | str): the YAML file.
+        registered (Sequence[str]): the server's tool names, in registration order.
+
+    Returns:
+        dict[str, Condition]: the conditions, by name.
+
+    Raises:
+        OSError: the file cannot be read.
+        ConditionError: see :func:`parse_conditions`.
+    """
     return parse_conditions(yaml.safe_load(Path(path).read_text()), registered)
 
 

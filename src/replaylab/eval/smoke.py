@@ -88,12 +88,18 @@ def _try(client: Any, **kwargs: Any) -> tuple[Any, ProbeResult]:
 
 
 def run_smoke(client: Any, model: str) -> SmokeReport:
-    """Run the probe sequence against ``client`` and collect a SmokeReport.
+    """Run the probe sequence against ``client`` and collect the report.
 
-    The sequence: list available models, do a tool-call round trip (without
-    and with reasoning content), then probe temperature, seed and
-    tool_choice support. Each step records itself in the report so one
-    failure does not hide the rest.
+    The sequence: list available models, do a tool-call round trip (without and with
+    reasoning content), then probe temperature, seed and tool_choice support. Each step
+    records itself in the report, so one failure does not hide the rest.
+
+    Args:
+        client (Any): an OpenAI-compatible client.
+        model (str): the model id to probe.
+
+    Returns:
+        SmokeReport: what each probe observed.
     """
     report = SmokeReport(model=model)
 

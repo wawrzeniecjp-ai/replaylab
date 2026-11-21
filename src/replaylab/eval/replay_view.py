@@ -192,10 +192,18 @@ def timeline(record: Mapping[str, Any]) -> list[dict[str, Any]]:
 
 
 def ghosts(records: Iterable[Mapping[str, Any]], game: str, seed: int) -> list[dict[str, Any]]:
-    """The scripted players' hit curves on the same game and seed, sorted by name.
+    """Collect the scripted players' hit curves on the same game and seed.
 
     The seed depends only on game and trial, so scripted records from another run count
     too; a policy found twice is kept once (the first record wins).
+
+    Args:
+        records (Iterable[Mapping[str, Any]]): episode records of any condition.
+        game (str): the game.
+        seed (int): the episode seed.
+
+    Returns:
+        list[dict[str, Any]]: per policy, sorted by name: ``name``, ``curve`` and ``hits``.
     """
     found: dict[str, dict[str, Any]] = {}
     for r in records:
@@ -226,12 +234,21 @@ class PoolPaths:
 
 
 def pool_view(game_id: str, seed: int, paths: PoolPaths) -> dict[str, Any]:
-    """Every design of the episode's pool under its alias, with its hidden outcome.
+    """List every design of the episode's pool under its alias, with its hidden outcome.
 
     The aliases are built exactly as the episode built them (same pool order, same seed).
 
+    Args:
+        game_id (str): the game.
+        seed (int): the episode seed.
+        paths (PoolPaths): where the pool's files are.
+
+    Returns:
+        dict[str, Any]: ``first_column``, ``features`` and ``designs`` (sorted by alias).
+
     Raises:
-        ValueError: unknown game, or a held-out or final-test game (never shown, not even here).
+        ValueError: unknown game, or a held-out or final-test game (never shown, not even
+            here).
     """
     games = load_games(paths.games)
     if game_id not in games:
@@ -305,10 +322,21 @@ def build_page(
     title: str = "replaylab replay",
     ghost_records: Iterable[Mapping[str, Any]] = (),
 ) -> str:
-    """The HTML page for the agent episodes in ``records``.
+    """Build the HTML replay page for the agent episodes in ``records``.
 
     Scripted records, in ``records`` or in ``ghost_records`` (another run's file), become
     the ghosts of the agent episodes played on the same game and seed.
+
+    Args:
+        records (Iterable[Mapping[str, Any]]): episode records.
+        pool_for (Callable[[str, int], dict[str, Any]]): returns the pool of a (game, seed),
+            as :func:`pool_view` does; called once per pair.
+        title (str): the page title.
+        ghost_records (Iterable[Mapping[str, Any]]): more scripted records to draw ghosts
+            from.
+
+    Returns:
+        str: the self-contained page.
     """
     records = list(records)
     agents = [r for r in records if not r.get("condition", "").startswith(SCRIPTED_PREFIX)]

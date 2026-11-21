@@ -158,7 +158,19 @@ class AnthropicClient:
         raise AssertionError("unreachable")  # pragma: no cover
 
     async def complete(self, messages: list[dict], tools: list[dict]) -> AssistantTurn:
-        """One streamed completion; empty ``tools`` omits the key entirely."""
+        """Run one streamed completion; empty ``tools`` omits the key entirely.
+
+        Args:
+            messages (list[dict]): the history, in the OpenAI chat shape (translated here).
+            tools (list[dict]): the tool specs offered, in the OpenAI shape.
+
+        Returns:
+            AssistantTurn: the reply, with its content blocks kept for pass-back.
+
+        Raises:
+            LLMError: retries ran out, the error is not retryable, or the model stopped for a
+                reason the loop does not handle.
+        """
         system, history = to_anthropic(messages)
         kwargs: dict[str, Any] = {"model": self._model, "messages": history, **self._params}
         if system:

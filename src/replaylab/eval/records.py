@@ -59,8 +59,8 @@ class EpisodeRecord:
 
     ``git_dirty`` (optional, no schema bump) says the run was recorded while
     ``src``/``prompts``/``config`` had uncommitted changes, so ``git_sha`` is not
-    the code that played it. Lines written before the field existed lack the key
-    and mean "not checked"; the runner refuses such a run unless it is asked to.
+    the code that played it; the runner records such a run only with
+    ``--allow-uncommitted``. A line without the key means "not checked".
     """
 
     game: str
@@ -108,7 +108,15 @@ def _drop_partial_tail(path: Path) -> None:
 
 
 def append_record(path: Path | str, record: EpisodeRecord | Mapping[str, Any]) -> None:
-    """Append one record as a single flushed, fsynced line (see the module docstring)."""
+    """Append one record as a single flushed, fsynced line.
+
+    A half-written last line left by a crash is cut off first, so the new record cannot be
+    glued onto it.
+
+    Args:
+        path (Path | str): the episodes file (created with its folder if missing).
+        record (EpisodeRecord | Mapping[str, Any]): the record.
+    """
     data = record.to_dict() if isinstance(record, EpisodeRecord) else dict(record)
     line = json.dumps(data, sort_keys=True, separators=(",", ":"))
     path = Path(path)
@@ -123,7 +131,18 @@ def append_record(path: Path | str, record: EpisodeRecord | Mapping[str, Any]) -
 
 
 def read_records(path: Path | str) -> list[dict[str, Any]]:
-    """All parseable records. A half-written last line is ignored; any other bad line raises."""
+    """Read every record of an episodes file.
+
+    Args:
+        path (Path | str): the episodes file.
+
+    Returns:
+        list[dict[str, Any]]: the records in file order; empty if the file does not exist.
+        A half-written last line is ignored.
+
+    Raises:
+        CorruptRecords: a line other than the last is not valid JSON.
+    """
     path = Path(path)
     if not path.exists():
         return []
@@ -140,31 +159,47 @@ def read_records(path: Path | str) -> list[dict[str, Any]]:
 
 
 def completed_keys(records: Iterable[Mapping[str, Any]]) -> set[tuple[str, str, int]]:
-    """The (game, condition, trial) identities already in ``records`` -- what the runner skips."""
+    """Collect the (game, condition, trial) identities of ``records``: what the runner skips.
+
+    Args:
+        records (Iterable[Mapping[str, Any]]): episode records.
+
+    Returns:
+        set[tuple[str, str, int]]: their keys.
+    """
     return {(r["game"], r["condition"], int(r["trial"])) for r in records}
 
 
 def config_hash(parts: Mapping[str, Any]) -> str:
-    """First 12 hex characters of the sha256 of the canonical JSON of the run configuration."""
+    """Hash a run configuration.
+
+    Args:
+        parts (Mapping[str, Any]): the configuration; serialized as canonical JSON (sorted
+            keys, ``str`` for anything JSON cannot hold).
+
+    Returns:
+        str: the first 12 hex characters of the sha256.
+    """
     canonical = json.dumps(parts, sort_keys=True, separators=(",", ":"), default=str)
     return hashlib.sha256(canonical.encode()).hexdigest()[:12]
 
 
-def git_info(repo_dir: Path | str = ".") -> tuple[str | None, bool]:
-    """(HEAD sha or None, whether the working tree has uncommitted changes)."""
+def head_sha(repo_dir: Path | str = ".") -> str | None:
+    """Return the commit checked out in ``repo_dir``.
+
+    Whether the tree is clean is checked separately, by
+    :func:`replaylab.eval.final_run.uncommitted_frozen_paths`.
+
+    Args:
+        repo_dir (Path | str): a directory inside the repository.
+
+    Returns:
+        str | None: the full sha of ``HEAD``, or None when ``repo_dir`` is not in a git
+        repository or git cannot be run.
+    """
     try:
-        sha = subprocess.run(
+        return subprocess.run(
             ["git", "rev-parse", "HEAD"], cwd=repo_dir, capture_output=True, text=True, check=True
         ).stdout.strip()
-        dirty = bool(
-            subprocess.run(
-                ["git", "status", "--porcelain"],
-                cwd=repo_dir,
-                capture_output=True,
-                text=True,
-                check=True,
-            ).stdout.strip()
-        )
     except (subprocess.CalledProcessError, FileNotFoundError, OSError):
-        return None, False
-    return sha, dirty
+        return None

@@ -57,10 +57,19 @@ class Preprocessor:
     def fit(cls, designs: Mapping[str, Design], feature_config: FeatureConfig) -> Preprocessor:
         """Fit medians, means and standard deviations on the whole pool.
 
-        Only visible information is used (features, sequence length, class),
-        so what the preprocessor sees is exactly what an agent could query.
-        Columns with no variation (or no values at all) are dropped and
-        listed in ``dropped``.
+        Only visible information is used (features, sequence length, class), so what the
+        preprocessor sees is exactly what an agent could query. Columns with no variation (or
+        no values at all) are dropped and listed in ``dropped``.
+
+        Args:
+            designs (Mapping[str, Design]): the pool, by design id.
+            feature_config (FeatureConfig): the feature columns and their orientation.
+
+        Returns:
+            Preprocessor: the fitted transform.
+
+        Raises:
+            ValueError: the pool is empty.
         """
         pool = list(designs.values())
         if not pool:

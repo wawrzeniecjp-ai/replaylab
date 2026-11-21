@@ -23,7 +23,20 @@ from replaylab.interfaces.tools.models import fit_or_refuse
 
 
 def similar_designs(ctx: ToolContext, design_ids: list[str], k: int) -> s.SimilarDesignsResult:
-    """The nearest unpurchased designs by 3-mer similarity to the given ones."""
+    """Find the unpurchased designs nearest by 3-mer similarity to the given ones.
+
+    Args:
+        ctx (ToolContext): the campaign the tool runs on.
+        design_ids (list[str]): the designs to measure from (typically hits).
+        k (int): how many to return, capped at ``MAX_SIMILAR``.
+
+    Returns:
+        s.SimilarDesignsResult: the neighbours, closest first, each with its similarity and
+        the given design it is closest to.
+
+    Raises:
+        ToolFailure: ``k`` is below 1, ``design_ids`` is empty, or an id is unknown.
+    """
     if k < 1:
         raise ToolFailure("k must be at least 1")
     if not design_ids:
@@ -51,7 +64,22 @@ def estimate_hit_rate(
     threshold: float | None,
     next_batch: list[str] | None,
 ) -> s.HitRateResult:
-    """Posterior hit rate, optionally per class, plus a prediction for a proposed batch."""
+    """Estimate the hit rate so far, optionally per class, and optionally for a proposed batch.
+
+    Args:
+        ctx (ToolContext): the campaign the tool runs on.
+        by (str | None): ``"design_class"`` for one estimate per class.
+        threshold (float | None): a rate strictly between 0 and 1; when given, the result
+            carries the probability that the true rate is above it.
+        next_batch (list[str] | None): unpurchased designs the agent is considering; when
+            given, the result carries the model's predicted rate for them.
+
+    Returns:
+        s.HitRateResult: the posterior mean and 90% interval, and the optional parts.
+
+    Raises:
+        ToolFailure: an invalid ``by`` or ``threshold``, or see :func:`next_batch_estimate`.
+    """
     if by not in (None, "design_class"):
         raise ToolFailure("by must be omitted or 'design_class'")
     if threshold is not None and not 0.0 < threshold < 1.0:
@@ -86,7 +114,14 @@ def estimate_hit_rate(
 
 
 def stop_advice(ctx: ToolContext) -> s.StopAdviceResult:
-    """Whether the low_yield and decay rules have fired, with the numbers behind them."""
+    """Report whether the low_yield and decay rules have fired, with the numbers behind them.
+
+    Args:
+        ctx (ToolContext): the campaign the tool runs on.
+
+    Returns:
+        s.StopAdviceResult: the rates and one verdict per rule.
+    """
     advice = advisor_stop_advice(ctx.campaign.state())
     return s.StopAdviceResult(
         purchases=advice.purchases,
@@ -107,7 +142,21 @@ def stop_advice(ctx: ToolContext) -> s.StopAdviceResult:
 def next_batch_estimate(
     ctx: ToolContext, state: CampaignState, ids: list[str]
 ) -> s.NextBatchEstimate:
-    """The model's predicted hit rate for a batch the agent is considering, with a 90% interval."""
+    """Predict the hit rate of a batch the agent is considering, with a 90% interval.
+
+    Args:
+        ctx (ToolContext): the campaign the tool runs on.
+        state (CampaignState): the campaign snapshot.
+        ids (list[str]): the designs of the batch.
+
+    Returns:
+        s.NextBatchEstimate: the predicted rate, its interval, and whether past residuals
+        corrected it.
+
+    Raises:
+        ToolFailure: ``ids`` is empty, names an unknown or purchased design, or the model
+            cannot be fitted yet.
+    """
     if not ids:
         raise ToolFailure("next_batch must list at least one design id")
     unknown = [d for d in ids if d not in state.designs]

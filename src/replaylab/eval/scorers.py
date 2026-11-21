@@ -9,13 +9,28 @@ BAD_ARGUMENT_KINDS = ("bad_json", "validation", "unknown_tool")
 
 
 def hits(record: Mapping[str, Any]) -> int:
-    """How many hits the episode's campaign found (``record['scores']['hits']``)."""
+    """Read how many hits the episode's campaign found.
+
+    Args:
+        record (Mapping[str, Any]): an episode record.
+
+    Returns:
+        int: ``record['scores']['hits']``.
+    """
     return int(record["scores"]["hits"])
 
 
 def argument_validity(record: Mapping[str, Any]) -> float | None:
-    """Share of tool calls whose arguments were well formed: valid JSON, a real tool, and
-    accepted by the tool's schema. ``None`` when there were no tool calls."""
+    """Return the share of tool calls whose arguments were well formed.
+
+    Well formed means valid JSON, a real tool, and accepted by the tool's schema.
+
+    Args:
+        record (Mapping[str, Any]): an episode record.
+
+    Returns:
+        float | None: the share, or None when there were no tool calls.
+    """
     calls = record["tool_calls"]
     if not calls:
         return None
@@ -24,15 +39,32 @@ def argument_validity(record: Mapping[str, Any]) -> float | None:
 
 
 def fabricated_tool_calls(record: Mapping[str, Any]) -> int:
-    """Tool calls the model invented (names never offered by the server)."""
+    """Count the tool calls the model invented (names never offered by the server).
+
+    Args:
+        record (Mapping[str, Any]): an episode record.
+
+    Returns:
+        int: the number of calls to unknown tools.
+    """
     return sum(1 for c in record["tool_calls"] if c.get("error_kind") == "unknown_tool")
 
 
 def stop_tradeoff(stopped: Mapping[str, Any], full: Mapping[str, Any]) -> dict[str, int]:
-    """What stopping early saved and cost, against a run that spent everything on the same seed.
+    """Compare a stopped run with a run that spent everything on the same seed.
 
-    ``purchases_saved = full purchases - stopped purchases``;
+    ``purchases_saved = full purchases - stopped purchases`` and
     ``hits_forgone = full hits - stopped hits`` (negative means the stopped run found more).
+
+    Args:
+        stopped (Mapping[str, Any]): the record of the run that stopped early.
+        full (Mapping[str, Any]): the record of the run that spent everything.
+
+    Returns:
+        dict[str, int]: ``purchases_saved`` and ``hits_forgone``.
+
+    Raises:
+        ValueError: the records are not from the same game and seed.
     """
     if (stopped["game"], stopped["seed"]) != (full["game"], full["seed"]):
         raise ValueError("the two records are not from the same game and seed")
@@ -45,7 +77,20 @@ def stop_tradeoff(stopped: Mapping[str, Any], full: Mapping[str, Any]) -> dict[s
 def metric_by_seed(
     records: Sequence[Mapping[str, Any]], game: str, condition: str, metric: str = "hits"
 ) -> dict[int, float]:
-    """``{episode seed: metric}`` for one game and condition, for pairing."""
+    """Collect one condition's metric on one game, keyed by episode seed, for pairing.
+
+    Args:
+        records (Sequence[Mapping[str, Any]]): episode records.
+        game (str): the game.
+        condition (str): the condition (or ``scripted:<policy>``).
+        metric (str): the score to read.
+
+    Returns:
+        dict[int, float]: ``{seed: metric}``.
+
+    Raises:
+        ValueError: two episodes of this condition share a seed.
+    """
     values: dict[int, float] = {}
     for record in records:
         if record["game"] == game and record["condition"] == condition:

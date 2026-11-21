@@ -34,10 +34,19 @@ class Aliaser:
     def from_seed(cls, real_ids: Iterable[str], seed: int) -> Aliaser:
         """Build the seed-dependent mapping.
 
-        Real ids are sorted on ``sha256(f'{seed}|{id}')`` and assigned
-        ``d0001``, ``d0002``, ... in that order, so the result is identical
-        on every machine and Python version. Changing the seed reshuffles
-        every alias; the *set* of aliases does not change.
+        Real ids are sorted on ``sha256(f'{seed}|{id}')`` and assigned ``d0001``, ``d0002``, ...
+        in that order, so the result is identical on every machine and Python version. Changing
+        the seed reshuffles every alias; the *set* of aliases does not change.
+
+        Args:
+            real_ids (Iterable[str]): the pool's real design ids.
+            seed (int): the episode seed.
+
+        Returns:
+            Aliaser: the mapping.
+
+        Raises:
+            ValueError: ``real_ids`` holds a duplicate.
         """
         ids = list(real_ids)
         if len(set(ids)) != len(ids):

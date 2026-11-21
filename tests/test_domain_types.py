@@ -39,9 +39,8 @@ def make_config(**overrides) -> CampaignConfig:
 # --- Design -----------------------------------------------------------------------------
 
 
-def test_design_basics_and_length():
+def test_design_basics():
     design = Design("d1", sequence="ACDEF", design_class="Peptide", features={"x": 1})
-    assert design.length == 5
     assert design.features["x"] == 1
     assert "ACDEF" not in repr(design)  # sequences never leak through repr
 

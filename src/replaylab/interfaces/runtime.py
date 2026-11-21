@@ -60,12 +60,26 @@ def build_runtime(
 ) -> Runtime:
     """Load a game, resume or create its store, and fit this seed's advisors.
 
-    ``final_run`` is passed only by the runner, under a final-run permit; ``serve`` and the
-    campaign CLI never pass it, so they never serve a final-test game.
+    Args:
+        game_id (str): the game.
+        seed (int): the episode seed (aliases and policies depend on it).
+        store_path (Path | str): the campaign store, or ``":memory:"``.
+        games_path (Path | str): ``config/games.yaml``.
+        features_path (Path | str): ``config/features.yaml``.
+        tables_dir (Path | str): the processed tables.
+        folds_path (Path | str | None): the frozen split; ignored if the file is missing.
+        clusters_path (Path | str | None): the cluster table; used only for a target it
+            covers.
+        final_run (bool): passed only by the runner, under a final-run permit; ``serve`` and
+            the campaign CLI never pass it, so they never serve a held-out or final-test game.
+
+    Returns:
+        Runtime: the campaign environment, the game, and the fitted preprocessor and
+        similarity index.
 
     Raises:
-        SetupError: unknown game, a held-out or final-test game without ``final_run``,
-            or no feature config for the target.
+        SetupError: unknown game, a held-out or final-test game without ``final_run``, or no
+            feature config for the target.
     """
     games = load_games(games_path)
     if game_id not in games:

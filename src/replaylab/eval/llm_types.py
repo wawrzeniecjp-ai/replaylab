@@ -47,7 +47,18 @@ class LLMClient(Protocol):
     """What the agent loop needs from a model provider (``eval.llm`` or a fake)."""
 
     async def complete(self, messages: list[dict], tools: list[dict]) -> AssistantTurn:
-        """One chat completion; ``tools`` empty means a plain no-tools request."""
+        """Run one chat completion.
+
+        Args:
+            messages (list[dict]): the history, in the OpenAI chat shape.
+            tools (list[dict]): the tool specs offered; empty means a plain no-tools request.
+
+        Returns:
+            AssistantTurn: the reply, its tool calls, usage and finish reason.
+
+        Raises:
+            LLMError: the call failed for good (after retries, or not retryable).
+        """
 
 
 class LLMError(Exception):

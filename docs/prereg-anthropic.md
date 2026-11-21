@@ -17,6 +17,10 @@ miniprotein binders against 16 targets, with binding calls from two independent 
 (Adaptyv Bio and Twist Bioscience), a standardized re-fit, and co-folded predictions from
 ten structure predictors. Licence CC BY 4.0, cited as in its `CITATION.cff`.
 
+*Editorial note, 2026-11-21 (added for publication; it changes nothing registered):*
+`INSILICO.md`, `docs/INSILICO.md`, `WETLAB.md` and `DATA_NOTES.md` below are documents of the
+release itself, not files of this repository.
+
 Two files are used, pinned by the sha256 the publisher's own `data/MANIFEST.sha256` gives:
 
 | file | sha256 |

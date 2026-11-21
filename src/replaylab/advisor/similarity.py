@@ -41,7 +41,18 @@ class SimilarityIndex:
         }
 
     def matrix(self, rows: Sequence[str], columns: Sequence[str]) -> np.ndarray:
-        """Cosine similarity of every row design to every column design (dense)."""
+        """Return the cosine similarity of every row design to every column design.
+
+        Args:
+            rows (Sequence[str]): design ids of the rows.
+            columns (Sequence[str]): design ids of the columns.
+
+        Returns:
+            np.ndarray: a dense ``len(rows)`` x ``len(columns)`` matrix.
+
+        Raises:
+            KeyError: an id is not in the index.
+        """
         if not rows or not columns:
             return np.zeros((len(rows), len(columns)))
         return (
@@ -52,9 +63,20 @@ class SimilarityIndex:
     def nearest(
         self, given: Sequence[str], candidates: Sequence[str], k: int
     ) -> list[tuple[str, float, str]]:
-        """The ``k`` candidates closest to any of ``given``, with the nearest given id.
+        """Return the ``k`` candidates closest to any of ``given``, with the nearest given id.
 
         Sorted by similarity, then by id; a tie between given designs goes to the smallest id.
+
+        Args:
+            given (Sequence[str]): design ids to measure from.
+            candidates (Sequence[str]): design ids to rank.
+            k (int): how many to return.
+
+        Returns:
+            list[tuple[str, float, str]]: (candidate id, similarity, nearest given id), best first.
+
+        Raises:
+            KeyError: an id is not in the index.
         """
         given_sorted = sorted(given)
         if not candidates:

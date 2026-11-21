@@ -25,7 +25,7 @@ from replaylab.eval.records import (
     append_record,
     completed_keys,
     config_hash,
-    git_info,
+    head_sha,
     read_records,
 )
 from replaylab.eval.seeds import episode_seed
@@ -211,8 +211,8 @@ def test_config_hash_is_stable_and_sensitive():
     assert a != config_hash({"x": 2, "y": [1, 2]})
 
 
-def test_git_info(tmp_path):
-    assert git_info(tmp_path) == (None, False)  # not a repository
+def test_head_sha(tmp_path):
+    assert head_sha(tmp_path) is None  # not a repository
 
     def run(*args):
         return subprocess.run(["git", *args], cwd=tmp_path, check=True, capture_output=True)
@@ -223,10 +223,10 @@ def test_git_info(tmp_path):
     (tmp_path / "f.txt").write_text("1")
     run("add", ".")
     run("commit", "-q", "-m", "first")
-    sha, dirty = git_info(tmp_path)
-    assert len(sha) == 40 and dirty is False
+    sha = head_sha(tmp_path)
+    assert sha is not None and len(sha) == 40
     (tmp_path / "f.txt").write_text("2")
-    assert git_info(tmp_path)[1] is True
+    assert head_sha(tmp_path) == sha  # uncommitted changes do not move HEAD
 
 
 # --- models file ------------------------------------------------------------------------

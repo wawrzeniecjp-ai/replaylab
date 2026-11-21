@@ -105,9 +105,17 @@ class Analysis:
 
 
 def similarity_to_hits(s: np.ndarray, hits: np.ndarray, *, own: bool) -> np.ndarray:
-    """Row-wise largest similarity to a hit column; 0 without hits.
+    """Return each row's largest similarity to a hit column.
 
-    ``own=True`` means row i and column i are the same design, so that entry is skipped.
+    Args:
+        s (np.ndarray): similarity matrix, rows by columns.
+        hits (np.ndarray): boolean mask over the columns, True for a hit.
+        own (bool): True when row i and column i are the same design, so that entry is
+            skipped (a design is not its own neighbour).
+
+    Returns:
+        np.ndarray: one value per row; 0 when there are no hits, or when a row's only hit
+        is itself.
     """
     if not hits.any():
         return np.zeros(s.shape[0])

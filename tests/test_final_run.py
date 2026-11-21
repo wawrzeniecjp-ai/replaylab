@@ -434,7 +434,7 @@ def final_setup(setup, monkeypatch):  # noqa: F811 - the fixture imported above
     common[3] = str(path)
     dirty: list[str] = []
     monkeypatch.setattr(eval_setup, "dirty_paths", lambda *args: list(dirty))
-    monkeypatch.setattr(eval_setup, "git_info", lambda *args: (SHA, False))
+    monkeypatch.setattr(eval_setup, "head_sha", lambda *args: SHA)
     return {**setup, "common": common, "dirty": dirty}
 
 

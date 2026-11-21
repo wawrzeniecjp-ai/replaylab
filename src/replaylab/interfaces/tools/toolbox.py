@@ -12,7 +12,8 @@ class Toolbox:
     """The 15 tools over one campaign, independent of any transport.
 
     Each method is one tool, and each is one line: it hands the call to the module that
-    holds that group of tools. The defaults here are the tools' defaults. The MCP server
+    holds that group of tools, where the function of the same name documents the
+    arguments, the result and the errors. The defaults here are the tools' defaults. The MCP server
     (``interfaces/server.py``) and the CLI call these methods, so what an agent sees is what
     the tests check here.
 

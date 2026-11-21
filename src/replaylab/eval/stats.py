@@ -39,11 +39,23 @@ def paired_bootstrap(
     seed: int = 0,
     ci: float = 0.95,
 ) -> PairedResult:
-    """Percentile bootstrap of the per-seed differences ``a[k] - b[k]``.
+    """Run a percentile bootstrap of the per-seed differences ``a[k] - b[k]``.
 
-    Seeds must match exactly (:class:`UnpairedError` otherwise -- pairing is the
-    whole point); ``seed`` fixes the resampling draws, so a comparison is
-    reproducible to the digit.
+    Args:
+        a (Mapping[Hashable, float]): the metric per seed (or per (game, seed)) of the side
+            that should be better.
+        b (Mapping[Hashable, float]): the same for the other side; the keys must match
+            ``a``'s exactly, since pairing is the whole point.
+        n_resamples (int): bootstrap draws.
+        seed (int): fixes the draws, so a comparison is reproducible to the digit.
+        ci (float): the interval's coverage, between 0 and 1.
+
+    Returns:
+        PairedResult: the mean difference, its interval and the win/tie/loss counts.
+
+    Raises:
+        UnpairedError: the keys of ``a`` and ``b`` differ.
+        ValueError: fewer than 2 pairs, or ``ci`` outside (0, 1).
     """
     if set(a) != set(b):
         only_a, only_b = sorted(set(a) - set(b), key=str), sorted(set(b) - set(a), key=str)

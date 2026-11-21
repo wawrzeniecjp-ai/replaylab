@@ -51,7 +51,7 @@ from replaylab.eval.llm_anthropic import AnthropicClient
 from replaylab.eval.llm_player import Limits
 from replaylab.eval.models import ModelConfig, ModelConfigError, load_models
 from replaylab.eval.prompts import USER_PROMPT, load_system_prompt, text_hash
-from replaylab.eval.records import config_hash, git_info
+from replaylab.eval.records import config_hash, head_sha
 from replaylab.eval.runner import EpisodeSpec, RunnerDeps, validate_specs
 from replaylab.eval.spend import PriceError, SpendGuard, load_prices
 from replaylab.interfaces.runtime import SetupError
@@ -206,7 +206,7 @@ def runner_deps(
         OSError: a config or prompt file cannot be read.
         ValueError: a config file is invalid.
     """
-    sha, _ = git_info(code_root())
+    sha = head_sha(code_root())
     git_dirty = check_uncommitted(check_tree=check_tree, allow=allow_uncommitted)
     return RunnerDeps(
         tables_dir=files.tables,
@@ -302,7 +302,7 @@ def final_permit(
         trials=len(trials),
         conditions=sorted({s.condition for s in specs}),
     )
-    sha, _ = git_info(code_root())
+    sha = head_sha(code_root())
     return acquire(lock_dir, final_leg, frozen=frozen, git_sha=sha or "", check_only=check_only)
 
 

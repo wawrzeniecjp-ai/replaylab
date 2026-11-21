@@ -12,7 +12,8 @@ records:
   ``games.yaml`` and ``features.yaml`` entries (:func:`frozen_hash`). Every leg of the final
   run must share it: a change after the first leg started is refused.
 * ``git_sha``: the commit every leg is played from (a dirty ``src``, ``prompts`` or
-  ``config`` is refused before that, by :func:`dirty_paths` in the CLI).
+  ``config`` is refused before that, by :func:`uncommitted_frozen_paths`, which the CLI
+  calls through ``eval/setup.py``).
 * one entry per leg (a model key, or ``scripted``): its config hash, records file, trial
   block and conditions (the policies, for ``scripted``).
 
@@ -26,6 +27,10 @@ settings: that is the resume after an interruption, and the runner then plays on
 missing episodes (an episode is recorded only if it ends normally). Any other setting --
 another trial block, another records file, another configuration -- would be a second draw
 of the test, and is refused with :class:`FinalRunRefused`.
+
+The lock does not record which legs the pre-registration names. A leg under a new model key,
+from the same commit and with the same frozen configuration, is accepted as a new leg; the
+pre-registration, not the lock, is what rules out adding a model after results are seen.
 """
 
 from __future__ import annotations
@@ -117,6 +122,20 @@ class FinalLeg:
         trials: int,
         conditions: Sequence[str],
     ) -> FinalLeg:
+        """Build a leg with its records path resolved and its conditions sorted.
+
+        Args:
+            game (str): the final-test game.
+            leg (str): the model key, or ``scripted``.
+            config_hash (str): the leg's config hash.
+            records (Path | str): the episodes file the leg writes.
+            first_trial (int): the first trial of the block.
+            trials (int): the number of trials.
+            conditions (Sequence[str]): the conditions (or ``scripted:<policy>`` names) played.
+
+        Returns:
+            FinalLeg: the leg.
+        """
         return cls(
             game=game,
             leg=leg,
@@ -129,6 +148,7 @@ class FinalLeg:
 
     @property
     def trial_range(self) -> range:
+        """The trials of the block, first to last."""
         return range(self.first_trial, self.first_trial + self.trials)
 
     def settings(self) -> dict[str, Any]:
@@ -149,6 +169,7 @@ class FinalRunPermit:
 
     @property
     def game(self) -> str:
+        """The game the permit is for."""
         return self.leg.game
 
 
@@ -162,7 +183,20 @@ def frozen_hash(
     game: GameConfig,
     feature_config: FeatureConfig,
 ) -> str:
-    """The hash every leg of one final run must share (the agent-facing configuration)."""
+    """Hash the agent-facing configuration that every leg of one final run must share.
+
+    Args:
+        system_prompt (str): the system prompt.
+        user_prompt (str): the user prompt.
+        conditions_text (str): the conditions file, as text.
+        tool_descriptions (Mapping[str, str]): the description of every tool.
+        limits (Mapping[str, Any]): the episode limits.
+        game (GameConfig): the game's ``games.yaml`` entry.
+        feature_config (FeatureConfig): the game's ``features.yaml`` entry.
+
+    Returns:
+        str: the first 12 hex characters of the sha256 (:func:`config_hash`).
+    """
     return config_hash(
         {
             "system_prompt": system_prompt,
@@ -181,7 +215,14 @@ def frozen_hash(
 
 
 def dirty_paths(repo_dir: Path | str = ".", paths: Sequence[str] = FROZEN_PATHS) -> list[str]:
-    """Uncommitted changes (including untracked files) under ``paths``, as git reports them.
+    """List the uncommitted changes (including untracked files) under ``paths``.
+
+    Args:
+        repo_dir (Path | str): a directory inside the repository.
+        paths (Sequence[str]): the paths to check, relative to ``repo_dir``.
+
+    Returns:
+        list[str]: one ``git status --porcelain`` line per changed path; empty when clean.
 
     Raises:
         FinalRunRefused: git is unavailable, so the frozen state cannot be checked.
@@ -200,10 +241,30 @@ def dirty_paths(repo_dir: Path | str = ".", paths: Sequence[str] = FROZEN_PATHS)
 
 
 def lock_path(lock_dir: Path | str, game: str) -> Path:
+    """Return where the lock file of ``game`` lives.
+
+    Args:
+        lock_dir (Path | str): the folder of the lock files.
+        game (str): the final-test game.
+
+    Returns:
+        Path: ``<lock_dir>/<game>.json``.
+    """
     return Path(lock_dir) / f"{game}.json"
 
 
 def read_lock(path: Path | str) -> dict[str, Any] | None:
+    """Read a lock file.
+
+    Args:
+        path (Path | str): the lock file.
+
+    Returns:
+        dict[str, Any] | None: its content, or None if the file does not exist.
+
+    Raises:
+        json.JSONDecodeError: the file is not valid JSON.
+    """
     path = Path(path)
     if not path.exists():
         return None
