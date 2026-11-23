@@ -287,6 +287,9 @@ async def open_episode(spec: EpisodeSpec, deps: RunnerDeps) -> AsyncIterator[Epi
 async def play_episode(spec: EpisodeSpec, deps: RunnerDeps) -> EpisodeRecord:
     """Play one episode end to end and return its record.
 
+    An episode that raises has no result, so it is not recorded and a later run plays it
+    again.
+
     Args:
         spec (EpisodeSpec): the episode (game, condition, trial).
         deps (RunnerDeps): the run's shared bundle.
@@ -298,9 +301,6 @@ async def play_episode(spec: EpisodeSpec, deps: RunnerDeps) -> EpisodeRecord:
         SpendCapReached: the spend cap was reached (LLM episodes).
         LLMError: the model failed (LLM episodes).
         SetupError: the game cannot be built.
-
-        An episode that raises has no result, so it is not recorded and a later run
-        plays it again.
     """
     async with open_episode(spec, deps) as episode:
         played = await episode.play()

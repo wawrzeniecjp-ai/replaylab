@@ -50,8 +50,9 @@ def make_policy(
     Args:
         name: one of ``POLICY_NAMES``, or ``fixed:<feature>``.
         feature_config: the target's features; its first column seeds the learners' cold start.
-        preprocessor, similarity: built from this campaign's own designs (never share them
-            across seeds: the similarity index is keyed by the seed's aliases).
+        preprocessor: built from this campaign's own designs.
+        similarity: built from this campaign's own designs; never share it across seeds,
+            since the index is keyed by the seed's aliases.
         eps: share of each learner batch drawn at random (exploration).
         model: logistic-regression settings and the fitting gate; ``None`` for the defaults.
         w: weight of the similarity rank in ``learner_sim`` scores.
