@@ -4,6 +4,9 @@ Everything here is rebuilt from the published inputs only:
 
 * ``data/raw/proteinbase.csv``: the Proteinbase export (sequences, computational
   scores, lab results), parsed directly;
+* ``data/raw/anthropic/.../tables``: the Anthropic release's ``design_summary`` and
+  ``cofold_predictions`` (the final test's pools), read with the rules of
+  ``docs/prereg-anthropic.md``;
 * ``data/splits/folds.csv`` and ``data/splits/clusters.csv``: the fixed split and
   cluster files, read as plain tables;
 * ``config/games.yaml``: which target, split and budget each game uses;
@@ -19,6 +22,7 @@ from __future__ import annotations
 import csv
 import hashlib
 import json
+import re
 import sys
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
@@ -29,6 +33,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 RAW = ROOT / "data/raw/proteinbase.csv"
+ANTHROPIC = ROOT / "data/raw/anthropic/anthropic_binders_core/data/tables"
 FOLDS = ROOT / "data/splits/folds.csv"
 CLUSTERS = ROOT / "data/splits/clusters.csv"
 GAMES = ROOT / "config/games.yaml"
@@ -115,6 +120,70 @@ def load_raw(path: Path = RAW) -> Raw:
     for target in pool_by_target:
         pool_by_target[target].sort()
     return Raw(sequences, truth, metrics, design_class, pool_by_target)
+
+
+# The Anthropic release (docs/prereg-anthropic.md): replaylab feature -> (predictor, column).
+ANTHROPIC_FEATURES = {
+    "boltz2_min_ipsae": ("boltz2", "ipsae_min"),
+    "boltz2_iptm": ("boltz2", "iptm_pae"),
+    "boltz2_plddt": ("boltz2", "plddt_binder"),
+    "esmfold_plddt": ("ef2full", "plddt_binder"),
+}
+ANTHROPIC_DESIGN_STOICH = {"1to1", "1to2", "1to3", "rnp"}
+
+
+def anthropic_target(code: str) -> str:
+    """The target id of a release target code: "ab-" and the code in lower-case words."""
+    return "ab-" + "-".join(re.findall(r"[a-z0-9]+", code.lower()))
+
+
+def load_anthropic(tables: Path = ANTHROPIC) -> Raw:
+    """The Anthropic release, read with the pre-registered rules, as a :class:`Raw`.
+
+    * A target's pool is every design with a binder call (``binder_final`` not null).
+    * A hit is ``binder_final``; the KD is ``kd_nM_final`` in molar; no strength label.
+    * Features are the co-fold row the release bundles per design and predictor: on the
+      design target (empty ``target_form``) at a design-complex stoichiometry, the highest
+      ``ipsae_min``, ties to the lowest seed number. Each is one published value.
+    * The design class is the ``generator`` column.
+    """
+    import pandas as pd  # parquet; the Proteinbase reader above needs only the csv module
+
+    summary = pd.read_parquet(tables / "design_summary.parquet")
+    cofold = pd.read_parquet(tables / "insilico/cofold_predictions.parquet")
+    best: dict[tuple[str, str], dict[str, Any]] = {}
+    for row in cofold.to_dict("records"):
+        if row["target_form"] != "" or row["stoichiometry"] not in ANTHROPIC_DESIGN_STOICH:
+            continue
+        key = (row["uuid"], row["cofolding_model"])
+        rank = (-float(row["ipsae_min"]), int(row["seed"]))
+        if key not in best or rank < best[key]["_rank"]:
+            best[key] = {**row, "_rank": rank}
+
+    raw = Raw({}, {}, {}, {})
+    for row in summary.to_dict("records"):
+        design = row["uuid"]
+        raw.sequences[design] = row["sequence"]
+        raw.design_class[design] = row["generator"]
+        if row["binder_final"] is None or row["binder_final"] != row["binder_final"]:
+            continue  # no binder call: not in any pool
+        target = anthropic_target(row["target"])
+        kd = row["kd_nM_final"]
+        raw.truth[(design, target)] = Truth(
+            hit=bool(row["binder_final"]),
+            kd_molar=None if kd is None or kd != kd else float(kd) * 1e-9,
+            strength=None,
+        )
+        raw.metrics[(design, target)] = {
+            name: [float(best[(design, predictor)][column])]
+            for name, (predictor, column) in ANTHROPIC_FEATURES.items()
+            if (design, predictor) in best
+            and best[(design, predictor)][column] == best[(design, predictor)][column]
+        }
+        raw.pool_by_target.setdefault(target, []).append(design)
+    for ids in raw.pool_by_target.values():
+        ids.sort()
+    return raw
 
 
 def load_games(path: Path = GAMES) -> dict[str, dict[str, Any]]:

@@ -28,7 +28,8 @@ HELDOUT_FOLD = 2
 
 
 class HeldOutAccessError(PermissionError):
-    """The held-out split's outcomes were requested outside the final run."""
+    """The held-out split was reached where it may not be: its outcomes outside the final
+    run, or a target the folds file splits loaded whole."""
 
 
 class FinalTestAccessError(PermissionError):
@@ -60,6 +61,12 @@ def _pool_ids(outcomes: pd.DataFrame, game: GameConfig, folds_path: Path | None)
     if not ids:
         raise ValueError(f"game {game.id}: no designs for target {game.target}")
     if game.split == "all":
+        # A target the folds file splits has a held-out fold; "all" would include it.
+        if folds_path is not None and game.target in set(pd.read_csv(folds_path)["target"]):
+            raise HeldOutAccessError(
+                f"game {game.id}: {folds_path} splits target {game.target}, so the game "
+                "must use split dev or heldout; split all would include the held-out fold"
+            )
         return ids
     if folds_path is None:
         raise ValueError(f"game {game.id}: split {game.split!r} needs folds_path")
@@ -87,7 +94,8 @@ def load_pool(
     """Load the candidate designs of a game from the processed tables.
 
     The pool is every design of the game's target, restricted to the split
-    (``all`` keeps everything; ``dev``/``heldout`` follow ``folds_path``).
+    (``all`` keeps everything; ``dev``/``heldout`` follow ``folds_path``). A target that
+    ``folds_path`` splits is refused with ``all``, which would include its held-out fold.
     Only *visible* feature columns are kept, missing values are dropped, and
     feature values stay raw (orientation is applied later, in the
     advisor).
@@ -96,7 +104,8 @@ def load_pool(
         tables_dir: directory holding designs.parquet / outcomes.parquet.
         game: which target, split and budget to build the pool for.
         feature_config: which columns are visible and their orientation.
-        folds_path: folds.csv; required unless the split is ``all``.
+        folds_path: folds.csv; required unless the split is ``all``. Pass it for every
+            game on real data, so that a split target cannot be loaded whole.
         clusters_path: clusters.csv; required to expose cluster ids. A
             target absent from the file (the small stop-game targets)
             raises here -- pass ``None`` to play without cluster ids.
@@ -104,6 +113,7 @@ def load_pool(
     Raises:
         ValueError: unknown feature columns, a split without folds, or
             designs missing from the tables or the cluster file.
+        HeldOutAccessError: split ``all`` on a target that ``folds_path`` splits.
     """
     tables_dir = Path(tables_dir)
     designs = pd.read_parquet(tables_dir / "designs.parquet")
@@ -151,7 +161,28 @@ def load_outcomes(
     folds_path: Path | str | None = None,
     final_run: bool = False,
 ) -> dict[str, Outcome]:
-    """Hidden outcomes of the game's pool, keyed by real design id."""
+    """Load the hidden outcomes of the game's pool.
+
+    The access guards run before any file is opened, so a refused call reads nothing.
+
+    Args:
+        tables_dir (Path | str): the folder holding ``outcomes.parquet``.
+        game (GameConfig): the game whose pool is loaded.
+        folds_path (Path | str | None): the frozen split; required unless the game's split
+            is ``all``.
+        final_run (bool): True only inside a final run; held-out and final-test games
+            refuse otherwise.
+
+    Returns:
+        dict[str, Outcome]: outcomes keyed by real design id.
+
+    Raises:
+        HeldOutAccessError: a held-out game outside its final run, or split ``all`` on a
+            target the folds file splits.
+        FinalTestAccessError: a final-test game outside its final run.
+        ValueError: the target has no designs, the split needs a folds file that was not
+            given, or a design has no fold.
+    """
     # The two guards run before any file is opened, so a refused call reads nothing.
     if game.split == "heldout" and not final_run:
         raise HeldOutAccessError(

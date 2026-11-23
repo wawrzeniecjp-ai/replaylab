@@ -29,7 +29,21 @@ from replaylab.interfaces.tools.formatting import r6
 
 
 def submit_batch(ctx: ToolContext, design_ids: list[str]) -> s.SubmitBatchResult:
-    """Buy a batch; returns every outcome delivered during this call (delay included)."""
+    """Buy a batch, spending one round.
+
+    Args:
+        ctx (ToolContext): the campaign the tool runs on.
+        design_ids (list[str]): the designs to buy, by alias.
+
+    Returns:
+        s.SubmitBatchResult: the batch id and status, the rounds left, and every outcome
+        delivered during this call (with a delay, earlier batches' outcomes too).
+
+    Raises:
+        ToolFailure: the campaign is stopped or out of rounds, or the batch is empty, too
+            large, repeats an id, names an unknown or already bought design, or exceeds the
+            budget; the message says what to do instead.
+    """
     config = ctx.campaign.state().config
     try:
         result = ctx.campaign.submit(list(design_ids))
@@ -68,7 +82,14 @@ def submit_batch(ctx: ToolContext, design_ids: list[str]) -> s.SubmitBatchResult
 
 
 def pending_batches(ctx: ToolContext) -> s.PendingBatches:
-    """Batches that were submitted and have not fully delivered yet."""
+    """List the batches that were submitted and have not fully delivered yet.
+
+    Args:
+        ctx (ToolContext): the campaign the tool runs on.
+
+    Returns:
+        s.PendingBatches: each batch's id, designs, round and status.
+    """
     state = ctx.campaign.state()
     return s.PendingBatches(
         batches=[
@@ -84,7 +105,17 @@ def pending_batches(ctx: ToolContext) -> s.PendingBatches:
 
 
 def wait(ctx: ToolContext) -> s.WaitResult:
-    """Advance one round without buying and return the outcomes that arrive."""
+    """Advance one round without buying.
+
+    Args:
+        ctx (ToolContext): the campaign the tool runs on.
+
+    Returns:
+        s.WaitResult: the outcomes that arrived, and how many batches are still pending.
+
+    Raises:
+        ToolFailure: nothing is pending, so waiting would do nothing.
+    """
     try:
         delivered = ctx.campaign.wait()
     except NothingPending:
@@ -98,7 +129,14 @@ def wait(ctx: ToolContext) -> s.WaitResult:
 
 
 def get_history(ctx: ToolContext) -> s.History:
-    """Every delivered purchase with its visible features and its outcome."""
+    """List every delivered purchase with its visible features and its outcome.
+
+    Args:
+        ctx (ToolContext): the campaign the tool runs on.
+
+    Returns:
+        s.History: one row per delivered design, in purchase order.
+    """
     state = ctx.campaign.state()
     rows = []
     for batch in state.batches:
@@ -126,7 +164,18 @@ def get_history(ctx: ToolContext) -> s.History:
 
 
 def stop(ctx: ToolContext, reason: str) -> s.StopResult:
-    """End the campaign with a reason (one-way; pending results can still arrive)."""
+    """End the campaign for good; pending results can still arrive.
+
+    Args:
+        ctx (ToolContext): the campaign the tool runs on.
+        reason (str): why the agent stops.
+
+    Returns:
+        s.StopResult: confirmation, and how many batches are still pending.
+
+    Raises:
+        ToolFailure: ``reason`` is blank.
+    """
     if not reason or not reason.strip():
         raise ToolFailure("Give a short reason for stopping.")
     ctx.campaign.stop(reason.strip())
@@ -134,7 +183,16 @@ def stop(ctx: ToolContext, reason: str) -> s.StopResult:
 
 
 def campaign_summary(ctx: ToolContext) -> s.CampaignSummaryResult:
-    """Rounds, hits, best affinity, cumulative curve, per-class rates and predictions."""
+    """Summarize the campaign as totals and trends, with no per-design rows.
+
+    Args:
+        ctx (ToolContext): the campaign the tool runs on.
+
+    Returns:
+        s.CampaignSummaryResult: rounds, purchases, pending designs, hits, best Kd among
+        hits, the cumulative hit curve, the hit rate per class, and every prediction against
+        its realized rate.
+    """
     state = ctx.campaign.state()
     curve: list[int] = []
     cumulative = 0
@@ -177,7 +235,14 @@ def campaign_summary(ctx: ToolContext) -> s.CampaignSummaryResult:
 
 
 def result_row(outcome: Outcome) -> s.Result:
-    """One delivered outcome as the agent sees it (the dissociation constant is not rounded)."""
+    """Turn one delivered outcome into the row the agent sees.
+
+    Args:
+        outcome (Outcome): the outcome.
+
+    Returns:
+        s.Result: the alias, hit, strength and dissociation constant (never rounded).
+    """
     return s.Result(
         design_id=outcome.design_id,
         hit=outcome.hit,
@@ -187,5 +252,12 @@ def result_row(outcome: Outcome) -> s.Result:
 
 
 def pending(state: CampaignState) -> list[Batch]:
-    """Batches submitted and not fully delivered (only games with a delay have any)."""
+    """List the batches submitted and not fully delivered (only games with a delay have any).
+
+    Args:
+        state (CampaignState): the campaign snapshot.
+
+    Returns:
+        list[Batch]: the batches, in submission order.
+    """
     return [b for b in state.batches if b.status.value in ("submitted", "partial")]

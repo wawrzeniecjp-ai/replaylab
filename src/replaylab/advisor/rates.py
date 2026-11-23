@@ -57,7 +57,19 @@ class HitRateReport:
 
 
 def beta_posterior(hits: int, n: int, prior: tuple[float, float] = (1.0, 1.0)) -> RateEstimate:
-    """Posterior of the hit rate after ``hits`` successes in ``n`` purchases."""
+    """Return the posterior of the hit rate after ``hits`` successes in ``n`` purchases.
+
+    Args:
+        hits (int): hits among the purchases.
+        n (int): delivered purchases.
+        prior (tuple[float, float]): the Beta prior's (alpha, beta); uniform by default.
+
+    Returns:
+        RateEstimate: the posterior mean and 90% interval, with its parameters.
+
+    Raises:
+        ValueError: unless 0 <= ``hits`` <= ``n``.
+    """
     if n < 0 or hits < 0 or hits > n:
         raise ValueError(f"need 0 <= hits <= n, got hits={hits}, n={n}")
     # Conjugate update: a Beta(a0, b0) prior plus `hits` successes and `n - hits`
@@ -81,7 +93,21 @@ def estimate_hit_rate(
     threshold: float | None = None,
     prior: tuple[float, float] = (1.0, 1.0),
 ) -> HitRateReport:
-    """Overall estimate, optionally ``p_above_threshold`` and per-``design_class`` groups."""
+    """Estimate the campaign's hit rate from its delivered outcomes.
+
+    Args:
+        state (CampaignState): the campaign snapshot.
+        by (str | None): ``"design_class"`` to add one estimate per class.
+        threshold (float | None): a rate; when given, the report carries the posterior
+            probability that the true rate is above it.
+        prior (tuple[float, float]): the Beta prior's (alpha, beta).
+
+    Returns:
+        HitRateReport: the overall estimate, ``p_above_threshold`` and the per-class groups.
+
+    Raises:
+        ValueError: ``by`` is neither None nor ``"design_class"``.
+    """
     if by not in (None, "design_class"):
         raise ValueError("by must be None or 'design_class'")
     overall = beta_posterior(state.n_hits, len(state.outcomes), prior)

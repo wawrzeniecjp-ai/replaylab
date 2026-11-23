@@ -47,7 +47,7 @@ def test_tool_specs_are_openai_functions_with_the_schema_unchanged(env):
 
 def test_only_the_offered_tools_are_listed(env):
     async def body(bridge, client):
-        return await bridge.tool_names()
+        return [spec["function"]["name"] for spec in await bridge.tool_specs()]
 
     assert with_bridge(env, body, tools="campaign") == [
         "describe_campaign", "column_summary", "query_pool", "submit_batch",

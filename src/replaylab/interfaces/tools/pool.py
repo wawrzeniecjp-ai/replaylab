@@ -20,7 +20,15 @@ from replaylab.interfaces.tools.limits import MAX_QUERY_LIMIT
 
 
 def describe_campaign(ctx: ToolContext) -> s.DescribeCampaign:
-    """Budget, progress and queryable columns -- never outcomes of designs not bought."""
+    """Describe the budget, the progress and the queryable columns; never an outcome.
+
+    Args:
+        ctx (ToolContext): the campaign the tool runs on.
+
+    Returns:
+        s.DescribeCampaign: the game's shape, what is left, what was bought and found, and
+        each column's type, coverage and direction.
+    """
     state = ctx.campaign.state()
     n = len(state.designs)
     columns = []
@@ -54,7 +62,19 @@ def describe_campaign(ctx: ToolContext) -> s.DescribeCampaign:
 
 
 def column_summary(ctx: ToolContext, columns: list[str] | None) -> s.ColumnSummary:
-    """min/median/max and missing share (or class counts) per column, whole pool."""
+    """Summarize columns over the whole pool.
+
+    Args:
+        ctx (ToolContext): the campaign the tool runs on.
+        columns (list[str] | None): the columns; None summarizes every column.
+
+    Returns:
+        s.ColumnSummary: per column, min, median, max and missing share (numeric), or class
+        counts and missing share (``design_class``).
+
+    Raises:
+        ToolFailure: a column is unknown.
+    """
     wanted = list(pool_columns(ctx)) if columns is None else list(columns)
     for name in wanted:
         check_column(ctx, name)
@@ -94,10 +114,25 @@ def query_pool(
     exclude_purchased: bool,
     design_ids: list[str] | None,
 ) -> s.QueryPoolResult:
-    """Raw-valued pool rows, filtered and sorted; purchased designs excluded by default.
+    """List raw-valued pool rows, filtered and sorted; purchased designs excluded by default.
 
-    ``design_ids`` restricts the rows to those designs, purchased ones included (a
-    lookup of designs another tool named; rows never carry outcomes).
+    Args:
+        ctx (ToolContext): the campaign the tool runs on.
+        where (list[s.Condition] | None): filters, all of which a row must pass.
+        sort_by (str | None): the column to sort on; missing values always go last.
+        descending (bool): sort from the highest raw value (on a lower-is-better column,
+            that is the worst designs).
+        limit (int): the most rows to return, capped at ``MAX_QUERY_LIMIT``.
+        exclude_purchased (bool): leave out bought and pending designs.
+        design_ids (list[str] | None): restrict the rows to these designs, purchased ones
+            included (a lookup of designs another tool named; rows never carry outcomes).
+
+    Returns:
+        s.QueryPoolResult: the rows, and how many matched before the limit.
+
+    Raises:
+        ToolFailure: ``limit`` is below 1, a column or filter is invalid, or an id is
+            unknown.
     """
     # Check every argument before touching the pool.
     if limit < 1:
@@ -153,12 +188,27 @@ def query_pool(
 
 
 def pool_columns(ctx: ToolContext) -> tuple[str, ...]:
-    """The columns a tool may show, filter or sort on: length, design class, the features."""
+    """Name the columns a tool may show, filter or sort on: length, design class, the features.
+
+    Args:
+        ctx (ToolContext): the campaign the tool runs on.
+
+    Returns:
+        tuple[str, ...]: the column names.
+    """
     return ("length", "design_class", *ctx.feature_config.names)
 
 
 def column_value(design: Design, column: str) -> Any:
-    """A design's raw value in one column (``None`` when the feature is missing)."""
+    """Read a design's raw value in one column.
+
+    Args:
+        design (Design): the design.
+        column (str): the column.
+
+    Returns:
+        Any: the value, or None when the feature is missing.
+    """
     if column == "length":
         return len(design.sequence)
     if column == "design_class":
@@ -167,10 +217,17 @@ def column_value(design: Design, column: str) -> Any:
 
 
 def higher_is_better(ctx: ToolContext, name: str) -> bool | None:
-    """Whether a higher raw value of this column is the better one, or None if undefined.
+    """Return whether a higher raw value of this column is the better one.
 
     ``length`` and ``design_class`` have no pre-registered direction, so they get None
     rather than a guess.
+
+    Args:
+        ctx (ToolContext): the campaign the tool runs on.
+        name (str): the column.
+
+    Returns:
+        bool | None: the feature's direction, or None when it has none.
     """
     for spec in ctx.feature_config.specs:
         if spec.name == name:
@@ -179,7 +236,15 @@ def higher_is_better(ctx: ToolContext, name: str) -> bool | None:
 
 
 def check_column(ctx: ToolContext, column: str) -> None:
-    """Refuse a column the pool does not have, saying which ones it has."""
+    """Refuse a column the pool does not have, saying which ones it has.
+
+    Args:
+        ctx (ToolContext): the campaign the tool runs on.
+        column (str): the column asked for.
+
+    Raises:
+        ToolFailure: the column is ``design_id`` or unknown.
+    """
     if column == "design_id":
         raise ToolFailure(
             "design_id is not a column to filter or sort on; "
@@ -191,7 +256,19 @@ def check_column(ctx: ToolContext, column: str) -> None:
 
 
 def checked_conditions(ctx: ToolContext, where: list[s.Condition]) -> list[s.Condition]:
-    """Validate query_pool's filters; a quoted number on a numeric column becomes one."""
+    """Validate ``query_pool``'s filters; a quoted number on a numeric column becomes one.
+
+    Args:
+        ctx (ToolContext): the campaign the tool runs on.
+        where (list[s.Condition]): the filters.
+
+    Returns:
+        list[s.Condition]: the filters, with numbers converted.
+
+    Raises:
+        ToolFailure: an unknown column, a non-equality test or non-text value on
+            ``design_class``, or a non-numeric value on a numeric column.
+    """
     checked: list[s.Condition] = []
     for condition in where:
         check_column(ctx, condition.column)
@@ -210,7 +287,15 @@ def checked_conditions(ctx: ToolContext, where: list[s.Condition]) -> list[s.Con
 
 
 def matches(design: Design, condition: s.Condition) -> bool:
-    """Whether a design passes one filter; a missing value never passes."""
+    """Return whether a design passes one filter; a missing value never passes.
+
+    Args:
+        design (Design): the design.
+        condition (s.Condition): a checked filter.
+
+    Returns:
+        bool: True if the design's value passes.
+    """
     value = column_value(design, condition.column)
     if value is None:
         return False

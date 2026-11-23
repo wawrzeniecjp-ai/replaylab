@@ -105,7 +105,19 @@ class OpenAICompatClient:
         raise AssertionError("unreachable")  # pragma: no cover
 
     async def complete(self, messages: list[dict], tools: list[dict]) -> AssistantTurn:
-        """One completion; empty ``tools`` omits the key (a plain no-tools request)."""
+        """Run one completion; empty ``tools`` omits the key (a plain no-tools request).
+
+        Args:
+            messages (list[dict]): the history.
+            tools (list[dict]): the tool specs offered.
+
+        Returns:
+            AssistantTurn: the first choice's reply.
+
+        Raises:
+            LLMError: retries ran out, the error is not retryable, or the response has no
+                choices.
+        """
         kwargs: dict[str, Any] = {"model": self._model, "messages": messages, **self._params}
         if tools:
             kwargs["tools"] = tools

@@ -113,10 +113,18 @@ class CampaignStore:
     def open(
         cls, path: Path | str = ":memory:", *, clock: Callable[[], str] | None = None
     ) -> CampaignStore:
-        """Open (or create) the SQLite store at ``path`` (``":memory:"`` for a
-        throwaway), creating or migrating the schema as needed. ``clock``
-        injects the timestamp source; scripts leave it alone and tests pass
-        a fixed one.
+        """Open (or create) the SQLite store, creating or migrating the schema as needed.
+
+        Args:
+            path (Path | str): the database file, or ``":memory:"`` for a throwaway.
+            clock (Callable[[], str] | None): the timestamp source; scripts leave it alone and
+                tests pass a fixed one.
+
+        Returns:
+            CampaignStore: the open store.
+
+        Raises:
+            sqlite3.Error: the file cannot be opened or migrated.
         """
         conn = sqlite3.connect(str(path))
         conn.row_factory = sqlite3.Row
@@ -189,7 +197,14 @@ class CampaignStore:
     # --- campaigns -----------------------------------------------------------
 
     def create_campaign(self, config: CampaignConfig) -> int:
-        """Insert a campaign row (clock 0, empty log) and return its id."""
+        """Insert a campaign (clock 0, one ``campaign_created`` event).
+
+        Args:
+            config (CampaignConfig): the campaign's configuration.
+
+        Returns:
+            int: the new campaign's id.
+        """
         with self._conn:
             cursor = self._conn.execute(
                 "INSERT INTO campaigns (name, target, mode, config_json, clock, created_at) "
@@ -205,15 +220,26 @@ class CampaignStore:
         return campaign_id
 
     def campaign_ids(self) -> list[int]:
-        """Every campaign id in the store, ascending (build_replay_campaign
-        uses the first one to decide create-vs-resume)."""
+        """List every campaign id in the store, ascending.
+
+        ``build_replay_campaign`` uses the first one to decide between creating and resuming.
+
+        Returns:
+            list[int]: the ids.
+        """
         return [int(r["id"]) for r in self._conn.execute("SELECT id FROM campaigns ORDER BY id")]
 
     def get_config(self, campaign_id: int) -> CampaignConfig:
-        """The stored CampaignConfig.
+        """Read a campaign's stored configuration.
+
+        Args:
+            campaign_id (int): the campaign.
+
+        Returns:
+            CampaignConfig: the configuration.
 
         Raises:
-            UnknownCampaign: if the id is not in the store.
+            UnknownCampaign: the campaign is not in the store.
         """
         row = self._conn.execute(
             "SELECT config_json FROM campaigns WHERE id = ?", (campaign_id,)
@@ -225,7 +251,17 @@ class CampaignStore:
         return CampaignConfig(**data)
 
     def get_clock(self, campaign_id: int) -> int:
-        """The campaign's stored clock (elapsed rounds)."""
+        """Read a campaign's clock (elapsed rounds).
+
+        Args:
+            campaign_id (int): the campaign.
+
+        Returns:
+            int: the clock.
+
+        Raises:
+            UnknownCampaign: the campaign is not in the store.
+        """
         row = self._conn.execute(
             "SELECT clock FROM campaigns WHERE id = ?", (campaign_id,)
         ).fetchone()
@@ -234,7 +270,16 @@ class CampaignStore:
         return int(row["clock"])
 
     def set_clock(self, campaign_id: int, clock: int) -> None:
-        """Advance the stored clock. It can only stay the same or go up."""
+        """Advance the stored clock; it can only stay the same or go up.
+
+        Args:
+            campaign_id (int): the campaign.
+            clock (int): the new clock.
+
+        Raises:
+            UnknownCampaign: the campaign is not in the store.
+            StoreError: ``clock`` is below the stored one.
+        """
         with self._conn:
             current = self.get_clock(campaign_id)
             if clock < current:
@@ -247,7 +292,19 @@ class CampaignStore:
     # --- designs -------------------------------------------------------------
 
     def add_designs(self, campaign_id: int, designs: Iterable[Design]) -> int:
-        """Insert designs; identical re-adds are skipped. Returns how many were new."""
+        """Insert designs, skipping identical re-adds.
+
+        Args:
+            campaign_id (int): the campaign.
+            designs (Iterable[Design]): the designs, in pool order.
+
+        Returns:
+            int: how many were new.
+
+        Raises:
+            UnknownCampaign: the campaign is not in the store.
+            StoreError: a design id is already stored with different values.
+        """
         designs = list(designs)
         with self._conn:
             self._require_campaign(campaign_id)
@@ -292,7 +349,17 @@ class CampaignStore:
         return inserted
 
     def get_designs(self, campaign_id: int) -> list[Design]:
-        """All designs of the campaign in insertion order."""
+        """Read all designs of the campaign, in insertion order.
+
+        Args:
+            campaign_id (int): the campaign.
+
+        Returns:
+            list[Design]: the designs.
+
+        Raises:
+            UnknownCampaign: the campaign is not in the store.
+        """
         self._require_campaign(campaign_id)
         return [
             Design(
@@ -309,8 +376,18 @@ class CampaignStore:
     # --- batches -------------------------------------------------------------
 
     def record_batch(self, campaign_id: int, batch: Batch) -> None:
-        """Record a newly proposed batch (nothing spent yet); the batch id
-        must be free."""
+        """Record a new batch; its id must be free.
+
+        Args:
+            campaign_id (int): the campaign.
+            batch (Batch): the batch, usually ``proposed`` (nothing spent yet).
+
+        Raises:
+            UnknownCampaign: the campaign is not in the store.
+            StoreError: the batch id is taken, or a purchased batch repeats a design already
+                purchased.
+            UnknownDesign: a design is not in the campaign.
+        """
         with self._conn:
             self._require_campaign(campaign_id)
             exists = self._conn.execute(
@@ -359,9 +436,21 @@ class CampaignStore:
         status: BatchStatus,
         backend_ref: str | None = None,
     ) -> None:
-        """Move a batch forward to ``status`` (proposed -> submitted ->
-        partial -> complete). A backward move raises InvalidTransition; the
-        same status is a no-op that may still fill in ``backend_ref``.
+        """Move a batch forward (proposed -> submitted -> partial -> complete).
+
+        A submitted batch may also go straight to complete.
+
+        The same status is a no-op that may still fill in ``backend_ref``.
+
+        Args:
+            campaign_id (int): the campaign.
+            batch_id (str): the batch.
+            status (BatchStatus): the new status.
+            backend_ref (str | None): the backend's reference for the batch, if any.
+
+        Raises:
+            StoreError: the batch is unknown, or leaving ``proposed`` would buy a design twice.
+            InvalidTransition: any other move, backward included.
         """
         with self._conn:
             row = self._batch_row(campaign_id, batch_id)
@@ -395,8 +484,16 @@ class CampaignStore:
             )
 
     def discard_batch(self, campaign_id: int, batch_id: str) -> None:
-        """Remove a batch that is still ``proposed`` (a rejected proposal);
-        anything that left the process raises InvalidTransition."""
+        """Remove a batch that is still ``proposed`` (a rejected proposal).
+
+        Args:
+            campaign_id (int): the campaign.
+            batch_id (str): the batch.
+
+        Raises:
+            StoreError: the batch is unknown.
+            InvalidTransition: the batch is no longer ``proposed``.
+        """
         with self._conn:
             row = self._batch_row(campaign_id, batch_id)
             if BatchStatus(row["status"]) is not BatchStatus.PROPOSED:
@@ -415,7 +512,25 @@ class CampaignStore:
     # --- outcomes and predictions ----------------------------------------------
 
     def record_outcomes(self, campaign_id: int, batch_id: str, outcomes: Iterable[Outcome]) -> int:
-        """Store delivered outcomes. Returns how many were new; conflicts write nothing."""
+        """Store delivered outcomes; a conflict anywhere writes nothing.
+
+        Repeats of a stored outcome are skipped: polling is cumulative, so the same outcome
+        arrives many times.
+
+        Args:
+            campaign_id (int): the campaign.
+            batch_id (str): the batch the outcomes belong to.
+            outcomes (Iterable[Outcome]): the delivered outcomes.
+
+        Returns:
+            int: how many were new.
+
+        Raises:
+            StoreError: the batch is unknown, or an outcome's design is not in it.
+            InvalidTransition: the batch has not been submitted.
+            OutcomeConflict: an outcome differs from the stored one, or from another in the same
+                delivery.
+        """
         outcomes = list(outcomes)
         with self._conn:
             row = self._batch_row(campaign_id, batch_id)
@@ -491,8 +606,19 @@ class CampaignStore:
         model: str,
         batch_id: str | None = None,
     ) -> None:
-        """Store a predicted hit rate for a round (rate in [0, 1], round
-        1-indexed) for the later calibration analysis."""
+        """Store a predicted hit rate for a round, for the later calibration analysis.
+
+        Args:
+            campaign_id (int): the campaign.
+            round (int): the round, 1-indexed.
+            predicted_rate (float): the predicted hit rate, in [0, 1].
+            model (str): what made the prediction (``<policy>:<basis>``).
+            batch_id (str | None): the batch predicted, if any.
+
+        Raises:
+            UnknownCampaign: the campaign is not in the store.
+            StoreError: the rate is outside [0, 1] or the round below 1.
+        """
         if not 0.0 <= predicted_rate <= 1.0:
             raise StoreError("predicted_rate must be between 0 and 1")
         if round < 1:
@@ -511,7 +637,14 @@ class CampaignStore:
             )
 
     def predictions(self, campaign_id: int) -> list[Prediction]:
-        """Every recorded prediction of a campaign, in creation order."""
+        """Read every recorded prediction of a campaign, in creation order.
+
+        Args:
+            campaign_id (int): the campaign.
+
+        Returns:
+            list[Prediction]: the predictions; empty for an unknown campaign.
+        """
         rows = self._conn.execute(
             "SELECT * FROM predictions WHERE campaign_id = ? ORDER BY id", (campaign_id,)
         ).fetchall()
@@ -523,10 +656,22 @@ class CampaignStore:
     # --- events ----------------------------------------------------------------
 
     def append_event(self, campaign_id: int, kind: str, payload: Mapping[str, Any]) -> int:
-        """Append one event to the campaign's append-only log; returns its id.
+        """Append one event to the campaign's append-only log.
 
-        The log is what restore replays, so event kinds are part of the
-        store's contract (``submission_clock``, ``campaign_stopped``, ...).
+        The log is what restore replays, so event kinds are part of the store's contract
+        (``submission_clock``, ``campaign_stopped``, ...).
+
+        Args:
+            campaign_id (int): the campaign.
+            kind (str): the event kind.
+            payload (Mapping[str, Any]): its JSON-ready data.
+
+        Returns:
+            int: the event's id.
+
+        Raises:
+            UnknownCampaign: the campaign is not in the store.
+            StoreError: ``kind`` is empty.
         """
         if not kind:
             raise StoreError("event kind must be non-empty")
@@ -535,7 +680,14 @@ class CampaignStore:
             return self._event(campaign_id, kind, payload)
 
     def events(self, campaign_id: int) -> list[Event]:
-        """The campaign's events in insertion order (oldest first)."""
+        """Read the campaign's events, oldest first.
+
+        Args:
+            campaign_id (int): the campaign.
+
+        Returns:
+            list[Event]: the events; empty for an unknown campaign.
+        """
         rows = self._conn.execute(
             "SELECT * FROM events WHERE campaign_id = ? ORDER BY id", (campaign_id,)
         ).fetchall()
@@ -547,7 +699,18 @@ class CampaignStore:
     # --- snapshot ----------------------------------------------------------------
 
     def snapshot(self, campaign_id: int) -> CampaignState:
-        """Rebuild the immutable :class:`CampaignState` (delivered outcomes only)."""
+        """Rebuild the immutable campaign state (delivered outcomes only).
+
+        Args:
+            campaign_id (int): the campaign.
+
+        Returns:
+            CampaignState: the configuration, designs, batches, outcomes, clock and whether the
+            campaign was stopped.
+
+        Raises:
+            UnknownCampaign: the campaign is not in the store.
+        """
         config = self.get_config(campaign_id)
         designs = {d.design_id: d for d in self.get_designs(campaign_id)}
         batches = []

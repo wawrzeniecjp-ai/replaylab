@@ -31,14 +31,15 @@ and the agent adds long "Other" designs like the first. Round 2 brings 7 hits: "
 
 **The families run out.** Before round 3 the agent checks the neighborhoods again and finds the
 scFv family "exhausted" ([step 19](pages/nipah-families-run-out.html#e=0&s=19){target="_blank"}).
-It concentrates on the 220-residue designs and finds 3 more. After round 3 that family is 
-“fully bought out” too (step 20{target="blank"}): all seven of its 220-residue designs were 
-hits. A last similar_designs call finds that the nearest designs left in the pool are only 
-distantly related (step 21{target="blank"}). With no lead left, the agent spends its last 
-15 purchases probing “the most plausible untested pockets”: mid-length “Other” designs, 
-the unclassified designs and a band of lengths it has not tried. None binds 
-(step 25{target="_blank"}).
+It concentrates on the 220-residue designs and finds 3 more. After round 3 that family is
+"fully bought out" too ([step 20](pages/nipah-families-run-out.html#e=0&s=20){target="_blank"}):
+all seven of its 220-residue designs were hits. A last `similar_designs` call finds that the
+nearest designs left in the pool are only distantly related
+([step 21](pages/nipah-families-run-out.html#e=0&s=21){target="_blank"}). With no lead left, the
+agent spends its last 15 purchases probing "the most plausible untested pockets": mid-length
+"Other" designs, the unclassified designs and a band of lengths it has not tried. None binds
+([step 25](pages/nipah-families-run-out.html#e=0&s=25){target="_blank"}).
 
-The learner keeps going. On the same seed, learner_sim_purchased has 16 hits after round 3 
-and adds 10 in round 4, ending with 26. The agent stops at 12. Following a family pays 
-while the family lasts; a fitted model keeps ranking the whole pool after the leads run out.
+**The learner keeps going.** On the same seed, `learner_sim_purchased` has 16 hits after round 3
+and adds 10 in round 4, ending with 26. The agent stops at 12. Following a family pays while the
+family lasts; a fitted model keeps ranking the whole pool after the leads run out.

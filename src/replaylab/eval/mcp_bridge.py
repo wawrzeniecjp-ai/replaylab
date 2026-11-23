@@ -92,12 +92,20 @@ class McpBridge:
             self._specs = specs
         return self._specs
 
-    async def tool_names(self) -> list[str]:
-        """The offered tool names, in server registration order."""
-        return [spec["function"]["name"] for spec in await self.tool_specs()]
-
     async def call(self, name: str, arguments: dict[str, Any]) -> ToolResult:
-        """Run one tool on the server and wrap what comes back for the model."""
+        """Run one tool on the server and wrap what comes back for the model.
+
+        A structured result is sent as compact JSON; an error is prefixed ``ERROR: `` and
+        classified; text longer than the bridge's limit is cut and marked.
+
+        Args:
+            name (str): the tool.
+            arguments (dict[str, Any]): its arguments, as the model sent them.
+
+        Returns:
+            ToolResult: the text for the model, whether it succeeded, whether it was cut, its
+            full length, and the error kind if any.
+        """
         result = await self._client.call_tool(name, arguments)
         texts = [block.text for block in result.content if getattr(block, "type", None) == "text"]
         if result.is_error:

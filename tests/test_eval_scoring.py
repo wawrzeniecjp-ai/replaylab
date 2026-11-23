@@ -7,7 +7,6 @@ import pytest
 from replaylab.eval.scorers import (
     argument_validity,
     fabricated_tool_calls,
-    first_batch_sort_column,
     hits,
     metric_by_game_and_seed,
     metric_by_seed,
@@ -28,18 +27,6 @@ def rec(calls, hits_=3, game="G", seed=1, purchases=20, condition="A"):
 def q(sort_by=None, **extra):
     args = {"sort_by": sort_by} if sort_by else {}
     return {"name": "query_pool", "arguments": args | extra, "error_kind": None}
-
-
-SUBMIT = {"name": "submit_batch", "arguments": {"design_ids": ["d1"]}, "error_kind": None}
-
-
-def test_the_first_batch_sort_column_is_the_last_sorted_query_before_the_first_purchase():
-    assert first_batch_sort_column(rec([q("a"), q("b"), SUBMIT, q("c")])) == "b"
-    assert first_batch_sort_column(rec([q(), SUBMIT])) is None  # never sorted
-    assert first_batch_sort_column(rec([q("a")])) == "a"  # never bought: what it last sorted by
-    assert first_batch_sort_column(rec([])) is None
-    bad = {"name": "query_pool", "arguments": "{broken", "error_kind": "bad_json"}
-    assert first_batch_sort_column(rec([bad, q("a"), SUBMIT])) == "a"
 
 
 def test_argument_validity_counts_bad_json_schema_errors_and_unknown_tools():

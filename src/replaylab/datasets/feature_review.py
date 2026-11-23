@@ -68,7 +68,23 @@ def review_numeric_metrics(
     max_rate_gap: float = DEFAULT_MAX_RATE_GAP,
     min_group: int = DEFAULT_MIN_GROUP,
 ) -> list[MetricReview]:
-    """One review per numeric computational metric present in the target's pool, by name."""
+    """Review every numeric computational metric present in the target's pool.
+
+    Args:
+        long (pd.DataFrame): the long evaluations table.
+        outcomes (pd.DataFrame): the outcomes table.
+        target (str): the target whose pool is reviewed.
+        min_coverage (float): the share of designs a metric must cover to be included.
+        max_rate_gap (float): the largest hit-rate gap allowed between designs with and
+            without a value before the metric is excluded as a leak.
+        min_group (int): designs needed on each side for the gap to count.
+
+    Returns:
+        list[MetricReview]: one review per metric, sorted by name.
+
+    Raises:
+        ValueError: the target has no designs.
+    """
     pool = _target_pool(outcomes, target)
     if pool.empty:
         raise ValueError(f"no designs for target {target}")
@@ -124,7 +140,17 @@ def review_numeric_metrics(
 def review_non_numeric_metrics(
     long: pd.DataFrame, outcomes: pd.DataFrame, target: str
 ) -> list[dict[str, Any]]:
-    """Label and JSON computational metrics: kinds, coverage and up to 3 example values."""
+    """List the label and JSON computational metrics of the target's pool.
+
+    Args:
+        long (pd.DataFrame): the long evaluations table.
+        outcomes (pd.DataFrame): the outcomes table.
+        target (str): the target whose pool is listed.
+
+    Returns:
+        list[dict[str, Any]]: per metric, sorted by name: ``metric``, ``kinds``, ``coverage``
+        and up to 3 ``examples``.
+    """
     pool = _target_pool(outcomes, target)
     rows = long[
         (long["type"] == "computational")
@@ -164,12 +190,22 @@ def render_markdown(
     max_rate_gap: float = DEFAULT_MAX_RATE_GAP,
     min_group: int = DEFAULT_MIN_GROUP,
 ) -> str:
-    """Render the numeric reviews and the non-numeric inventory as the
-    markdown report written to ``notes/week0/feature_review.md``.
+    """Render the reviews as the markdown report written to ``notes/week0/feature_review.md``.
 
-    The thresholds (``min_coverage``, ``max_rate_gap``, ``min_group``) are
-    echoed in the report header so a reader can see which rules produced
-    each decision.
+    The thresholds are echoed in the report header so a reader can see which rules
+    produced each decision.
+
+    Args:
+        target (str): the target reviewed.
+        reviews (list[MetricReview]): from :func:`review_numeric_metrics`.
+        non_numeric (list[dict[str, Any]]): from :func:`review_non_numeric_metrics`.
+        min_coverage (float): the share of designs a metric must cover to be included.
+        max_rate_gap (float): the largest hit-rate gap allowed between designs with and
+            without a value before the metric is excluded as a leak.
+        min_group (int): designs needed on each side for the gap to count.
+
+    Returns:
+        str: the report.
     """
     lines = [
         f"# Feature review: {target}",

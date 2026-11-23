@@ -124,6 +124,10 @@ def target_slug(code: str) -> str:
 def verify_files(tables_dir: Path | str, pinned: Mapping[str, str] = PINNED_SHA256) -> None:
     """Check every pinned input file under ``tables_dir``.
 
+    Args:
+        tables_dir (Path | str): the release's folder (the one holding ``design_summary.parquet``).
+        pinned (Mapping[str, str]): sha256 per path relative to ``tables_dir``.
+
     Raises:
         PinMismatch: a file is missing, or its content changed.
     """
@@ -141,10 +145,20 @@ def verify_files(tables_dir: Path | str, pinned: Mapping[str, str] = PINNED_SHA2
 
 
 def seed_best(cofold: pd.DataFrame) -> pd.DataFrame:
-    """One row per (design, predictor): the seed the release bundles.
+    """Keep one row per (design, predictor): the seed the release bundles.
 
     That is the highest ``ipsae_min`` among the design-complex stoichiometries on the design
-    target, ties going to the lowest seed label (``docs/INSILICO.md`` section 4).
+    target, ties going to the lowest seed label (the release's ``docs/INSILICO.md``,
+    section 4).
+
+    Args:
+        cofold (pd.DataFrame): the release's co-fold predictions.
+
+    Returns:
+        pd.DataFrame: one row per (``uuid``, ``cofolding_model``).
+
+    Raises:
+        ValueError: ``cofold`` holds no design-complex row.
     """
     rows = cofold[
         (cofold["target_form"] == "") & cofold["stoichiometry"].isin(DESIGN_STOICH)
@@ -166,11 +180,19 @@ def _labelled(summary: pd.DataFrame) -> pd.DataFrame:
 
 
 def build_designs(summary: pd.DataFrame, cofold: pd.DataFrame) -> pd.DataFrame:
-    """The ``designs.parquet`` frame: the crosswalk features, as published.
+    """Build the ``designs.parquet`` frame: the crosswalk features, as published.
+
+    Args:
+        summary (pd.DataFrame): the release's ``design_summary`` table.
+        cofold (pd.DataFrame): the release's co-fold predictions.
+
+    Returns:
+        pd.DataFrame: one row per labelled design, sorted by ``design_id``.
 
     Raises:
-        ValueError: a seed-best ``ipsae_min`` disagrees with ``design_summary``, so the seed
-            rule of :func:`seed_best` no longer reproduces the release.
+        ValueError: a labelled design has no co-fold row, or a seed-best ``ipsae_min``
+            disagrees with ``design_summary``, so the seed rule of :func:`seed_best` no
+            longer reproduces the release.
     """
     best = seed_best(cofold)
     labelled = _labelled(summary)
@@ -201,7 +223,17 @@ def build_designs(summary: pd.DataFrame, cofold: pd.DataFrame) -> pd.DataFrame:
 
 
 def build_outcomes(summary: pd.DataFrame) -> pd.DataFrame:
-    """The ``outcomes.parquet`` frame: the release's own binder call, per target."""
+    """Build the ``outcomes.parquet`` frame: the release's own binder call, per target.
+
+    Args:
+        summary (pd.DataFrame): the release's ``design_summary`` table.
+
+    Returns:
+        pd.DataFrame: one row per labelled design, sorted by ``design_id``.
+
+    Raises:
+        ValueError: a ``vendor_agreement`` class is not in ``VENDOR_AGREEMENT``.
+    """
     labelled = _labelled(summary)
     frame = pd.DataFrame(
         {
@@ -227,7 +259,19 @@ def build_outcomes(summary: pd.DataFrame) -> pd.DataFrame:
 
 
 def build_tables(tables_dir: Path | str, *, verify: bool = True) -> tuple[pd.DataFrame, ...]:
-    """Read the pinned release tables and return ``(designs, outcomes)``."""
+    """Read the pinned release tables and build the designs and outcomes frames.
+
+    Args:
+        tables_dir (Path | str): the release's folder.
+        verify (bool): check the pinned hashes first (:func:`verify_files`).
+
+    Returns:
+        tuple[pd.DataFrame, ...]: ``(designs, outcomes)``.
+
+    Raises:
+        PinMismatch: ``verify`` is on and an input file is missing or changed.
+        ValueError: see :func:`build_designs` and :func:`build_outcomes`.
+    """
     tables_dir = Path(tables_dir)
     if verify:
         verify_files(tables_dir)
@@ -249,7 +293,16 @@ def build_tables(tables_dir: Path | str, *, verify: bool = True) -> tuple[pd.Dat
 
 
 def write_tables(designs: pd.DataFrame, outcomes: pd.DataFrame, out_dir: Path | str) -> list[Path]:
-    """Write the two frames where ``--tables`` can find them."""
+    """Write the two frames where ``--tables`` can find them.
+
+    Args:
+        designs (pd.DataFrame): from :func:`build_designs`.
+        outcomes (pd.DataFrame): from :func:`build_outcomes`.
+        out_dir (Path | str): the folder to write into (created if missing).
+
+    Returns:
+        list[Path]: the files written.
+    """
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     written = []

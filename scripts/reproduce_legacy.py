@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Reproduce the exploratory ladder numbers (T20 step 2).
+"""Reproduce the exploratory ladder numbers from the spec.
 
 Runs the library policies and a script-only *legacy* learner on a whole-pool
 Nipah-G game (split "all", so it does not depend on the frozen split), 100 seeds
@@ -179,8 +179,8 @@ def mean_hits(
 
     ``make_policy`` is a factory, not an instance: policies must be built once
     per seed, because the SimilarityIndex caches alias -> sequence and aliases
-    depend on the seed (decision D4). Reusing one instance across seeds scrambles
-    the similarity signal -- that exact bug cost a first run 20 hits instead of ~39.
+    depend on the seed. Reusing one instance across seeds scrambles the similarity
+    signal (about 20 hits instead of about 39).
     """
     cards = [
         run_game(

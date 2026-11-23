@@ -3,7 +3,9 @@
 These scripts check that the recorded results mean what the README says they mean. Audits 1,
 2 and 4 import nothing from `replaylab`: they rebuild pools, aliases, outcomes and statistics
 from `data/raw/proteinbase.csv`, the split files, `config/games.yaml` and the recorded
-`runs/*/episodes.jsonl`, by the rules the README's Methods describe. A bug in the package
+`runs/*/episodes.jsonl`, by the rules the README's Methods describe; audit 2 also reads the
+Anthropic release's own tables (`design_summary`, `cofold_predictions`) by the rules of
+`docs/prereg-anthropic.md`. A bug in the package
 would therefore not be shared by its audit. Audit 3 runs the package's own scripted policies,
 because they are what it tests, but on tables it writes to a temporary folder.
 
@@ -23,11 +25,38 @@ prints what it checked, and exits with 1 on any failure.
 | 1 `rescore.py` | the replay served the real lab results, and each recorded score is what the purchases earned | rebuild the pool and the seed's aliases, read the accepted `submit_batch` calls, re-score from the raw CSV; check every outcome shown to the agent against the raw value |
 | 2 `leaks.py` | no sequence, no real id, no outcome before delivery; feature values are raw | scan every message; replay the clock to know what was delivered when; check `nearest_hit`, the aggregate counts and every feature value shown |
 | 3 `controls.py` | scoring is unbiased and no policy gets outcome information except through the features | random against n·K/N; one result per scripted (game, policy, trial) in every run; the ladder on labels shuffled afresh per trial must fall to chance; with `--positive-control`, a planted leak must be found |
-| 4 `pairing.py` | conditions are paired by seed and the reported numbers follow from the records | seeds are sha256(game\|trial); one config hash per arm, the registered hashes, commits that exist; every comparison the README reports recomputed: mean, win/loss/tie, 90% bootstrap interval |
+| 4 `pairing.py` | conditions are paired by seed and the reported numbers follow from the records | seeds are sha256(game\|trial); one config hash per arm, the registered hashes, commits that exist (old ones through the history-rewrite table); every comparison the README reports recomputed: mean, win/loss/tie, 90% bootstrap interval |
 
 Each audit was checked against tampered input (a score off by one, a flipped outcome, the
 wrong seed, an outcome planted on a pool row, a real id, a sign-flipped value, an inflated
 count), and it failed on every one.
+
+## Audit 2 on the Anthropic pools (2026-11-19)
+
+Audit 2 now covers the 480 Anthropic agent episodes as well. It rebuilds their pools from the
+release's tables, without the package: a target's pool is every design with a binder call;
+the features are the seed-best co-fold row (highest `ipsae_min` at a design-complex
+stoichiometry on the design target, ties to the lowest seed); real ids include the release's
+UUIDs. It passes on all 1,310 agent episodes (830 Proteinbase, 480 Anthropic): 70,062 outcome
+rows, 9,578 `nearest_hit` hints and 1,783,328 feature values checked, every Anthropic value
+equal to the release's. Planted into an Anthropic episode, a UUID, a 12-residue sequence
+fragment, an outcome on an undelivered pool row and a feature value off by one part in 10^9
+each made it fail. Audit 1 and part A of audit 3 still skip these episodes.
+
+## What the audits found (2026-11-13, after the final tests)
+
+All four pass on the 21 recorded runs. Audits 1 and 2 re-scored and scanned 830 agent
+episodes (N-dev 350, E 240, N-held 240): 51,460 outcomes shown to agents and 1,383,948 feature
+values checked. Audit 4 checked the seeds of 3,610 records and reproduced 44 reported
+comparisons, including every final-test number in the README (pooled and per game, the
+held-out test and the round-by-round table). Two limits to know:
+
+* **The Anthropic pools are only partly audited.** Their designs are not in the Proteinbase
+  export these audits rebuild from, so audits 1 and 2 and part A of audit 3 skip their 480
+  agent episodes (each says so). Audit 4 covers them: seeds, registered hashes, commits and
+  the statistics. (Audit 2 has covered them since 2026-11-19; see above.)
+* **Records name commits from before the history rewrite.** Audit 4 maps the 16 such commits
+  through the table in `docs/history-rewrite.md`; all 16 map to commits in this repository.
 
 ## What the audits found (2026-11-04)
 

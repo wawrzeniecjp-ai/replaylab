@@ -71,11 +71,6 @@ class Design:
                 )
         object.__setattr__(self, "features", _freeze(self.features))
 
-    @property
-    def length(self) -> int:
-        """Length of the amino-acid sequence, in residues."""
-        return len(self.sequence)
-
 
 @dataclass(frozen=True)
 class Outcome:

@@ -15,8 +15,19 @@ A logistic regression on the delivered designs, with the options an agent may se
 Validation is leave-one-out over the delivered designs, against a base-rate baseline
 that is also left-one-out. The similarity input is recomputed inside every fold from
 that fold's hits, and a row is never compared with itself, so a hit's own label never
-reaches its own input. (The similarity column's standardizing statistics come from the
-full data; that leaks no label of the held-out row into its own prediction.)
+reaches its own input. One small leak remains: the similarity column's centre and spread
+come from the full data, so the held-out design's label shifts the scale used in its own
+fold (with the L2 penalty, scale matters). Measured on random data, it moves a fold's
+prediction by about 0.0003 typically and 0.012 at most. It affects the validation numbers
+only, never the ranking of the candidates.
+
+The two standard errors (``improvement_se``, ``loo_auc_se``) treat the n held-out
+predictions as independent. They are not: every pair of folds shares n - 2 training
+rows. Read them as a yardstick for the size of the validation numbers, not as a
+calibrated test (``improvement > 2 * improvement_se`` is not a 5% level). The AUC's
+SE is Hanley and McNeil's closed form, a convenience choice: it assumes a shape for the
+score distributions and runs high near AUC 1. DeLong's estimator, which uses the
+observed scores, is the usual alternative.
 
 Defaults (``l2``, ``C = 0.1``, no similarity, ranked by mean) give the same model as
 ``fit_and_rank``. Pure computation: no store, no ids, no sequences.
@@ -85,18 +96,26 @@ class Analysis:
     converged: bool
     loo_log_loss: float
     baseline_log_loss: float
-    improvement_se: float  # standard error of the per-design (model - baseline) loss
+    improvement_se: float  # iid SE of the mean per-design (model - baseline) loss; see module
     loo_auc: float
-    loo_auc_se: float
+    loo_auc_se: float  # Hanley-McNeil, also iid; see the module docstring
     mean: np.ndarray  # predicted hit probability per candidate
     upper: np.ndarray | None  # optimistic bound per candidate (rank_by upper only)
     order: tuple[int, ...]  # candidate indices, best first; ties by index
 
 
 def similarity_to_hits(s: np.ndarray, hits: np.ndarray, *, own: bool) -> np.ndarray:
-    """Row-wise largest similarity to a hit column; 0 without hits.
+    """Return each row's largest similarity to a hit column.
 
-    ``own=True`` means row i and column i are the same design, so that entry is skipped.
+    Args:
+        s (np.ndarray): similarity matrix, rows by columns.
+        hits (np.ndarray): boolean mask over the columns, True for a hit.
+        own (bool): True when row i and column i are the same design, so that entry is
+            skipped (a design is not its own neighbour).
+
+    Returns:
+        np.ndarray: one value per row; 0 when there are no hits, or when a row's only hit
+        is itself.
     """
     if not hits.any():
         return np.zeros(s.shape[0])

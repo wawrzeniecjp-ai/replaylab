@@ -104,8 +104,16 @@ def _is_missing(value: Any) -> bool:
 def parse_evaluations(cell: Any, design_id: str = "?") -> list[dict]:
     """Parse one ``evaluations`` cell into a list of dicts.
 
-    Accepts a JSON string, an already parsed list, or a missing value. Raises
-    ``ValueError`` naming the design when the JSON is invalid.
+    Args:
+        cell (Any): a JSON string, an already parsed list (or single dict), or a missing
+            value.
+        design_id (str): the design the cell belongs to, for the error message.
+
+    Returns:
+        list[dict]: the evaluation records; entries that are not dicts are dropped.
+
+    Raises:
+        ValueError: the JSON is invalid or is not an array.
     """
     if _is_missing(cell):
         return []
@@ -188,7 +196,17 @@ def flatten_evaluations(designs: pd.DataFrame) -> pd.DataFrame:
 
 
 def load_raw(path: str | Path) -> pd.DataFrame:
-    """Read the Proteinbase CSV and check its shape."""
+    """Read the Proteinbase CSV and check its shape.
+
+    Args:
+        path (str | Path): the CSV export.
+
+    Returns:
+        pd.DataFrame: the raw export.
+
+    Raises:
+        ValueError: see :func:`validate_raw`.
+    """
     raw = pd.read_csv(path)
     return validate_raw(raw)
 
@@ -196,8 +214,13 @@ def load_raw(path: str | Path) -> pd.DataFrame:
 def validate_raw(raw: pd.DataFrame) -> pd.DataFrame:
     """Check the raw export for what everything downstream relies on.
 
-    Returns the frame unchanged so calls can be chained. Duplicate ids are
-    rejected rather than dropped: they would silently corrupt every join.
+    Duplicate ids are rejected rather than dropped: they would silently corrupt every join.
+
+    Args:
+        raw (pd.DataFrame): the raw export.
+
+    Returns:
+        pd.DataFrame: ``raw`` unchanged, so calls can be chained.
 
     Raises:
         ValueError: missing columns, designs without an id, or duplicate ids.
@@ -223,11 +246,19 @@ def build_designs(
     long: pd.DataFrame,
     features: Iterable[FeatureSpec] = DEFAULT_FEATURES,
 ) -> pd.DataFrame:
-    """One row per design: sequence, hidden metadata, design class, features.
+    """Build one row per design: sequence, hidden metadata, design class, features.
 
-    Metadata (name, author, design method) lives in ``meta_*`` columns so it can
-    never be mistaken for a visible feature. A feature with several records per
-    design (replicated computations) is averaged.
+    Metadata (name, author, design method) lives in ``meta_*`` columns so it can never be
+    mistaken for a visible feature. A feature with several records per design (replicated
+    computations) is averaged.
+
+    Args:
+        raw (pd.DataFrame): the validated raw export.
+        long (pd.DataFrame): the long evaluations table (:func:`flatten_evaluations`).
+        features (Iterable[FeatureSpec]): the feature columns to pivot out.
+
+    Returns:
+        pd.DataFrame: the designs table.
     """
     names = list(feature_names(features))
     base = raw[["id", "sequence"] + [c for c in OPTIONAL_COLUMNS if c in raw.columns]].copy()
@@ -345,7 +376,17 @@ def build_targets(
     features: Iterable[FeatureSpec] = DEFAULT_FEATURES,
     max_conflict_rate: float = 0.10,
 ) -> pd.DataFrame:
-    """One row per target: sizes, hit rate, conflict rate and feature coverage."""
+    """Build one row per target: sizes, hit rate, conflict rate and feature coverage.
+
+    Args:
+        designs (pd.DataFrame): from :func:`build_designs`.
+        outcomes (pd.DataFrame): from :func:`build_outcomes`.
+        features (Iterable[FeatureSpec]): the features whose coverage is reported.
+        max_conflict_rate (float): the conflict rate above which ``high_conflict`` is set.
+
+    Returns:
+        pd.DataFrame: the targets table, largest first (ties by target name).
+    """
     names = [n for n in feature_names(features) if n in designs.columns]
     merged = outcomes.merge(designs[["design_id"] + names], how="left", on="design_id")
     rows = []
@@ -390,7 +431,18 @@ def build_report(
     outcomes: pd.DataFrame,
     targets: pd.DataFrame,
 ) -> dict[str, Any]:
-    """Counts and diagnostics that Week 0 compares with section 2 of the spec."""
+    """Collect the counts and diagnostics that :func:`compare_to_spec` checks.
+
+    Args:
+        raw (pd.DataFrame): the validated raw export.
+        long (pd.DataFrame): the long evaluations table.
+        designs (pd.DataFrame): the designs table.
+        outcomes (pd.DataFrame): the outcomes table.
+        targets (pd.DataFrame): the targets table.
+
+    Returns:
+        dict[str, Any]: a JSON-ready report.
+    """
     experimental = long[long["type"] == "experimental"]
     per_design_targets = outcomes.groupby("design_id")["target"].nunique()
     kd = experimental[(experimental["metric"] == "kd")]
@@ -452,7 +504,16 @@ def flatten_report(report: dict[str, Any]) -> dict[str, Any]:
 
 
 def compare_to_spec(report: dict[str, Any], expected: dict[str, int] | None = None) -> list[str]:
-    """Compare a report with the counts in section 2. Returns one line per check."""
+    """Compare a report with the counts in section 2 of the spec.
+
+    Args:
+        report (dict[str, Any]): from :func:`build_report`.
+        expected (dict[str, int] | None): the counts to expect, by flattened key
+            (:func:`flatten_report`); ``EXPECTED_COUNTS`` when None.
+
+    Returns:
+        list[str]: one line per check, starting ``OK`` or ``DIFF``.
+    """
     expected = EXPECTED_COUNTS if expected is None else expected
     flat = flatten_report(report)
     lines = []
@@ -484,7 +545,18 @@ def build_all(
     source: str | Path | pd.DataFrame,
     features: Iterable[FeatureSpec] = DEFAULT_FEATURES,
 ) -> Tables:
-    """Build every table from a CSV path or an already loaded DataFrame."""
+    """Build every table from the Proteinbase export.
+
+    Args:
+        source (str | Path | pd.DataFrame): a CSV path or an already loaded frame.
+        features (Iterable[FeatureSpec]): the feature columns.
+
+    Returns:
+        Tables: the designs, outcomes, targets and long tables, and the build report.
+
+    Raises:
+        ValueError: see :func:`validate_raw` and :func:`parse_evaluations`.
+    """
     raw = load_raw(source) if isinstance(source, (str, Path)) else validate_raw(source)
     features = tuple(features)
     long = flatten_evaluations(raw)
@@ -496,7 +568,15 @@ def build_all(
 
 
 def write_tables(tables: Tables, out_dir: str | Path) -> list[Path]:
-    """Write parquet tables and the JSON report. Returns the paths written."""
+    """Write the parquet tables and the JSON report.
+
+    Args:
+        tables (Tables): from :func:`build_all`.
+        out_dir (str | Path): the folder to write into (created if missing).
+
+    Returns:
+        list[Path]: the files written.
+    """
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     paths = []

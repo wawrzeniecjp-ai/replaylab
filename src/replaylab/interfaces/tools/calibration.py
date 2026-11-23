@@ -21,7 +21,16 @@ from replaylab.interfaces.tools.formatting import r6
 def prediction_pairs(
     ctx: ToolContext, state: CampaignState
 ) -> list[tuple[int, float, float | None, str]]:
-    """(round, predicted, realized or None, model) for every recorded prediction."""
+    """Pair every recorded prediction with the hit rate its batch realized.
+
+    Args:
+        ctx (ToolContext): the campaign the tools run on.
+        state (CampaignState): the campaign snapshot.
+
+    Returns:
+        list[tuple[int, float, float | None, str]]: (round, predicted, realized, model);
+        realized is None until the batch is purchased and fully delivered.
+    """
     batches = {b.batch_id: b for b in state.batches}
     pairs = []
     for p in ctx.store.predictions(ctx.campaign.campaign_id):
@@ -40,12 +49,30 @@ def prediction_pairs(
 
 
 def residuals(ctx: ToolContext, state: CampaignState) -> list[float]:
-    """realized - predicted for realized, model-based predictions only."""
+    """Collect realized - predicted for the realized, model-based predictions only.
+
+    Args:
+        ctx (ToolContext): the campaign the tools run on.
+        state (CampaignState): the campaign snapshot.
+
+    Returns:
+        list[float]: the residuals, oldest first.
+    """
     return model_residuals(prediction_pairs(ctx, state))
 
 
 def calibration_info(ctx: ToolContext, state: CampaignState, basis: str) -> s.CalibrationInfo:
-    """What ``propose_batch`` reports about calibration beside its prediction."""
+    """Report what ``propose_batch`` says about calibration beside its prediction.
+
+    Args:
+        ctx (ToolContext): the campaign the tools run on.
+        state (CampaignState): the campaign snapshot.
+        basis (str): what the prediction is based on (``model`` or a fallback).
+
+    Returns:
+        s.CalibrationInfo: the basis, the number of realized residuals, their mean, and
+        whether the prediction was corrected by them.
+    """
     found = residuals(ctx, state)
     return s.CalibrationInfo(
         basis=basis,  # type: ignore[arg-type]

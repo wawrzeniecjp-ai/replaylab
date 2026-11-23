@@ -7,8 +7,8 @@ matters, and what the write-up should say. Nothing here is a finding; findings l
 
 ## 1. The base hit rate decides how much room the method has (2026-10-30)
 
-**What.** Every result here -- the N-dev no-go, the E exceeds, and anything the Anthropic
-final test produces -- is measured on a pool with one particular base hit rate, and the rate
+**What.** Every result here -- the N-dev no-go, the E exceeds, and the final tests' results
+-- is measured on a pool with one particular base hit rate, and the rate
 is a property of the campaign that produced the pool: its design strategies, its target, how
 hard the target is, and how aggressively the pool was pre-filtered before anyone was asked to
 choose. Two pools of the same size can sit at very different rates.
@@ -330,3 +330,73 @@ at 160, and N-dev is used through 179 (140-179 by section 18) so a new N-dev ide
 A structural similarity measure (TM-score, Foldseek) would separate shared backbone from shared
 pipeline on E, but Proteinbase's structure-comparison columns cannot supply it: ~20% coverage
 and a missingness leak (entry 4's rule; design notes section 1).
+
+## 8. The final tests' effect depends on the size of the campaign, and rests on two targets (2026-11-13)
+
+**What.** On the Anthropic pools the tool effect was +0.94 and +0.69 hits per 32 purchases,
+a quarter to a third of the +2.5 to +3.0 the pre-registration predicted (design notes
+section 20). Three things shape that number:
+
+* **Short campaigns.** The tool effect builds up over rounds: in the main study it was near
+  zero after round 1 and grew mostly in rounds 3 and 4. A campaign of 32 purchases sees
+  little of that. The prediction, which scaled the 60-purchase effect down in proportion to
+  purchases, assumed it accrues evenly.
+* **Small pools.** Each Anthropic game buys 36% of its 90 designs (about 8% in the main
+  study), so by round 4 the arm without tools is buying the remaining hits too and the gap
+  stops growing.
+* **Two targets carry it.** The pooled effect comes from BHRF1 (both models) and AB-nipah
+  (deepseek); AB-bbf14 has 3 hits in 90 designs and AB-egfr 10, too few for any difference.
+  The four pools come from one design campaign, not four independent ones.
+
+**What the write-up should say.** Quote the effect with the campaign size and the share of the
+pool bought. Say that the shortfall against the prediction is mostly explained by campaign
+size, that this reading was made after the results, and that the main-study gaps it rests on
+come from 20 pairs per cell. Do not quote the pooled number as if all four targets
+contributed.
+
+## 9. Some final-test episodes were played twice (2026-11-13)
+
+**What.** In the final tests, 8 mimo episodes (7 Anthropic, 1 held-out; about 2.2% of mimo's
+360) hit the 32,768-token output limit mid-reasoning, and 4 more failed on an HTTP 400 from the
+provider. None was recorded; each was played again on the same seed, as the runner is designed
+to do (an episode is recorded only if it ends normally). deepseek had no failures.
+
+**Why it matters.** The seed fixes the pool and the aliases, not the model's sampling, so a
+second draw is a different episode. If the episodes that run long are systematically better
+or worse ones, replaying them biases the arm they fall in. 12 episodes spread over three
+conditions are unlikely to move a pooled result, but the size of the effect is unknown.
+
+**What the write-up should say.** State the count and that failed episodes were replayed on
+their seed. Do not describe the records as "every episode played".
+
+## 10. On held-out Nipah-G, the scripted bar is degenerate (2026-11-13)
+
+**What.** On `N-held` every learner variant scores exactly 2.00 hits on every seed, below
+`random` (3.58). The 8 designs with the highest ipSAE, every learner's first batch, hold 1 hit;
+the model gate (2 hits among 8 purchases) does not open in time, and the four learners buy
+down the same ranking.
+
+**Why it matters.** The registered secondary (B1 - `learner_sim_purchased`, EXCEEDS on both
+models) is measured against this bar, so it says the agent is not tied to one column, not that
+it beats a working learner. ipSAE was chosen as Nipah-G's first column after an exploratory look
+at all Nipah-G outcomes, this fold included (design notes section 1).
+
+**What the write-up should say.** Report the secondary with this explanation, and lead with
+the primary (B1 - A, inconclusive on both models).
+
+## 11. The next-batch intervals are too narrow, and the calibration that should widen them never ran (2026-11-13)
+
+**What.** `estimate_hit_rate(next_batch=...)` reports a 90% interval for a batch's hit rate.
+Scored on the 231 forecasts whose batch the agent then bought, it covered 54% (design notes
+section 21). The correction meant to calibrate it from past errors needs 3 residuals from
+model-based proposals bought exactly as proposed, which a 4-round game cannot supply in time,
+and it never ran: all 495 forecasts were uncalibrated.
+
+**Why it matters.** An agent that trusts the interval underestimates how far a batch can fall
+short, mostly on the low side (72 misses below against 34 above). Any claim that the advisor
+"quantifies uncertainty" would overstate what it did.
+
+**What the write-up should say.** Report the point accuracy (bias -0.05, MAE 0.21) beside the
+coverage, say that the calibrated branch was never exercised in these games, and that this is
+a post hoc look at played trials, scored only on batches the agent chose to buy.
+

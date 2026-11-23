@@ -1,10 +1,12 @@
 # Analysis tools help language-model agents find more protein binders
 
+[![CI](https://github.com/wawrzeniecjp-ai/replaylab/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/wawrzeniecjp-ai/replaylab/actions/workflows/ci.yml)
+
 **replaylab**: an environment, an MCP toolkit and a set of baseline policies that score
 protein design–test campaigns by replaying real lab outcomes.
 
 **Documentation:** [wawrzeniecjp-ai.github.io/replaylab](https://wawrzeniecjp-ai.github.io/replaylab/)
-(user guide, how a game is played, and the API reference).
+(user guide, how a game is played, recorded episodes to replay, and the API reference).
 
 ## Summary
 
@@ -331,16 +333,16 @@ about twelve filtered queries per episode.
 
 When an agent does ask for a proposal, it usually takes the default (Figure S3). The default policy,
 `learner_sim`, accounts for 83% of deepseek's `propose_batch` calls (n = 178) and 72% of mimo's
-(n = 241). In condition C, the explicit scaling argument of `fit_custom_model` stays at its
-default in 99% of 87 calls. The purchased-scaling variants, the best baseline on Nipah-G and
-the worst on EGFR, are rarely tried. Always using them would not be right either, but an agent
+(n = 240). In condition C, the explicit scaling argument of `fit_custom_model` stays at its
+default in 83 of its 84 successful calls. The purchased-scaling variants, the best baseline on
+Nipah-G and the worst on EGFR, are rarely tried. Always using them would not be right either, but an agent
 that compared the scalings on its own results could pick per pool; ours did not.
 
 ![Share of calls by the choice made: learner_sim, the default, is 83% of deepseek's propose_batch calls and 72% of mimo's; Sonnet splits 50/50 between learner and learner_sim; in condition C, 99% of fit_custom_model calls keep the default scaling](reports/figures/side/defaults.svg)
 
 > **Figure S3. Agents take the default.** Share of `propose_batch` calls by the policy chosen,
 > per model, and of `fit_custom_model` calls by the scaling chosen (condition C), over all
-> main-study episodes; n is the number of calls.
+> main-study episodes; n is the number of successful calls.
 
 The first column an agent sorts on also correlates with how its campaign ends (Figure S4). On
 Nipah-G, episodes whose first sorted query is on ipSAE average 22.6 hits (n = 158), against
@@ -412,8 +414,9 @@ every condition equally but weakens absolute claims.
 Two smaller points bear on the final tests. The main-study episodes were played before the
 orientation fix, and the final tests after it. And in the final tests, 8 of about 360 mimo
 episodes (2.2%, spread over all three conditions) hit the 32,768-token output limit
-mid-reasoning and were replayed on the same seed, as the runner is designed to do; how those
-second draws affect the scores is unknown.
+mid-reasoning, and 4 more failed on a provider error. Each was replayed on the same seed, as
+the runner is designed to do; how those second draws affect the scores is unknown
+([`docs/caveats.md`](docs/caveats.md) entry 9).
 
 Taken together, these findings suggest that agentic lab platforms might gain from giving agents
 analysis tools — free inspection of the pool, follow-up on discoveries, a model fitted on what
@@ -634,10 +637,18 @@ place.
 ### Data and code availability
 
 All code, configuration and pre-registrations are in this repository. Per-episode scores behind
-every figure are in `reports/agent_study.csv`; the figures are regenerated from it by
-`scripts/make_figures.py`, and the side figures (S1–S5) by `scripts/make_side_figures.py`. The
-final tests' locks and the output of every comparison are in
-[`reports/final-test/`](reports/final-test/). The full baseline ladder is in [`reports/ladder.md`](reports/ladder.md),
+the main figures are in `reports/agent_study.csv` (written by `scripts/export_study.py`) and are
+redrawn by `scripts/make_figures.py`. The side figures (S1–S5) read
+`reports/agent_episodes.csv`, `reports/agent_tool_calls.csv` and `reports/feature_signal.csv`
+(written by `scripts/export_side_data.py`) and are redrawn by `scripts/make_side_figures.py`.
+The hit-rate forecasts the agents saw, scored against what their batches delivered, are in
+`reports/calibration_forecasts.csv` and `reports/calibration_proposals.csv` (written by
+`scripts/calibration_report.py`; design notes section 21). None of these files holds a
+sequence or a design id. The final tests' locks and the output of
+every comparison are in [`reports/final-test/`](reports/final-test/). Four audits in
+[`scripts/audit/`](scripts/audit/README.md) check the recorded results from outside the
+package (`make audit`): they re-score the episodes from the raw export, scan every transcript
+for leaks, run shuffled-label controls and recompute every comparison reported here. The full baseline ladder is in [`reports/ladder.md`](reports/ladder.md),
 and every number behind every decision is in [`docs/design-notes.md`](docs/design-notes.md).
 Read [`docs/caveats.md`](docs/caveats.md) before quoting the results.
 
@@ -698,6 +709,12 @@ replaylab-eval view --run-dir runs/x                                 # one HTML 
 `build_folds.py` refuses to overwrite a frozen split (exit code 3); pass `--force` only if you
 really mean to replace it.
 
+**Work from a `git clone`, not a downloaded archive.** Every command that records episodes
+(`run`, `pilot`, `scripted`) stamps each record with the commit it was played from and
+refuses a tree whose `src`, `prompts` or `config` have uncommitted changes. Outside a git
+repository that cannot be checked, so these commands refuse to start, even with
+`--allow-uncommitted`.
+
 The figures in this README are generated, not pasted. `scripts/export_study.py` extracts the
 per-episode scores from the run records (scores only: no transcripts, identifiers or
 sequences), and `scripts/make_figures.py` redraws the SVGs from that CSV with the project's own
@@ -748,9 +765,12 @@ episode and mark the game `final_test: true`, which puts it behind the run-once 
 
 ### Adding a tool or a policy
 
-* **A tool:** a method on `Toolbox` in `interfaces/tools.py` with a response model in
-  `interfaces/schemas.py`, a closure in `interfaces/server.py`, and its name in one of the tool
-  groups at the top of `tools.py`. Expose it through a new condition in
+* **A tool:** its code in the group module under `interfaces/tools/` (`pool`, `campaign`,
+  `models` or `estimates`) with a response model in `interfaces/schemas.py`; a one-line method
+  on `Toolbox` in `interfaces/tools/toolbox.py`; a closure in `interfaces/server.py`; and its
+  name, group and description in `interfaces/tools/catalog.py`. The descriptions are hashed
+  into every run's `config_hash`, so a new or edited one makes later runs a different
+  configuration (`tests/test_registered_hashes.py` fails). Expose it through a new condition in
   `config/conditions.yaml` (conditions are tool allow-lists), then refresh and review the tool
   snapshot with `pytest tests/test_mcp_server.py --update-tool-snapshot`. New tools must keep
   the leak rules that `tests/test_tools_leaks.py` checks.

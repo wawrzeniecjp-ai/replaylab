@@ -44,11 +44,19 @@ FOLD_COLUMNS = ["design_id", "target", "fold", "seed"]
 
 
 def target_has_clusters(clusters_path: Path | str | None, target: str) -> bool:
-    """Whether ``clusters.csv`` has rows for ``target`` at all.
+    """Return whether ``clusters.csv`` has rows for ``target`` at all.
 
-    Targets below ``DEFAULT_MIN_DESIGNS`` designs get no cluster rows, so their
-    pools must be loaded and scored without ``distinct_families`` -- passing the
-    file on would fail in ``load_pool`` instead.
+    Targets below ``DEFAULT_MIN_DESIGNS`` designs get no cluster rows, so their pools must
+    be loaded and scored without ``distinct_families``; passing the file on would fail in
+    ``load_pool`` instead.
+
+    Args:
+        clusters_path (Path | str | None): the clusters file; None or a missing file count
+            as no rows.
+        target (str): the target to look for.
+
+    Returns:
+        bool: True if the file lists the target.
     """
     if clusters_path is None:
         return False
@@ -68,10 +76,24 @@ def build_cluster_table(
 ) -> tuple[pd.DataFrame, dict[str, dict[str, Any]]]:
     """Cluster the designs of every target that has at least ``min_designs``.
 
-    Each target is clustered on its own pool (a design tested on two targets is
-    clustered once per target). Rows are sorted by design id first, and cluster
-    ids are canonical: cluster 0 contains the smallest design id, and so on.
-    Returns the table and a summary per target.
+    Each target is clustered on its own pool (a design tested on two targets is clustered
+    once per target). Rows are sorted by design id first, and cluster ids are canonical:
+    cluster 0 contains the smallest design id, and so on.
+
+    Args:
+        designs (pd.DataFrame): the designs table (``design_id``, ``sequence``).
+        outcomes (pd.DataFrame): the outcomes table (``design_id``, ``target``, ``hit``).
+        min_designs (int): targets with fewer designs are skipped.
+        k (int): the k-mer length.
+        max_distance (float): the cosine distance that links two designs.
+
+    Returns:
+        tuple[pd.DataFrame, dict[str, dict[str, Any]]]: the cluster table
+        (``CLUSTER_COLUMNS``) and a summary per target (:func:`summarize_clusters` plus
+        ``boundary_pairs``).
+
+    Raises:
+        ValueError: an outcome has no design row.
     """
     sequences = designs[["design_id", "sequence"]]
     tables = []
@@ -109,7 +131,17 @@ def compare_cluster_summary(
     summaries: dict[str, dict[str, Any]],
     expected: dict[str, dict[str, int]] | None = None,
 ) -> list[str]:
-    """One OK or DIFF line per expected number, for the targets that were clustered."""
+    """Check the cluster summaries against the expected numbers.
+
+    Args:
+        summaries (dict[str, dict[str, Any]]): from :func:`build_cluster_table`.
+        expected (dict[str, dict[str, int]] | None): the numbers to expect per target;
+            ``EXPECTED_CLUSTER_SUMMARY`` when None.
+
+    Returns:
+        list[str]: one ``OK`` or ``DIFF`` line per expected number, or one ``SKIP`` line for
+        a target that was not clustered.
+    """
     expected = EXPECTED_CLUSTER_SUMMARY if expected is None else expected
     lines = []
     for target, wanted in expected.items():
@@ -133,7 +165,25 @@ def build_fold_table(
     size_tol: float = 2,
     hit_tol: float = 2,
 ) -> tuple[pd.DataFrame, FoldSelection]:
-    """Assign folds for one target using the first seed that meets the balance rule."""
+    """Assign folds for one target, using the first seed that meets the balance rule.
+
+    Args:
+        clusters (pd.DataFrame): the cluster table.
+        outcomes (pd.DataFrame): the outcomes table.
+        target (str): the target to split.
+        n_splits (int): the number of folds.
+        seeds (Iterable[int]): the candidate seeds, tried in order.
+        size_tol (float): how far a fold's size may be from an even split.
+        hit_tol (float): how far a fold's hit count may be from an even split.
+
+    Returns:
+        tuple[pd.DataFrame, FoldSelection]: the fold table (``FOLD_COLUMNS``) and the
+        selection it came from.
+
+    Raises:
+        ValueError: the clusters and outcomes list different designs, or none.
+        NoBalancedSplit: no seed met the balance rule.
+    """
     cluster_rows = clusters[clusters["target"] == target]
     outcome_rows = outcomes[outcomes["target"] == target][["design_id", "hit"]]
     pool = cluster_rows.merge(outcome_rows, on="design_id", how="inner")
@@ -162,7 +212,15 @@ def build_fold_table(
 
 
 def heldout_ids(folds: pd.DataFrame, heldout_fold: int = HELDOUT_FOLD) -> list[str]:
-    """Sorted design ids of the held-out fold."""
+    """List the design ids of the held-out fold.
+
+    Args:
+        folds (pd.DataFrame): the fold table.
+        heldout_fold (int): the fold index that is held out.
+
+    Returns:
+        list[str]: the ids, sorted.
+    """
     return sorted(folds.loc[folds["fold"] == heldout_fold, "design_id"].astype(str))
 
 
@@ -174,7 +232,21 @@ def write_split_files(
     heldout_fold: int = HELDOUT_FOLD,
     force: bool = False,
 ) -> list[Path]:
-    """Write ``folds.csv`` and the held-out id list, refusing to overwrite frozen files."""
+    """Write ``folds.csv`` and the held-out id list, refusing to overwrite frozen files.
+
+    Args:
+        folds (pd.DataFrame): the fold table.
+        folds_path (Path): where to write the folds.
+        heldout_path (Path): where to write the held-out ids.
+        heldout_fold (int): the fold index that is held out.
+        force (bool): overwrite existing files.
+
+    Returns:
+        list[Path]: the two files written.
+
+    Raises:
+        FileExistsError: a file exists and ``force`` is off.
+    """
     existing = [p for p in (folds_path, heldout_path) if p.exists()]
     if existing and not force:
         names = ", ".join(str(p) for p in existing)

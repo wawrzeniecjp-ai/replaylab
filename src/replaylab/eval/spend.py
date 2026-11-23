@@ -65,8 +65,16 @@ class Price:
 def load_prices(path: Path | str) -> dict[str, Price]:
     """Read ``config/prices.yaml``; every required field must be present and non-negative.
 
-    Raises :class:`PriceError` with the offending key and field -- a missing price
-    would make the spend guard blind, so nothing falls back to a default.
+    A missing price would make the spend guard blind, so nothing falls back to a default.
+
+    Args:
+        path (Path | str): the prices file.
+
+    Returns:
+        dict[str, Price]: the prices, by price key.
+
+    Raises:
+        PriceError: the file is malformed; the message names the key and field.
     """
     data = yaml.safe_load(Path(path).read_text())
     if not isinstance(data, dict) or set(data) != {"version", "prices"} or data["version"] != 1:
@@ -185,7 +193,19 @@ class Projection:
 
 
 def project(pilot_costs: Sequence[float], n_total: int, *, margin: float = 1.25) -> Projection:
-    """Projected cost of ``n_total`` episodes from the costs of a pilot, times a safety margin."""
+    """Project the cost of ``n_total`` episodes from the costs of a pilot.
+
+    Args:
+        pilot_costs (Sequence[float]): the cost of each pilot episode.
+        n_total (int): the episodes the run will play.
+        margin (float): the safety factor applied on top.
+
+    Returns:
+        Projection: mean cost x ``n_total`` x ``margin``, with its parts.
+
+    Raises:
+        ValueError: ``pilot_costs`` is empty.
+    """
     if not pilot_costs:
         raise ValueError("a projection needs at least one pilot episode")
     mean = sum(pilot_costs) / len(pilot_costs)
@@ -193,7 +213,15 @@ def project(pilot_costs: Sequence[float], n_total: int, *, margin: float = 1.25)
 
 
 def refuse_if_over(projection: Projection, max_usd: float) -> None:
-    """Raise :class:`BudgetRefused` when the forecast exceeds the cap (the pilot gate)."""
+    """Refuse a run whose projected cost exceeds the cap (the pilot gate).
+
+    Args:
+        projection (Projection): from :func:`project`.
+        max_usd (float): the run's spending cap.
+
+    Raises:
+        BudgetRefused: the projection is above ``max_usd``.
+    """
     if projection.projected_usd > max_usd:
         raise BudgetRefused(
             f"projected cost {projection.projected_usd:.2f} (mean {projection.mean_cost:.4f} x "

@@ -60,11 +60,19 @@ def low_yield(
     min_purchases: int = LOW_YIELD_MIN_PURCHASES,
     floor: float = LOW_YIELD_FLOOR,
 ) -> StopVerdict:
-    """Fire when enough purchases have been delivered and the cumulative hit
-    rate is strictly below ``floor`` -- "this campaign is not producing".
+    """Fire when enough purchases are delivered and the cumulative hit rate is below ``floor``.
 
-    Before ``min_purchases`` deliveries there is not enough evidence, so the
-    rule stays quiet (and the verdict's ``detail`` explains why).
+    Before ``min_purchases`` deliveries there is not enough evidence, so the rule stays
+    quiet (and the verdict's ``detail`` says why).
+
+    Args:
+        n_purchases (int): delivered purchases.
+        n_hits (int): hits among them.
+        min_purchases (int): deliveries needed before the rule can fire.
+        floor (float): the rate the cumulative hit rate must stay at or above.
+
+    Returns:
+        StopVerdict: ``low_yield``, whether it fired, and its numbers.
     """
     rate = n_hits / n_purchases if n_purchases else None
     fired = n_purchases >= min_purchases and rate is not None and rate < floor
@@ -84,8 +92,19 @@ def low_yield(
 def decay(
     window_hits: Sequence[int], *, window: int = DECAY_WINDOW, drop: float = DECAY_DROP
 ) -> StopVerdict:
-    """``window_hits`` holds, per round boundary with at least ``window`` purchases, the
-    number of hits among the last ``window`` purchases (oldest boundary first)."""
+    """Fire when the latest window's hit rate has fallen more than ``drop`` below the best one.
+
+    Args:
+        window_hits (Sequence[int]): per round boundary with at least ``window`` purchases,
+            the hits among the last ``window`` purchases, oldest boundary first (see
+            :func:`window_hits_at_boundaries`).
+        window (int): purchases per window.
+        drop (float): the fall in hit rate, best window to latest, that fires the rule.
+
+    Returns:
+        StopVerdict: ``decay``, whether it fired, and its numbers; never fires with fewer
+        than two windows.
+    """
     detail: dict[str, Any] = {"window": window, "drop": drop, "n_windows": len(window_hits)}
     if len(window_hits) < 2:
         return StopVerdict("decay", False, detail)
@@ -96,8 +115,18 @@ def decay(
 
 
 def window_hits_at_boundaries(state: CampaignState, window: int = DECAY_WINDOW) -> list[int]:
-    """Hits in the last ``window`` delivered purchases at each fully delivered batch
-    boundary that has at least ``window`` delivered purchases."""
+    """Count the hits in the last ``window`` delivered purchases at each batch boundary.
+
+    A boundary is a purchased batch whose outcomes have all arrived; boundaries with fewer
+    than ``window`` delivered purchases are skipped.
+
+    Args:
+        state (CampaignState): the campaign snapshot.
+        window (int): purchases per window.
+
+    Returns:
+        list[int]: hits per window, oldest boundary first.
+    """
     flags: list[bool] = []
     counts: list[int] = []
     for batch in state.batches:
@@ -113,9 +142,15 @@ def window_hits_at_boundaries(state: CampaignState, window: int = DECAY_WINDOW) 
 def stop_advice(state: CampaignState) -> StopAdvice:
     """Evaluate every stop rule at the current round boundary.
 
-    Only delivered purchases count (pending outcomes are unknown), and the
-    rules come back as verdicts whether or not any policy wrapper listens to
-    them -- the ladder uses this to measure false-stop rates.
+    Only delivered purchases count (pending outcomes are unknown), and the rules come back
+    as verdicts whether or not any policy wrapper listens to them; the ladder uses this to
+    measure false-stop rates.
+
+    Args:
+        state (CampaignState): the campaign snapshot.
+
+    Returns:
+        StopAdvice: the rates and one verdict per rule.
     """
     n, hits = len(state.outcomes), state.n_hits
     windows = window_hits_at_boundaries(state)

@@ -43,12 +43,34 @@ def model_residuals(pairs: Iterable[tuple[int, float, float | None, str]]) -> li
 
 
 def is_calibrated(residuals: Sequence[float]) -> bool:
-    """Whether there are enough residuals to correct a prediction by them."""
+    """Return whether there are enough residuals to correct a prediction by them.
+
+    Args:
+        residuals (Sequence[float]): past (realized - predicted) rates.
+
+    Returns:
+        bool: True with at least ``CALIBRATION_MIN_ROUNDS`` residuals.
+    """
     return len(residuals) >= CALIBRATION_MIN_ROUNDS
 
 
 def next_batch_rate(predicted: float, k: int, residuals: Sequence[float]) -> RateEstimate:
-    """The hit rate to expect from a batch of ``k`` designs the model predicts at ``predicted``."""
+    """Estimate the hit rate of a batch of ``k`` designs the model predicts at ``predicted``.
+
+    With enough residuals (:func:`is_calibrated`), shift ``predicted`` by their mean and
+    take the interval from their spread; otherwise use a Beta posterior, as if ``k``
+    purchases had shown that rate.
+
+    Args:
+        predicted (float): the model's mean predicted hit probability over the batch.
+        k (int): the batch size.
+        residuals (Sequence[float]): past (realized - predicted) rates of model-based
+            predictions.
+
+    Returns:
+        RateEstimate: the rate and its 90% interval, clipped to [0, 1], and whether it
+        was calibrated.
+    """
     if is_calibrated(residuals):
         # Shift by the mean past error; the interval comes from the spread of those errors.
         adjusted = min(1.0, max(0.0, predicted + statistics.fmean(residuals)))

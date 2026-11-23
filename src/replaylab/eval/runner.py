@@ -170,8 +170,17 @@ def _check_permit(
 
 
 def validate_specs(specs: Sequence[EpisodeSpec], deps: RunnerDeps) -> None:
-    """Refuse unknown conditions, held-out games and an unpermitted final test before
-    anything runs."""
+    """Refuse unknown conditions, held-out games and an unpermitted final test before anything runs.
+
+    Args:
+        specs (Sequence[EpisodeSpec]): the episodes to play.
+        deps (RunnerDeps): the run's shared bundle.
+
+    Raises:
+        ValueError: a condition is unknown.
+        SetupError: a game is unknown, held out, or a final test, and there is no permit.
+        FinalRunRefused: a final test mixed with other games, or a permit for another game.
+    """
     unknown = sorted({s.condition for s in specs if s.condition not in deps.conditions})
     if unknown:
         raise ValueError(f"unknown condition(s) {unknown}; valid: {sorted(deps.conditions)}")
@@ -355,7 +364,29 @@ async def run_matrix(
     concurrency: int = 4,
     errors_path: Path | str | None = None,
 ) -> RunSummary:
-    """Play every spec that has no record yet. Safe to run again after any interruption."""
+    """Play every spec that has no record yet. Safe to run again after any interruption.
+
+    Episodes run concurrently; each finished one is appended to ``records_path`` at once.
+    A failed episode is logged and skipped, and once the spend cap is reached no new episode
+    starts.
+
+    Args:
+        specs (Sequence[EpisodeSpec]): the whole matrix.
+        deps (RunnerDeps): the run's shared bundle.
+        records_path (Path | str): the run's ``episodes.jsonl``.
+        concurrency (int): episodes played at once (at least 1).
+        errors_path (Path | str | None): where failed episodes are logged.
+
+    Returns:
+        RunSummary: what was completed, skipped and failed, whether the cap stopped the run,
+        and the run's total spend.
+
+    Raises:
+        ValueError: a condition is unknown.
+        SetupError: see :func:`validate_specs`.
+        FinalRunRefused: see :func:`validate_specs`; or a spec lies outside the permitted
+            final-run leg, or the records file is not the permitted one.
+    """
     validate_specs(specs, deps)
     records_path = Path(records_path)
     _check_permit(specs, deps.final_permit, records_path)
@@ -448,7 +479,24 @@ def run_scripted_matrix(
     records_path: Path | str,
     first_trial: int = 0,
 ) -> RunSummary:
-    """Scripted policies on the LLM episodes' seeds (condition ``scripted:<policy>``)."""
+    """Play scripted policies on the LLM episodes' seeds (condition ``scripted:<policy>``).
+
+    Args:
+        games (Sequence[str]): the games.
+        policies (Sequence[str]): the policy names.
+        trials (int): the number of trials per game and policy.
+        deps (RunnerDeps): the run's shared bundle.
+        records_path (Path | str): the run's ``episodes.jsonl``; recorded episodes are
+            skipped.
+        first_trial (int): the first trial of the block.
+
+    Returns:
+        RunSummary: what was completed and skipped.
+
+    Raises:
+        SetupError: a game is unknown, held out, or a final test, and there is no permit.
+        FinalRunRefused: the episodes do not match the final-run permit.
+    """
     records_path = Path(records_path)
     specs = expand_matrix(games, [f"scripted:{p}" for p in policies], trials, first_trial)
     _check_games(games, deps.games_path, deps.final_permit)

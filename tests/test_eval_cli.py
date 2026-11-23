@@ -578,9 +578,9 @@ def test_the_recorded_sha_is_the_commit_of_the_code_not_of_the_shell(setup, tmp_
     # A control run imports a worktree's src while the shell sits elsewhere; the sha must
     # name the tree that was checked for cleanliness, not whatever "." happens to be.
     from replaylab.eval.final_run import code_root
-    from replaylab.eval.records import git_info
+    from replaylab.eval.records import head_sha
 
-    expected, _ = git_info(code_root())
+    expected = head_sha(code_root())
     assert expected  # this checkout is a repository
     elsewhere = tmp_path / "shell"
     elsewhere.mkdir()  # not a git repository

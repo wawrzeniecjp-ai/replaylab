@@ -16,7 +16,13 @@ from typing import Any
 import numpy as np
 
 from replaylab.advisor.analysis import AnalysisSettings, analyse
-from replaylab.advisor.model import FittedModel, InsufficientData, fit_model
+from replaylab.advisor.model import (
+    MIN_HITS,
+    MIN_PURCHASES,
+    FittedModel,
+    InsufficientData,
+    fit_model,
+)
 from replaylab.advisor.preprocess import Preprocessor
 from replaylab.advisor.rates import estimate_hit_rate as rates_estimate
 from replaylab.domain.features import FeatureConfig
@@ -36,7 +42,24 @@ from replaylab.policies.purchased import purchased_scale
 def fit_and_rank(
     ctx: ToolContext, features: list[str] | None, top_k: int, exploration: float
 ) -> s.FitAndRankResult:
-    """Fit the logistic model, rank the unpurchased designs, and pick the exploration ones."""
+    """Fit the logistic model, rank the unpurchased designs, and pick the exploration ones.
+
+    Args:
+        ctx (ToolContext): the campaign the tool runs on.
+        features (list[str] | None): the feature columns to fit on; None uses every
+            feature.
+        top_k (int): how many designs to rank, capped at ``MAX_RANK`` and at the designs
+            left.
+        exploration (float): the share of ``top_k`` drawn at random from outside the top
+            ranks, between 0 and 1.
+
+    Returns:
+        s.FitAndRankResult: the training counts, the five largest weights (raw-value
+        direction), the ranked designs, and the exploration picks.
+
+    Raises:
+        ToolFailure: an invalid argument, or the model cannot be fitted yet.
+    """
     if top_k < 1:
         raise ToolFailure("top_k must be at least 1")
     if not 0.0 <= exploration <= 1.0:
@@ -92,7 +115,30 @@ def fit_custom_model(
     kappa: float,
     top_k: int,
 ) -> s.FitCustomModelResult:
-    """The agent's own logistic regression: options, leave-one-out validation, ranking."""
+    """Fit the agent's own logistic regression, validate it by leave-one-out, and rank.
+
+    Args:
+        ctx (ToolContext): the campaign the tool runs on.
+        features (list[str] | None): the feature columns to fit on; None uses every
+            feature.
+        scaling (str): ``pool`` (standardize on the whole pool) or ``purchased`` (on the
+            delivered designs).
+        penalty (str): ``l2`` or ``l1``.
+        C (float): the inverse regularization strength.
+        similarity_feature (bool): add each design's largest similarity to a hit as an input.
+        rank_by (str): ``mean`` (predicted probability) or ``upper`` (an optimistic bound).
+        kappa (float): how optimistic ``upper`` is.
+        top_k (int): how many designs to rank, capped at ``MAX_RANK``.
+
+    Returns:
+        s.FitCustomModelResult: the settings, the training counts, the leave-one-out
+        validation against a hit-rate baseline, the weights (raw-value direction, largest
+        first), and the ranked designs.
+
+    Raises:
+        ToolFailure: an invalid option, the model cannot be fitted yet, or the analysis
+            refuses the data.
+    """
     # Check the options first: a bad one costs the agent a message, not a fit.
     settings = AnalysisSettings(
         penalty=penalty,
@@ -183,8 +229,25 @@ def propose_batch(
 ) -> s.ProposeBatchResult:
     """Ask a scripted policy for a batch and record the proposal with reasons; spends nothing.
 
-    Policy ``fixed`` ranks by ``feature``; ``fixed:<feature>`` in one string also works here
-    (``run-scripted`` uses it), but the MCP tool offers only the separate form.
+    The proposal and its predicted hit rate are recorded, which is what later feeds
+    calibration. Policy ``fixed`` ranks by ``feature``; ``fixed:<feature>`` in one string
+    also works here (``run-scripted`` uses it), but the MCP tool offers only the separate
+    form.
+
+    Args:
+        ctx (ToolContext): the campaign the tool runs on.
+        k (int): the batch size, from 1 to the game's batch size.
+        policy (str): a policy name (see ``policies.factory.POLICY_NAMES``).
+        exploration (float): the share of the batch drawn at random, between 0 and 1.
+        feature (str | None): the column ``fixed`` ranks by; only with ``fixed``.
+
+    Returns:
+        s.ProposeBatchResult: the recorded batch id, the designs, the predicted hit rate
+        with its calibration, and one reason per design.
+
+    Raises:
+        ToolFailure: an invalid argument, an unknown policy, a stopped campaign, no rounds
+            left, or no designs left to propose.
     """
     fc = ctx.feature_config
     if policy == "fixed":
@@ -264,25 +327,45 @@ def propose_batch(
 def fit_or_refuse(
     ctx: ToolContext, state: CampaignState, preprocessor: Preprocessor | None = None
 ) -> FittedModel:
-    """Fit the logistic model, or tell the agent how far it is from the fitting gate."""
+    """Fit the logistic model, or tell the agent how far it is from the fitting gate.
+
+    Args:
+        ctx (ToolContext): the campaign the tool runs on.
+        state (CampaignState): the campaign snapshot.
+        preprocessor (Preprocessor | None): the transform to fit with; the pool's when None.
+
+    Returns:
+        FittedModel: the fitted model.
+
+    Raises:
+        ToolFailure: fewer hits or delivered purchases than the gate needs; the message
+            gives both counts.
+    """
     fitted = fit_model(state, preprocessor or ctx.preprocessor)
     if isinstance(fitted, InsufficientData):
         raise ToolFailure(
-            "insufficient_data: need at least 2 hits and 8 delivered purchases; "
+            f"insufficient_data: need at least {MIN_HITS} hits and {MIN_PURCHASES} delivered purchases; "
             f"have {fitted.n_hits} hits and {fitted.n_purchases} purchases. Buy more, or use query_pool."
         )
     return fitted
 
 
 def raw_direction(ctx: ToolContext, feature: str) -> float:
-    """+1 or -1: the sign that turns an oriented weight into the raw-value direction.
+    """Return the sign that turns an oriented weight into the raw-value direction.
 
-    The model fits on oriented features (lower-is-better columns are flipped so that
-    higher always means more likely to bind), but every value the tools show is raw.
-    Reporting an oriented weight beside raw values invites reading a lower-is-better
-    column backwards, so the reported weight is multiplied by the column's orientation
-    and a positive weight then means "a higher **raw** value goes with binding".
-    Magnitudes, and which weights l1 set to zero, are unchanged.
+    The model fits on oriented features (lower-is-better columns are flipped so that higher
+    always means more likely to bind), but every value the tools show is raw. Reporting an
+    oriented weight beside raw values invites reading a lower-is-better column backwards, so
+    the reported weight is multiplied by the column's orientation and a positive weight then
+    means "a higher **raw** value goes with binding". Magnitudes, and which weights l1 set
+    to zero, are unchanged.
+
+    Args:
+        ctx (ToolContext): the campaign the tool runs on.
+        feature (str): the column (non-feature inputs such as length count as +1).
+
+    Returns:
+        float: +1.0 or -1.0.
     """
     return float(ctx.preprocessor.orientation.get(feature, 1.0))
 
@@ -290,7 +373,19 @@ def raw_direction(ctx: ToolContext, feature: str) -> float:
 def preprocessor_for(
     ctx: ToolContext, state: CampaignState, features: list[str] | None
 ) -> Preprocessor:
-    """The pool preprocessor, or one refitted on a subset of the features."""
+    """Return the pool preprocessor, or one refitted on a subset of the features.
+
+    Args:
+        ctx (ToolContext): the campaign the tool runs on.
+        state (CampaignState): the campaign snapshot.
+        features (list[str] | None): the subset; None keeps every feature.
+
+    Returns:
+        Preprocessor: the transform.
+
+    Raises:
+        ToolFailure: ``features`` is empty or names an unknown feature.
+    """
     fc = ctx.feature_config
     if features is None:
         return ctx.preprocessor
@@ -308,10 +403,18 @@ def preprocessor_for(
 
 
 def top_features(ctx: ToolContext, design: Design, fitted: Any) -> list[s.TopFeature]:
-    """The three features that move this design's log-odds the most.
+    """List the three features that move this design's log-odds the most.
 
-    A feature's contribution is its weight x the design's standardized value; ties
-    are broken by name, and zero contributions are left out.
+    A feature's contribution is its weight x the design's standardized value; ties are
+    broken by name, and zero contributions are left out.
+
+    Args:
+        ctx (ToolContext): the campaign the tool runs on.
+        design (Design): the design.
+        fitted (Any): the fitted model (``columns`` and ``coef``).
+
+    Returns:
+        list[s.TopFeature]: up to three contributions, largest first.
     """
     row = ctx.preprocessor.transform([design])[0]
     contributions = sorted(
