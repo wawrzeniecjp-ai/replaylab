@@ -249,10 +249,10 @@ one commit, checking every validity gate before reading any score (Methods).
   binders: four single-target games of 90 designs each, on Nipah-G, EGFR, BBF-14 and BHRF1,
   with no sequence shared with Proteinbase and four score columns that both datasets have.
   Each game runs 4 rounds of 8. The headline pools the four games, 80 pairs per model
-  ([`docs/prereg-anthropic.md`](docs/prereg-anthropic.md)).
+  ([`docs/prereg-anthropic.md`](https://github.com/wawrzeniecjp-ai/replaylab/blob/main/docs/prereg-anthropic.md)).
 * **The held-out Nipah-G fold** (`N-held`, 343 designs, 4 rounds of 8) is the third of
   Nipah-G that no development game ever played, with 40 pairs per model
-  ([`docs/prereg-heldout.md`](docs/prereg-heldout.md)).
+  ([`docs/prereg-heldout.md`](https://github.com/wawrzeniecjp-ai/replaylab/blob/main/docs/prereg-heldout.md)).
 
 On the Anthropic pools the advisor tools helped on both models: B1 found **+0.94** hits per 32
 purchases more than A with deepseek [+0.59, +1.29] and **+0.69** with mimo [+0.36, +1.04]
@@ -296,7 +296,7 @@ every player finds about one. EGFR has 10, and the agent finds about 8 of them w
 without the tools. The effect comes from BHRF1, on both models, and from Nipah-G with deepseek.
 The similarity tool's contribution, so large in the main study, is small here (B1 − B2: +0.55
 [+0.14, +0.97] with deepseek, +0.25 [−0.06, +0.57] with mimo). Every comparison, registered and
-descriptive, is in [`reports/final-test/compare/`](reports/final-test/compare/).
+descriptive, is in [`reports/final-test/compare/`](https://github.com/wawrzeniecjp-ai/replaylab/tree/main/reports/final-test/compare/).
 
 Most of the shortfall against the prediction comes from the smaller games, not from the new
 designs. This reading was made after the results, from the cumulative hits that every record
@@ -416,7 +416,7 @@ orientation fix, and the final tests after it. And in the final tests, 8 of abou
 episodes (2.2%, spread over all three conditions) hit the 32,768-token output limit
 mid-reasoning, and 4 more failed on a provider error. Each was replayed on the same seed, as
 the runner is designed to do; how those second draws affect the scores is unknown
-([`docs/caveats.md`](docs/caveats.md) entry 9).
+([`docs/caveats.md`](https://github.com/wawrzeniecjp-ai/replaylab/blob/main/docs/caveats.md) entry 9).
 
 Taken together, these findings suggest that agentic lab platforms might gain from giving agents
 analysis tools — free inspection of the pool, follow-up on discoveries, a model fitted on what
@@ -548,17 +548,17 @@ decision rule and validity gates before playing its episodes:
 4. *Transfer* to EGFR with the configuration frozen, on fresh trials 100–119. No cell was
    inconclusive, so the registered extension to trials 120–139 was not played.
 5. *Ablations*: conditions A and B2 on EGFR; the authorship ablation (B1 vs B2) on Nipah-G
-   ([`docs/prereg-authorship.md`](docs/prereg-authorship.md)); and the orientation fix
-   ([`docs/prereg-orientation.md`](docs/prereg-orientation.md)).
+   ([`docs/prereg-authorship.md`](https://github.com/wawrzeniecjp-ai/replaylab/blob/main/docs/prereg-authorship.md)); and the orientation fix
+   ([`docs/prereg-orientation.md`](https://github.com/wawrzeniecjp-ai/replaylab/blob/main/docs/prereg-orientation.md)).
 6. *Final test* on the Anthropic dataset, played once on 2026-11-11 and 12. Four single-target
    games (Nipah-G, EGFR, BBF-14, BHRF1; 90 designs each, no sequence shared with the
    Proteinbase pools), conditions A, B1 and B2, both models, trials 0–19, a pooled headline,
    every input file pinned by hash and each game behind a run-once lock
-   ([`docs/prereg-anthropic.md`](docs/prereg-anthropic.md)).
+   ([`docs/prereg-anthropic.md`](https://github.com/wawrzeniecjp-ai/replaylab/blob/main/docs/prereg-anthropic.md)).
 7. *Held-out test* on Nipah-G fold 2 (`N-held`, 343 designs no development game ever played),
    played once at the same time, from the same commit. Conditions A, B1 and B2, both models,
    trials 0–39, under the same run-once lock and the same frozen configuration as the final
-   test ([`docs/prereg-heldout.md`](docs/prereg-heldout.md)).
+   test ([`docs/prereg-heldout.md`](https://github.com/wawrzeniecjp-ai/replaylab/blob/main/docs/prereg-heldout.md)).
 
 Every trial block was played once; a new idea uses a fresh block of seeds.
 
@@ -581,7 +581,7 @@ B1 − A as their primary outcome, with a decision rule, before any of their epi
 We paired every comparison by seed and summarized it with a 90% paired bootstrap interval over
 20 trials per cell (40 in the authorship ablation). Pairing gives both arms the same pool,
 outcomes and presentation order, but does not remove the model's own sampling noise, which no
-provider lets us seed ([`docs/caveats.md`](docs/caveats.md) entry 6). Baseline reference values
+provider lets us seed ([`docs/caveats.md`](https://github.com/wawrzeniecjp-ai/replaylab/blob/main/docs/caveats.md) entry 6). Baseline reference values
 are means over 100 seeds. Validity gates (all episodes finished, configuration hash as
 registered, no code change) were checked before any score was read.
 
@@ -594,7 +594,7 @@ bootstrap of 80 pairs per model, paired on (game, seed); N-held has 40 pairs per
 scripted margin is the main study's margin of 2 hits in 60 purchases, rescaled to 1.07 hits in
 32. All gates passed: every agent episode finished, both configuration hashes and all five
 frozen game hashes were as registered, and every leg was played from one clean commit. The run
-locks are in [`reports/final-test/`](reports/final-test/).
+locks are in [`reports/final-test/`](https://github.com/wawrzeniecjp-ai/replaylab/tree/main/reports/final-test/).
 
 ### Similarity, families and authorship
 
@@ -645,12 +645,12 @@ The hit-rate forecasts the agents saw, scored against what their batches deliver
 `reports/calibration_forecasts.csv` and `reports/calibration_proposals.csv` (written by
 `scripts/calibration_report.py`; design notes section 21). None of these files holds a
 sequence or a design id. The final tests' locks and the output of
-every comparison are in [`reports/final-test/`](reports/final-test/). Four audits in
-[`scripts/audit/`](scripts/audit/README.md) check the recorded results from outside the
+every comparison are in [`reports/final-test/`](https://github.com/wawrzeniecjp-ai/replaylab/tree/main/reports/final-test/). Four audits in
+[`scripts/audit/`](https://github.com/wawrzeniecjp-ai/replaylab/blob/main/scripts/audit/README.md) check the recorded results from outside the
 package (`make audit`): they re-score the episodes from the raw export, scan every transcript
-for leaks, run shuffled-label controls and recompute every comparison reported here. The full baseline ladder is in [`reports/ladder.md`](reports/ladder.md),
-and every number behind every decision is in [`docs/design-notes.md`](docs/design-notes.md).
-Read [`docs/caveats.md`](docs/caveats.md) before quoting the results.
+for leaks, run shuffled-label controls and recompute every comparison reported here. The full baseline ladder is in [`reports/ladder.md`](https://github.com/wawrzeniecjp-ai/replaylab/blob/main/reports/ladder.md),
+and every number behind every decision is in [`docs/design-notes.md`](https://github.com/wawrzeniecjp-ai/replaylab/blob/main/docs/design-notes.md).
+Read [`docs/caveats.md`](https://github.com/wawrzeniecjp-ai/replaylab/blob/main/docs/caveats.md) before quoting the results.
 
 ---
 
@@ -778,23 +778,23 @@ episode and mark the game `final_test: true`, which puts it behind the run-once 
   registered in `policies/factory.py` (`make_policy`, `POLICY_NAMES`), and in
   `eval/ladder.py` if the ladder should run it.
 
-[`docs/code-tour.md`](docs/code-tour.md) shows where each of these sits in the call path.
+[`docs/code-tour.md`](https://github.com/wawrzeniecjp-ai/replaylab/blob/main/docs/code-tour.md) shows where each of these sits in the call path.
 
 ### Further reading
 
 | document | what it holds |
 | --- | --- |
-| [`docs/code-tour.md`](docs/code-tour.md) | entry points, call paths, and the order to read the modules in |
-| [`docs/user_guide/`](docs/user_guide/) | architecture, vocabulary and the evaluation workflow |
-| [`docs/walkthrough.md`](docs/walkthrough.md) | a hands-on session on the real tables |
-| [`docs/design-notes.md`](docs/design-notes.md) | every number behind every decision, plus each experiment's registration and results |
-| [`docs/caveats.md`](docs/caveats.md) | the conditions these results hold under; read before quoting them |
-| [`docs/prereg-anthropic.md`](docs/prereg-anthropic.md) | the final test, fixed before it was played |
-| [`docs/prereg-heldout.md`](docs/prereg-heldout.md) | the held-out Nipah-G test, fixed before it was played |
-| [`reports/final-test/`](reports/final-test/) | both final tests: the run-once locks and every comparison |
-| [`docs/prereg-orientation.md`](docs/prereg-orientation.md) | the toolkit-defect experiment and its null result |
-| [`docs/prereg-authorship.md`](docs/prereg-authorship.md) | whether the similarity tool rides authorship, fixed before it was played |
-| [`reports/ladder.md`](reports/ladder.md) | every baseline policy, 100 seeds per game |
+| [`docs/code-tour.md`](https://github.com/wawrzeniecjp-ai/replaylab/blob/main/docs/code-tour.md) | entry points, call paths, and the order to read the modules in |
+| [`docs/user_guide/`](https://github.com/wawrzeniecjp-ai/replaylab/tree/main/docs/user_guide/) | architecture, vocabulary and the evaluation workflow |
+| [`docs/walkthrough.md`](https://github.com/wawrzeniecjp-ai/replaylab/blob/main/docs/walkthrough.md) | a hands-on session on the real tables |
+| [`docs/design-notes.md`](https://github.com/wawrzeniecjp-ai/replaylab/blob/main/docs/design-notes.md) | every number behind every decision, plus each experiment's registration and results |
+| [`docs/caveats.md`](https://github.com/wawrzeniecjp-ai/replaylab/blob/main/docs/caveats.md) | the conditions these results hold under; read before quoting them |
+| [`docs/prereg-anthropic.md`](https://github.com/wawrzeniecjp-ai/replaylab/blob/main/docs/prereg-anthropic.md) | the final test, fixed before it was played |
+| [`docs/prereg-heldout.md`](https://github.com/wawrzeniecjp-ai/replaylab/blob/main/docs/prereg-heldout.md) | the held-out Nipah-G test, fixed before it was played |
+| [`reports/final-test/`](https://github.com/wawrzeniecjp-ai/replaylab/tree/main/reports/final-test/) | both final tests: the run-once locks and every comparison |
+| [`docs/prereg-orientation.md`](https://github.com/wawrzeniecjp-ai/replaylab/blob/main/docs/prereg-orientation.md) | the toolkit-defect experiment and its null result |
+| [`docs/prereg-authorship.md`](https://github.com/wawrzeniecjp-ai/replaylab/blob/main/docs/prereg-authorship.md) | whether the similarity tool rides authorship, fixed before it was played |
+| [`reports/ladder.md`](https://github.com/wawrzeniecjp-ai/replaylab/blob/main/reports/ladder.md) | every baseline policy, 100 seeds per game |
 | `reports/agent_study.csv` | the per-episode scores behind every figure |
 
 ### Data definitions
